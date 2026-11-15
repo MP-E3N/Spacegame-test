@@ -68,7 +68,9 @@ export const TURMKI = {
     quer: [25, 50, 200],        // m: halbe Breite/Höhe = Streuung der Gruppe + 25, geklammert 50–200
     tiefe: [25, 50, 200],       // m: halbe Tiefe = radiale Streuung + 25, geklammert 50–200
     nickMax: 1.2,               // rad: Kastenmitte höchstens so hoch
-    gierHalbMax: 0.35, nickHalbMax: 0.15, // rad: Deckel fürs Richttempo (s. maxDreh)
+    // WARUM 0,28 (Befund Prüfer R9): Muster 4·0,28/4 = 16°/s + Nachführen 35°/s + Größenänderung ≤ 7°/s < 60°/s Gier um
+    // BATTERIE_MITTE (mit 0,35 bis 67°/s)
+    gierHalbMax: 0.28, nickHalbMax: 0.15, // rad: Deckel fürs Richttempo (s. maxDreh)
     // m: Lücke quer (Bogen), hoch (Bogen) oder radial > 300 → neuer Kasten, < 220 → wieder zusammen (Hysterese).
     // WARUM in Metern und 3 Achsen statt Gier-Lücke 0,6 rad: bei 1500 m sind 0,6 rad 900 m — zwei Drohnen 500 m
     // auseinander teilten sich einen Kasten, nur 15 % der Drohnen lagen darin (Messung R9).
@@ -79,6 +81,10 @@ export const TURMKI = {
     maxKaesten: 3,
     umgruppieren: 2,            // s: frühestens so oft Kästen/Türme neu verteilen
     minTuerme: 2,
+    // Übergang (Befund Prüfer R9): wechselt ein Rohr den Kasten (oder kommt aus Killzone/Zielfeuer), läuft sein
+    // Befehlspunkt mit höchstens diesem Tempo (Winkel von der Mündung) zum neuen Muster, statt im Takt 22–38° zu springen.
+    // WARUM 50/40°/s, 600 m/s: unter dem Richttempo 60/50°/s, damit der Turm dem Befehl folgen kann.
+    uebergang: { gier: 50 * Math.PI / 180, nick: 40 * Math.PI / 180, abstand: 600 },
   },
   // Killzone (R7, Entscheidung 3): Hysterese ein < 500 m, aus > 600 m um BATTERIE_MITTE, Alarm-Nachlauf 0,5 s
   killzone: { ein: 500, aus: 600, nachlauf: 0.5, tuermeEiner: 3, tuermeJe: 2 },
@@ -143,7 +149,10 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   const bG = new Float64Array(MAXZ), bN = new Float64Array(MAXZ), bD = new Float64Array(MAXZ), bW = new Float64Array(MAXZ);
   const bE = new Float64Array(MAXZ), bQ = new Float64Array(MAXZ), bH = new Float64Array(MAXZ), bK = new Float64Array(MAXZ), bX = new Float64Array(MAXZ), bY = new Float64Array(MAXZ), bZ = new Float64Array(MAXZ), grp = new Int32Array(MAXZ);
   const gmX = new Float64Array(3), gmY = new Float64Array(3), gmZ = new Float64Array(3);
-  const kastenGruppe = new Int32Array(3), kOrd = new Int32Array(3), kAnz = new Int32Array(3);
+  const kastenGruppe = new Int32Array(3), kOrd = new Int32Array(3), kAnz = new Int32Array(3), kBel = new Int32Array(3);
+  // Übergang je Rohr: Kasten im letzten Takt (−1 = kein Muster, −2 = Start), laufender Übergang + Punkt (Gier, Nick, R um M)
+  const kastenVor = new Int32Array(n).fill(-2), ueb = new Uint8Array(n);
+  const uG = new Float64Array(n), uN = new Float64Array(n), uR = new Float64Array(n);
   const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAFETTEN.map((l, i) => i).sort((a, b) => LAFETTEN[a].x - LAFETTEN[b].x || a - b);
   let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
   const fest = { gierMitte: 0, gierHalb: 0, nickMin: 0, nickMax: 0 }; // gemerkter fester Sektor
@@ -153,6 +162,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     phase0 = rnd(); // gemeinsamer Phasenversatz des Musters (nur Optik, deterministisch)
     takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false; warFest = false;
     Object.assign(fest, STANDARD_SEKTOR);
+    kastenVor.fill(-2); ueb.fill(0);
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
     statistik.maxJeZiel = 0; statistik.unloesbar = 0; statistik.alarmAn = 0; statistik.gruppenWechsel = 0;
@@ -186,7 +196,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   }
 
   /** Lissajous-Punkt für Turm k im Kasten s (Gier ± gierHalb, Nick ± nickHalb, Abstand ± tiefeHalb). */
-  function streiche(b, m, v0, k, s) {
+  function streiche(b, m, v0, k, s, dt) {
     const Tg = K.periodeGier, Tn = Tg / K.verhaeltnis, Tr = Tg / K.verhaeltnisTiefe;
     // WARUM eigene Phasen je Achse: sonst laufen alle Türme zeitversetzt dieselbe geschlossene Kurve ab → Linie statt
     // Fläche. Gier-Phase k·0,382 (goldener Schnitt, R9): je zwei Türme eines Kastens liegen weit auseinander.
@@ -194,6 +204,18 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const nick = s.nick + s.nickHalb * dreieck(zeit / Tn + (k * 5 % 12) / 12 + phase0 * 0.37);
     const R = s.abstand + s.tiefeHalb * dreieck(zeit / Tr + (k * 7 % 11) / 11 + phase0 * 0.71);
     setzeAufSchale(b, m, v0, gier, nick, R);
+    if (!ueb[k]) return;
+    // Übergang: vom alten Punkt mit begrenztem Tempo zum Musterpunkt, gerechnet in Winkeln VON DER MÜNDUNG aus.
+    // WARUM von der Mündung (nicht von BATTERIE_MITTE): steil über der Batterie dreht die Gier eines Turms neben M
+    // vielfach schneller als die Gier um M (Messung R9: 132°/s bei 66 m waagrecht). Achsen einzeln begrenzt.
+    const U = F.uebergang, px = b.punkt.x - m.x, py = b.punkt.y - m.y, pz = b.punkt.z - m.z, pr = L(px, py, pz) || 1;
+    const dg = winkelDiff(Math.atan2(px, pz), uG[k]), dn = Math.asin(klemme(py / pr, -1, 1)) - uN[k], dr = pr - uR[k];
+    const mg = U.gier * dt, mn = U.nick * dt, mr = U.abstand * dt;
+    if (Math.abs(dg) <= mg && Math.abs(dn) <= mn && Math.abs(dr) <= mr) { ueb[k] = 0; return; } // angekommen → Muster
+    uG[k] = winkelDiff(uG[k] + klemme(dg, -mg, mg), 0); uN[k] += klemme(dn, -mn, mn); uR[k] += klemme(dr, -mr, mr);
+    const cn = Math.cos(uN[k]);
+    b.punkt.x = m.x + Math.sin(uG[k]) * cn * uR[k]; b.punkt.y = m.y + Math.sin(uN[k]) * uR[k]; b.punkt.z = m.z + Math.cos(uG[k]) * cn * uR[k];
+    b.zuender = Math.min(Math.max(uR[k] / v0, K.zuenderStrecke / v0), K.zuender[1]);
   }
 
   // ---------- Killzone ----------
@@ -404,7 +426,9 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       }
       // 4) Türme verteilen (beim Umgruppieren bzw. alle 2 s): je Kasten mind. 2, Rest nach Gewicht; Kästen nach Gier,
       //    Türme nach x (−X-Türme → Kasten mit kleinerer Gier)
-      if (seitUmgruppiert === 0 || takt % Math.round(F.umgruppieren * 60) === 0) verteileTuerme();
+      //    WARUM nicht mehr alle 2 s (Befund Prüfer R9): jeder Wechsel eines Rohrs ließ seinen Befehl springen — nur noch
+      //    beim Umgruppieren oder wenn ein Kasten weniger als minTuerme Rohre hat; bestehende Zuordnung bleibt bevorzugt
+      if (seitUmgruppiert === 0 || zuWenigTuerme()) verteileTuerme();
     }
     // 5) träge nachführen: Glättung τ, Drehtempo ≤ maxDreh, Abstand ≤ maxAbstandTempo, Größe τ 1 s
     const al = 1 - Math.exp(-dt / F.tau), a1 = 1 - Math.exp(-dt / F.tauGroesse);
@@ -438,6 +462,14 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     }
   }
 
+  function zuWenigTuerme() {
+    if (anzahlGruppen < 2) return false;
+    kBel.fill(0);
+    for (let i = 0; i < n; i++) if (gruppeTurm[i] < anzahlGruppen) kBel[gruppeTurm[i]]++;
+    for (let k = 0; k < anzahlGruppen; k++) if (kBel[k] < F.minTuerme) return true;
+    return false;
+  }
+
   function verteileTuerme() {
     const nK = anzahlGruppen;
     for (let k = 0; k < nK; k++) { kOrd[k] = k; kAnz[k] = nK > 1 ? F.minTuerme : n; }
@@ -453,8 +485,16 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       // Kästen nach Gier sortieren (Einfügen)
       for (let a = 1; a < nK; a++) { const v = kOrd[a]; let c = a - 1; while (c >= 0 && schirmVorrat[kOrd[c]].gier > schirmVorrat[v].gier) { kOrd[c + 1] = kOrd[c]; c--; } kOrd[c + 1] = v; }
     }
-    let a = 0;
-    for (let q = 0; q < nK; q++) for (let c = 0; c < kAnz[kOrd[q]]; c++) gruppeTurm[turmNachX[a++]] = kOrd[q];
+    // bestehende Zuordnung bevorzugen (in x-Reihenfolge, bis der Kasten voll ist), Rest an Kästen nach Gier
+    kBel.fill(0);
+    for (let a = 0; a < n; a++) {
+      const i = turmNachX[a], g = gruppeTurm[i];
+      if (g >= 0 && g < nK && kBel[g] < kAnz[g]) kBel[g]++; else gruppeTurm[i] = -1;
+    }
+    for (let q = 0; q < nK; q++) {
+      const k = kOrd[q];
+      for (let a = 0; a < n && kBel[k] < kAnz[k]; a++) { const i = turmNachX[a]; if (gruppeTurm[i] === -1) { gruppeTurm[i] = k; kBel[k]++; } }
+    }
   }
 
   function festerSchirm(dt, R, Sbefehl) {
@@ -502,18 +542,26 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
         for (let k = 0; k < T.length; k++) {
           const i = T[k], b = befehle[i], tz = turmZustand?.[i], m = tz?.muendung ?? ersatzM[i], v0 = tz?.v0 ?? K.v0;
           b.leuchtspur = leucht;
-          if (nahTurm[i] >= 0) { richteNah(i, ziele, m, v0, frei); continue; }
+          if (nahTurm[i] >= 0) { richteNah(i, ziele, m, v0, frei); kastenVor[i] = -1; continue; }
+          // Neuer Kasten (oder zurück aus Killzone/Zielfeuer): Übergang vom letzten Befehl aus (Befund Prüfer R9)
+          if (kastenVor[i] !== g && kastenVor[i] !== -2) {
+            const dx = b.punkt.x - m.x, dy = b.punkt.y - m.y, dz = b.punkt.z - m.z, r = L(dx, dy, dz) || 1; // von der Mündung
+            ueb[i] = 1; uG[i] = Math.atan2(dx, dz); uN[i] = Math.asin(klemme(dy / r, -1, 1)); uR[i] = r;
+          }
+          kastenVor[i] = g;
           // WARUM Phase nach fester Turmnummer (nicht Platz im Schirm): sonst springt das Muster, wenn ein Turm in die
           // Killzone wechselt oder zurückkommt (Messung R7: Befehls-Sprünge bis 5900°/s)
-          streiche(b, m, v0, i, s);
+          streiche(b, m, v0, i, s, dt);
           // Kasten: Feuer-Spielraum ≤ halbe kleinste Kastenseite (sonst fliegen die Granaten neben den Kasten);
           // feste Wand: unverändert toleranzSperr
           b.toleranz = folgen ? klemme(0.5 * Math.min(s.breite, s.hoehe) / s.abstand, 0.015, K.toleranzSperr) : K.toleranzSperr;
-          b.zielId = null; b.feuer = frei; b.streuKugel = 0; // Kasten/Wand: Muster sättigt schon
+          // WARUM kein Feuer im Übergang: der Punkt liegt dann zwischen den Kästen — Granaten dort treffen nichts
+          b.zielId = null; b.feuer = frei && !ueb[i]; b.streuKugel = 0; // Kasten/Wand: Muster sättigt schon
         }
       }
     } else {
       lage.schirme.length = 0;
+      for (let i = 0; i < n; i++) if (kastenVor[i] !== -2) kastenVor[i] = -1;
       for (let i = 0; i < n; i++) {
         if (nahTurm[i] >= 0) { zielSlot[i] = -1; continue; } // Killzone hat Vorrang
         const s = zielSlot[i];
