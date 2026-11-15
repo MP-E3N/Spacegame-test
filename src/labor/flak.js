@@ -31,11 +31,11 @@ const befehl = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800, sekto
 // uebersicht: kreist um den Kampfraum vor der Batterie, Maus = kreisen, Rad = Abstand.
 const kam = {
   modus: 'batterie',
-  batterie: { pos: new THREE.Vector3(-30, 13, -44), gier: 0, nick: 0, fov: 55 },
+  batterie: { pos: new THREE.Vector3(-24, 12, -36), gier: 0, nick: 0, fov: 62 },
   uebersicht: { ziel: new THREE.Vector3(0, 280, 650), gier: -2.3, nick: 0.32, abstand: 1700 },
 };
 { // Startblick der Batterie-Kamera: über die Türme hinweg auf den Flak-Schirm (vor dem Gasriesen in +Z)
-  const d = new THREE.Vector3(0, 300, 800).sub(kam.batterie.pos).normalize();
+  const d = new THREE.Vector3(0, 190, 800).sub(kam.batterie.pos).normalize();
   kam.batterie.gier = Math.atan2(d.x, d.z); kam.batterie.nick = Math.asin(d.y);
 }
 const blick = new THREE.Vector3();
@@ -95,7 +95,7 @@ function hud(dt) {
   setze('granaten', String(zaehleGranaten()));
   setze('wolken', String(grafik.zaehler.wolken));
   setze('schussrate', String(Math.round(rate.wert)));
-  setze('treffer', String(labor.zaehler.treffer));
+  setze('treffer', Math.round(labor.zaehler.schaden) + ' HP');
   setze('abschuesse', String(labor.zaehler.abschuesse));
   setze('bildzeit', bildMittel.toFixed(1) + ' ms');
   if (meldungBis && performance.now() > meldungBis) { el.meldung.classList.remove('sichtbar'); meldungBis = 0; }
@@ -144,7 +144,7 @@ function frame(jetzt) {
   const alpha = pause ? 1 : rest / SCHRITT;
   kameraSetzen(maus); maus.dx = maus.dy = maus.rad = 0;
   grafik.aktualisiere(labor.flak, alpha, pause ? 0 : dt, zeit);
-  drohnenGrafik.aktualisiere(labor.drohnen.ziele, alpha, zeit);
+  drohnenGrafik.aktualisiere(labor.drohnen.ziele, alpha, zeit, bild.camera);
   bild.zeichnen();
   hud(dt);
   requestAnimationFrame(frame);
@@ -162,7 +162,7 @@ window.spiel = {
       simSchritt(); zeit += SCHRITT;
       kameraSetzen({ dx: 0, dy: 0, rad: 0 });
       grafik.aktualisiere(labor.flak, 1, SCHRITT, zeit);
-      drohnenGrafik.aktualisiere(labor.drohnen.ziele, 1, zeit);
+      drohnenGrafik.aktualisiere(labor.drohnen.ziele, 1, zeit, bild.camera);
     }
     bild.zeichnen(); hud(SCHRITT * n);
     return { ...grafik.zaehler, granaten: labor.flak.geschosse.anzahlAktiv, ...labor.zaehler };

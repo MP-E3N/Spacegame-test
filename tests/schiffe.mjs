@@ -89,6 +89,11 @@ function alterErzeuger() { // Kopie aus grafik/asteroiden.js (Stand Runde 4) —
       if (statSync(p).isDirectory()) { lauf(p); continue; }
       if (!n.endsWith('.js')) continue;
       const text = readFileSync(p, 'utf8');
+      // Regel 1 (CLAUDE.md) für ALLE Ordner unter src/sim: kein Math.random, kein DOM (Befund Prüfer R6). Kommentare zählen nicht.
+      const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+      for (const verboten of ['Math.random', 'document.', 'window.', 'requestAnimationFrame', 'performance.now']) {
+        if (code.includes(verboten)) schlecht.push(`${n}: ${verboten}`);
+      }
       for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g)) {
         // WARUM three nur in schiffe/ + feld.js verboten: sim/schiff.js (Flugsystem) nutzt Vector3/Quaternion, das ist erlaubt
         const reinDaten = p.includes('schiffe') || n === 'feld.js';
@@ -97,7 +102,7 @@ function alterErzeuger() { // Kopie aus grafik/asteroiden.js (Stand Runde 4) —
     }
   };
   lauf(new URL('../src/sim', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-  zeile('src/sim ohne grafik-Importe (schiffe/, feld.js ohne three)', '0', schlecht.length ? schlecht.join(', ') : '0', schlecht.length === 0);
+  zeile('src/sim ohne grafik-Importe, Math.random, DOM (schiffe/, feld.js ohne three)', '0', schlecht.length ? schlecht.join(', ') : '0', schlecht.length === 0);
 }
 
 // ---------- 4) Kugel-Deckung ----------

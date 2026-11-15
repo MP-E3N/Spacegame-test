@@ -15,7 +15,8 @@ export function erstelleFlakLabor() {
   const drohnen = erstelleZieldrohnen({ startwert: START.drohnen });
   const ki = erstelleTurmKi({ startwert: START.ki });
   const flak = erstelleFlak({ startwert: START.flak });
-  const zaehler = { takt: 0, schuesse: 0, treffer: 0, abschuesse: 0 };
+  // treffer = Treffer-Ereignisse (je Ziel und Schritt, inkl. Splitter-Ticks) · schaden = verteilte HP (fürs HUD, Befund Prüfer R6)
+  const zaehler = { takt: 0, schuesse: 0, treffer: 0, schaden: 0, abschuesse: 0 };
   // Abschüsse für die Grafik (Explosion): Ring fester Größe, die Seite liest ab `gelesen` bis `zaehler.abschuesse`.
   const abschuesse = Array.from({ length: ABSCHUSS_VORRAT }, () => ({ x: 0, y: 0, z: 0 }));
 
@@ -32,12 +33,13 @@ export function erstelleFlakLabor() {
     flak.schritt(dt, befehle, drohnen.ziele);
     zaehler.schuesse += flak.ereignisse.schuesse.length;
     zaehler.treffer += flak.ereignisse.treffer.length;
+    for (const t of flak.ereignisse.treffer) zaehler.schaden += t.schaden;
     zaehler.takt++;
   }
 
   function zuruecksetzen() {
     drohnen.zuruecksetzen(); flak.zuruecksetzen(); ki.zuruecksetzen?.();
-    zaehler.takt = zaehler.schuesse = zaehler.treffer = zaehler.abschuesse = 0;
+    zaehler.takt = zaehler.schuesse = zaehler.treffer = zaehler.schaden = zaehler.abschuesse = 0;
   }
 
   /** Gleichlauf-Prüfung: Summe über Drohnenlagen, HP und Turmwinkel (zwei Läufe müssen bitgleich sein). */

@@ -35,8 +35,13 @@ export function erstelleDrohnenGrafik(scene, anzahl = 16) {
   const augeOff = new THREE.Matrix4().makeTranslation(0, 0.2, 3.75), glutOff = new THREE.Matrix4().makeTranslation(0, 0, -3.78);
   const letzteRichtung = Array.from({ length: anzahl }, () => new THREE.Vector3(0, 0, 1));
 
-  function aktualisiere(ziele, alpha, zeit) {
+  const kamPos = new THREE.Vector3(), augeSkala = new THREE.Vector3();
+  function aktualisiere(ziele, alpha, zeit, camera) {
     const n = Math.min(anzahl, ziele.length);
+    // Winkel eines Bildpunkts (rad) → Mindestgröße des Auges. WARUM: Auge (1 m) ist auf 1–2 km kleiner als ein Pixel und
+    // verschwindet (Bildprüfer R6: 0 rote Pixel). Mit ≥ 3 px bleibt das Ziel als roter Punkt lesbar.
+    const pixWinkel = camera ? 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / (globalThis.innerHeight || 900) : 0;
+    if (camera) camera.getWorldPosition(kamPos);
     for (let i = 0; i < n; i++) {
       const z = ziele[i];
       if (!z.aktiv) { m.makeScale(0, 0, 0); rumpf.setMatrixAt(i, m); auge.setMatrixAt(i, m); glut.setMatrixAt(i, m); continue; }
@@ -50,7 +55,12 @@ export function erstelleDrohnenGrafik(scene, anzahl = 16) {
       rumpf.setMatrixAt(i, m);
       // Beschädigt: Auge flackert (lesbar, ohne Extra-Effekt)
       const flackern = z.hpMax && z.hp < z.hpMax * 0.45 && Math.sin(zeit * 37 + i) > 0.3;
-      if (flackern) off.makeScale(0, 0, 0); else off.multiplyMatrices(m, augeOff);
+      if (flackern) off.makeScale(0, 0, 0);
+      else {
+        off.multiplyMatrices(m, augeOff);
+        const groesse = Math.max(1, (3 * pos.distanceTo(kamPos) * pixWinkel) / (1.0 * s)); // Auge Ø 1 m × s
+        if (groesse > 1) off.scale(augeSkala.set(groesse, groesse, groesse));
+      }
       auge.setMatrixAt(i, off);
       glut.setMatrixAt(i, off.multiplyMatrices(m, glutOff));
     }

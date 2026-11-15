@@ -14,3 +14,7 @@
 - 2026-11-15 Runde 5 — Frühwarnung per SendMessage an die R4-Agenten (Kontext bleibt) spart Lesezeit. Backticks in
   Doku nie über Shell-Heredoc/node -e schreiben (zweimal verschluckt) → Write/Edit. Abweichungen von Experten mit
   Begründung + Messung übernehmen, im Protokoll festhalten.
+- 2026-11-15 Runde 6 (Flak-Labor) — Gemeinsame Datentabelle (lafetten.js) VOR dem parallelen Bauen selbst anlegen → zwei
+  Worktrees ohne Wartezeit. Ereignis-Übergabe Sim→Grafik pro Schritt im Bauauftrag nennen (fast vergessen, per Nachtrag gelöst).
+  Erst das Zusammenspiel messen (labor.mjs): Einzeltests mit Ersatz-Modulen waren grün, die echte Balance nicht (Sperrfeuer 0 Abschüsse).
+  Verdecktes Pane: Testhilfe spiel.bilder(n) gleich mitbauen. Shell: `cat > datei || true` ohne Heredoc wartet auf stdin → hängt.

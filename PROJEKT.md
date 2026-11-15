@@ -39,7 +39,13 @@ npm test           # Messflüge ohne Browser
 | `src/grafik/schiff/ambos.js` | Fregatte „FK-07 Ambos“ (gesichertes erstes Design) |
 | `src/grafik/schiff/bauteile.js`, `texturen.js` | gemeinsame Bausteine + Effekte, Rumpf-Texturen |
 | `src/grafik/kamera.js` | Außenkamera |
-| `tests/flug.mjs`, `tests/schiffe.mjs` | Messflüge je Schiff + Kollision + Gleichlauf · Turm-Spaltmaß, Feld, Import-Regel |
+| `tests/flug.mjs`, `tests/schiffe.mjs` | Messflüge je Schiff + Kollision + Gleichlauf · Turm-Spaltmaß, Feld, Import-/Sim-Regel (ganz src/sim) |
+| `flak.html`, `src/labor/*` | **Flak-Labor** (Runde 6, Demo ohne Schiff): Seite, Prüfstand, Drohnen-Platzhalter, Kamera, HUD |
+| `src/sim/flaklabor.js` | Labor-Sim-Welt: Drohnen → Turm-KI → Waffen (Treffer aus Schritt n wirken in Schritt n+1) |
+| `src/sim/waffen/lafetten.js`, `flak.js` | Turm-Montage (einzige Quelle) · Flak: Richten, Feuern, Geschoss-Pool, Zeit-/Annäherungszünder, Splitterwolke, Nachbar-Sperre |
+| `src/sim/ki/turmziel.js`, `zieldrohnen.js` | Turm-KI (Sperrfeuer-Muster, Zielwahl, Vorhalt) · Zieldrohnen (Bahnen, Ausweichen, Neustart) |
+| `src/grafik/waffen/flakgrafik.js`, `shader.js` | Türme, Leuchtspur, Mündungsblitz, Kern, Rauch (Fake-Licht) · `nachSchritt` je Sim-Schritt, `aktualisiere` je Bild |
+| `tests/waffen.mjs`, `tests/ki.mjs` | Flak-Messungen (Richtzeit, Schuss/s, Durchflug, Gleichlauf) · KI-Messungen (Vorhalt, Abdeckung, Drohnen-Langlauf) |
 
 ## Schnittstellen
 - `erstelleSimWelt(typ)` → `{ schiff, feld, typ, daten, werte, waehle(typ), schritt(dt, befehl) → kollision, zuruecksetzen() }`
