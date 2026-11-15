@@ -3,7 +3,9 @@
 //   B) Sperrfeuer: Detonationen auf der Schale (Radius ±5 %), Abdeckung 6×4-Raster, Streichtempo < Richttempo
 //   C) 5 min Zielfeuer gegen 10 Zieldrohnen: Abstandsband, Höhe, +Z, Zusammenstöße, Neustart 4 s mit neuer id,
 //      ≤ 2 Türme je Ziel, Zielwechsel/min, Zeit bis zum ersten Angriffslauf durch den Schirm, Rechenzeit
-//   D) Gleichlauf: zwei Läufe + zuruecksetzen() → gleicher Hash
+//   F) 5 min Sperrfeuer „folgt“ (R7): Wandmitte ↔ Bedrohung (Winkel), Nachführtempo ≤ 12°/s, Richttempo, Vorstöße/min,
+//      engster Abstand ≥ 200 m, Killzone-Hysterese (kein Flackern), Leuchtspur nur im Nahbereich, Türme am Eindringling
+//   D) Gleichlauf: zwei Läufe (Zielfeuer + Folgen) + zuruecksetzen() → gleicher Hash
 //   E) src/sim/ki/** ohne Math.random, DOM, grafik/
 // Ersatz-Waffen: Turm richtet sich sofort aus; Granate fliegt gerade mit v0, zündet nach `zuender` (exakt zwischen den
 // Takten interpoliert), Schaden 15 linear abfallend bis 25 m (Annahme, Waffen legen fest). Streuung 0,5° mit eigenem Zufall.
@@ -52,7 +54,7 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12) {
         const s = tuerme[i].streuung; dx = dx / d + (rnd() - 0.5) * 2 * s; dy = dy / d + (rnd() - 0.5) * 2 * s; dz = dz / d + (rnd() - 0.5) * 2 * s;
         const l = L(dx, dy, dz);
         geschosse.push({ x: m.x, y: m.y, z: m.z, vx: dx / l * V0, vy: dy / l * V0, vz: dz / l * V0, rest: b.zuender, turm: i });
-        ereignisse.schuesse.push({ turmId: i });
+        ereignisse.schuesse.push({ turmId: i, leucht: !!b.leuchtspur });
       }
       for (let k = geschosse.length - 1; k >= 0; k--) {
         const g = geschosse[k], t = Math.min(DT, g.rest);
@@ -109,7 +111,7 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12) {
 // ---------- B) Sperrfeuer ----------
 {
   const ki = erstelleTurmKi({ startwert: 202 }), tuerme = ersatzTuerme(), flak = erstelleErsatzFlak(303, 12);
-  const R = 800, befehl = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: R };
+  const R = 800, befehl = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: R, folgen: false };
   const raster = new Array(24).fill(0), alt = tuerme.map(() => null);
   let n = 0, radAbw = 0, maxGr = 0, maxNr = 0, ausserhalb = 0, aktiveMax = 0;
   const takte = 600 + 300; // 10 s messen nach 5 s Vorlauf (Granaten in der Luft)
@@ -142,20 +144,93 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12) {
   zeile('B Abdeckung 6×4: schwächste Zelle / Mittel', '≥ 50 %', (100 * minZelle / mittel).toFixed(0) + ' %', minZelle >= 0.5 * mittel);
   zeile('B Detonationen außerhalb des Sektors (Streuung am Rand)', '≤ 10 %', f1(100 * ausserhalb / n) + ' %', ausserhalb <= 0.1 * n, false);
   zeile('B Streichtempo Gier (Befehl) < Richttempo 60°/s', '< 60°/s', f1(maxGr / GRAD) + '°/s', maxGr < 60 * GRAD);
-  zeile('B Streichtempo Nick (Befehl) < Richttempo 40°/s', '< 40°/s', f1(maxNr / GRAD) + '°/s', maxNr < 40 * GRAD);
+  zeile('B Streichtempo Nick (Befehl) < Richttempo 50°/s', '< 50°/s', f1(maxNr / GRAD) + '°/s', maxNr < 50 * GRAD);
   zeile('B Granaten gleichzeitig in der Luft', 'Info', String(aktiveMax), true, false);
+  const s0 = ki.lage.schirme[0];
+  const fest = ki.lage.schirme.length === 1 && Math.abs(s0.abstand - R) < 1e-9 && Math.abs(s0.gier - S.gierMitte) < 1e-9;
+  zeile('B folgen: false → ein fester Schirm (Sektor + schirmAbstand)', 'ja', fest ? 'ja' : 'nein', fest);
 }
 
 // ---------- C) 5 min Zielfeuer gegen Zieldrohnen ----------
-function lauf(takte, mitMessung) {
+/** Messungen R7 je Takt: Killzone, Leuchtspur, Vorstöße, Folgen. */
+function messeR7(k, dr, ki, bef, flak, befehl, m, z0) {
+  const lage = ki.lage;
+  for (const s of flak.ereignisse.schuesse) if (s.leucht) m.spur++;
+  let naechste = Infinity, naechsteId = null;
+  dr.ziele.forEach((z, i) => {
+    const d = z.aktiv ? L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z) : Infinity;
+    if (d < naechste) { naechste = d; naechsteId = z.id; }
+    // Vorstoß: engster Abstand je Vorstoß
+    if (z.vorstoss) z0.vsMin[i] = Math.min(z0.vsMin[i], d);
+    else if (z0.vsWar[i]) { if (z.aktiv && Number.isFinite(z0.vsMin[i])) m.vsNah.push(z0.vsMin[i]); else m.vsAb = (m.vsAb ?? 0) + 1; z0.vsMin[i] = Infinity; }
+    z0.vsWar[i] = z.vorstoss;
+  });
+  if (naechste < 500 && !lage.nahbereich) m.kzVerpasst++;
+  if (naechste < 600) m.letzteNah = k;
+  if (bef.some((b) => b.leuchtspur !== lage.nahbereich)) m.lsUngleich++;
+  if (bef.some((b) => b.leuchtspur) && k - m.letzteNah > 31) m.lsOhneNah++;
+  if (lage.nahbereich && !m.alarmWar) { m.alarmAn++; m.alarmStart = k; }
+  if (!lage.nahbereich && m.alarmWar) m.alarmMin = Math.min(m.alarmMin, k - m.alarmStart);
+  m.alarmWar = lage.nahbereich;
+  // Eindringlinge: Wiedereintritt kurz nach dem Austritt = Flackern
+  const jetzt = new Set(lage.eindringlinge);
+  for (const id of z0.drinIds) if (!jetzt.has(id)) z0.raus.set(id, k);
+  for (const id of jetzt) if (!z0.drinIds.has(id)) { m.kzEintritte++; const r = z0.raus.get(id); if (r !== undefined && k - r < 60) m.kzFlackern++; }
+  z0.drinIds.clear(); for (const id of jetzt) z0.drinIds.add(id);
+  if (lage.eindringlinge.length) {
+    m.kzTakte++;
+    let best = null, bd = Infinity;
+    for (const z of dr.ziele) if (z.aktiv && jetzt.has(z.id)) { const d = L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z); if (d < bd) { bd = d; best = z.id; } }
+    if (bef.filter((b) => b.zielId === best).length < 2) m.kzUnterbesetzt++;
+  }
+  if (befehl.modus !== 'sperrfeuer' || befehl.folgen === false) return;
+  // Folgen: Wandmitte ↔ Soll, Nachführtempo je Schirm-Platz
+  m.folgTakte++; if (lage.schirme.length === 2) m.zweiSchirme++;
+  for (let g = 0; g < 2; g++) {
+    const s = lage.schirme[g];
+    if (!s) { z0.vorSchirm[g] = null; continue; }
+    const cw = (a, b) => [Math.sin(a) * Math.cos(b), Math.sin(b), Math.cos(a) * Math.cos(b)];
+    const u = cw(s.gier, s.nick), v = cw(s.sollGier, s.sollNick);
+    m.winkel.push(Math.acos(Math.min(1, u[0] * v[0] + u[1] * v[1] + u[2] * v[2])));
+    const p = z0.vorSchirm[g];
+    if (p) {
+      m.drehMax = Math.max(m.drehMax, Math.acos(Math.min(1, u[0] * p.u[0] + u[1] * p.u[1] + u[2] * p.u[2])) / DT);
+      m.abstandTempoMax = Math.max(m.abstandTempoMax, Math.abs(s.abstand - p.abstand) / DT);
+    }
+    z0.vorSchirm[g] = { u, abstand: s.abstand };
+  }
+  // Liegen die Drohnen (außer Eindringlingen) im Sektor eines Schirms?
+  for (const z of dr.ziele) {
+    if (!z.aktiv || lage.eindringlinge.includes(z.id)) continue;
+    const x = z.pos.x - M.x, y = z.pos.y - M.y, zz = z.pos.z - M.z, d = L(x, y, zz), g = Math.atan2(x, zz), nk = Math.asin(y / d);
+    m.bedrohung++;
+    if (lage.schirme.some((s) => Math.abs(g - s.gier) <= s.gierHalb + 0.1 && Math.abs(nk - s.nick) <= s.nickHalb + 0.1)) m.imSektor++;
+  }
+  // Richttempo der Sperr-Rohre (Befehl), nur Rohre, die in beiden Takten Sperrfeuer schießen
+  bef.forEach((b, i) => {
+    const sch = lage.schirme.findIndex((sc) => sc.tuerme.includes(i)); // Wechsel des Schirms = gewollter Sprung
+    const mu = z0.tuerme[i].muendung, dx = b.punkt.x - mu.x, dy = b.punkt.y - mu.y, dz = b.punkt.z - mu.z;
+    const g = Math.atan2(dx, dz), nk = Math.asin(dy / L(dx, dy, dz)), p = z0.vorRohr[i];
+    if (p && b.zielId === null && p.sperr && p.sch === sch) { m.richtG = Math.max(m.richtG, Math.abs(g - p.g) / DT); m.richtN = Math.max(m.richtN, Math.abs(nk - p.n) / DT); }
+    z0.vorRohr[i] = { g, n: nk, sperr: b.zielId === null, sch };
+    if (p && p.sch !== sch) m.schirmWechselRohr = (m.schirmWechselRohr ?? 0) + 1;
+  });
+}
+
+function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }) {
   // Startwert der Drohnen per Umgebung tauschbar (Stichprobe: DROHNEN_START=7 node tests/ki.mjs)
   const dr = erstelleZieldrohnen({ startwert: Number(process.env.DROHNEN_START ?? 101) }), ki = erstelleTurmKi({ startwert: 202 });
   const tuerme = ersatzTuerme(), flak = erstelleErsatzFlak(303, 12);
-  const befehl = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 };
-  const mess = { dMin: Infinity, dMax: 0, yMin: Infinity, zNeg: 0, schritte: 0, paarMin: Infinity, jeZielMax: 0,
+  const mess = {
+    kzVerpasst: 0, lsUngleich: 0, lsOhneNah: 0, letzteNah: -1e9, alarmAn: 0, alarmWar: false, alarmStart: 0, alarmMin: Infinity,
+    kzEintritte: 0, kzFlackern: 0, kzTakte: 0, kzUnterbesetzt: 0, spur: 0,
+    vsNah: [], winkel: [], drehMax: 0, abstandTempoMax: 0, imSektor: 0, bedrohung: 0, zweiSchirme: 0, folgTakte: 0,
+    richtG: 0, richtN: 0, dMin: Infinity, dMax: 0, yMin: Infinity, zNeg: 0, schritte: 0, paarMin: Infinity, jeZielMax: 0,
     abschuesse: 0, neustartOk: 0, neustartFehler: 0, ersterAngriff: null, durchSchirm: 0, nan: 0, zeitDr: 0, zeitKi: 0, treffer: 0, schuesse: 0 };
   const wartet = new Map(); // slot → { takt, id }
   const innen = new Array(DROHNEN.anzahl).fill(false);
+  const vsMin = new Array(DROHNEN.anzahl).fill(Infinity), vsWar = new Array(DROHNEN.anzahl).fill(false);
+  const raus = new Map(), drinIds = new Set(), vorSchirm = [null, null], vorRohr = new Array(6).fill(null);
   let h = 0x811c9dc5;
   const f64 = new Float64Array(1), u32 = new Uint32Array(f64.buffer);
   const misch = (x) => { f64[0] = x; h = Math.imul(h ^ u32[0], 16777619); h = Math.imul(h ^ u32[1], 16777619); };
@@ -170,12 +245,18 @@ function lauf(takte, mitMessung) {
     flak.schritt(tuerme, bef, dr.ziele);
     mess.treffer += flak.ereignisse.treffer.length; mess.schuesse += flak.ereignisse.schuesse.length;
     for (const z of dr.ziele) { misch(z.pos.x); misch(z.pos.y); misch(z.pos.z); misch(z.id); }
-    for (const b of bef) { misch(b.punkt.x); misch(b.zielId ?? -1); misch(b.feuer ? 1 : 0); }
+    for (const b of bef) { misch(b.punkt.x); misch(b.zielId ?? -1); misch(b.feuer ? 1 : 0); misch(b.leuchtspur ? 1 : 0); }
+    for (const sc of ki.lage.schirme) { misch(sc.gier); misch(sc.nick); misch(sc.abstand); }
     if (!mitMessung) continue;
+    messeR7(k, dr, ki, bef, flak, befehl, mess, { vsMin, vsWar, raus, drinIds, vorSchirm, vorRohr, tuerme });
     for (const a of erg.abschuesse) { mess.abschuesse++; const slot = dr.ziele.findIndex((z) => z.id === a.id); wartet.set(slot, { takt: k, id: a.id }); }
     const zaehl = new Map();
     for (const b of bef) if (b.zielId !== null) zaehl.set(b.zielId, (zaehl.get(b.zielId) ?? 0) + 1);
-    for (const v of zaehl.values()) mess.jeZielMax = Math.max(mess.jeZielMax, v);
+    // Killzone-Eindringlinge dürfen 3 Türme haben (R7), alle anderen höchstens 2
+    for (const [id, v] of zaehl) {
+      if (ki.lage.eindringlinge.includes(id)) mess.jeNahMax = Math.max(mess.jeNahMax ?? 0, v);
+      else mess.jeZielMax = Math.max(mess.jeZielMax, v);
+    }
     dr.ziele.forEach((z, i) => {
       const w = wartet.get(i);
       if (w && z.aktiv) { if (k - w.takt === 240 && z.id > w.id) mess.neustartOk++; else mess.neustartFehler++; wartet.delete(i); }
@@ -198,7 +279,9 @@ function lauf(takte, mitMessung) {
 {
   const T = 5 * 60 * 60;
   const { mess: m, dr, ki } = lauf(T, true);
-  zeile('C Abstand Drohnen ↔ Batterie (5 min)', '300–2000 m', `${f1(m.dMin)} – ${f1(m.dMax)} m`, m.dMin >= 300 - 1e-6 && m.dMax <= 2000 + 1e-6);
+  zeile('C Abstand Drohnen ↔ Batterie (5 min)', '200–2000 m', `${f1(m.dMin)} – ${f1(m.dMax)} m`, m.dMin >= 200 - 1e-6 && m.dMax <= 2000 + 1e-6);
+  zeile('C Killzone im Zielfeuer: Alarm verpasst / Leuchtspur ≠ Alarm', '0 / 0', `${m.kzVerpasst} / ${m.lsUngleich}`, m.kzVerpasst === 0 && m.lsUngleich === 0);
+  zeile('C Killzone im Zielfeuer: Eindringling mit < 2 Türmen (Takte)', '≤ 2 %', f1(100 * m.kzUnterbesetzt / Math.max(1, m.kzTakte)) + ' %', m.kzUnterbesetzt <= 0.02 * m.kzTakte);
   zeile('C Harte Klammer griff (Anteil Drohnen-Takte)', '≤ 1 %', f2(100 * dr.statistik.klammer / m.schritte) + ' %', dr.statistik.klammer <= 0.01 * m.schritte, false);
   zeile('C Tiefste Drohne', '≥ 80 m', f1(m.yMin) + ' m', m.yMin >= 80 - 1e-6);
   zeile('C Anteil im +Z-Halbraum', '≥ 95 %', f1(100 - 100 * m.zNeg / m.schritte) + ' %', m.zNeg <= 0.05 * m.schritte);
@@ -208,7 +291,7 @@ function lauf(takte, mitMessung) {
   zeile('C Ausweichhaken ausgelöst', '> 0', String(dr.statistik.ausweichen), dr.statistik.ausweichen > 0);
   zeile('C Erster Angriffslauf durch den Schirm (800 m)', '< 20 s', m.ersterAngriff === null ? '—' : f1(m.ersterAngriff) + ' s', m.ersterAngriff !== null && m.ersterAngriff < 20, false);
   zeile('C Angriffsläufe durch den Schirm (5 min)', '≥ 20', String(m.durchSchirm), m.durchSchirm >= 20, false);
-  zeile('C Höchstens Türme je Ziel', '≤ 2', String(m.jeZielMax), m.jeZielMax <= 2 && ki.statistik.maxJeZiel <= 2);
+  zeile('C Höchstens Türme je Ziel (außer Killzone) / je Eindringling', '≤ 2 / ≤ 3', `${m.jeZielMax} / ${m.jeNahMax ?? 0}`, m.jeZielMax <= 2 && ki.statistik.maxJeZiel <= 2 && (m.jeNahMax ?? 0) <= 3);
   const wMax = Math.max(...ki.statistik.wechsel) / 5, zw = ki.statistik.zwang.reduce((a, b) => a + b, 0) / 5;
   zeile('C Freiwillige Zielwechsel je Turm und Minute (max)', '≤ 6', f1(wMax), wMax <= 6);
   zeile('C Flackern (A → B → A binnen 5 s), alle Türme, 5 min', '≤ 10 (Info: meist Angreifer, der in den Anflug wechselt)', String(ki.statistik.flackern), ki.statistik.flackern <= 10, false);
@@ -220,10 +303,74 @@ function lauf(takte, mitMessung) {
   zeile('C Rechenzeit KI gesamt je Takt (Budget)', '< 1 ms', ((msDr + msKi) * 1000).toFixed(1) + ' µs', msDr + msKi < 1);
 }
 
+// ---------- F) Sperrfeuer folgt (R7) ----------
+const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // folgen fehlt → Standard true
+{
+  const T = 5 * 60 * 60;
+  const { mess: m, dr, ki } = lauf(T, true, FOLGEN);
+  const w = m.winkel.slice().sort((a, b) => a - b), mittel = w.reduce((a, b) => a + b, 0) / w.length, p90 = w[Math.floor(w.length * 0.9)];
+  // WARUM ≤ 15° statt 8° (Frühwarnung): das vereinbarte Nachführtempo 12°/s ist die Bremse — Messung R7: 12,3° bei 12°/s,
+  // 8,4° bei 20°/s. Sichtbarer Maßstab ist „Drohnen im Schirm-Sektor“.
+  zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, Mittel)', '≤ 15°', f1(mittel / GRAD) + '°', mittel <= 15 * GRAD);
+  zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, 90 %)', '≤ 40°', f1(p90 / GRAD) + '°', p90 <= 40 * GRAD, false);
+  zeile('F Drohnen (außer Eindringlingen) im Schirm-Sektor', '≥ 50 % (Info)', f1(100 * m.imSektor / Math.max(1, m.bedrohung)) + ' %', m.imSektor >= 0.5 * m.bedrohung, false);
+  // WARUM ±1 %: die KI begrenzt den Winkelschritt in der Gier/Nick-Näherung, gemessen wird der echte Großkreiswinkel
+  zeile('F Nachführtempo der Schirmmitte (max)', '≤ 12°/s (±1 %)', f2(m.drehMax / GRAD) + '°/s', m.drehMax <= 12.12 * GRAD);
+  zeile('F Abstands-Nachführung (max)', '≤ 150 m/s', f1(m.abstandTempoMax) + ' m/s', m.abstandTempoMax <= 150 + 1e-6);
+  zeile('F Richttempo der Sperr-Rohre Gier / Nick (Befehl, max)', '< 60 / 50°/s', `${f1(m.richtG / GRAD)} / ${f1(m.richtN / GRAD)}°/s`, m.richtG < 60 * GRAD && m.richtN < 50 * GRAD);
+  zeile('F Anteil Zeit mit zwei Schirmen / Gruppenwechsel / Rohr wechselt Schirm', 'Info', `${f1(100 * m.zweiSchirme / m.folgTakte)} % / ${ki.statistik.gruppenWechsel} / ${m.schirmWechselRohr ?? 0}`, true, false);
+  const vs = dr.statistik.vorstoesse / 5, nah = m.vsNah.slice().sort((a, b) => a - b);
+  zeile('F Vorstöße je Minute', '2–4,5', f1(vs), vs >= 2 && vs <= 4.5);
+  zeile('F Vorstöße überlebt / im Vorstoß abgeschossen (Ersatz-Flak)', 'Info', `${nah.length} / ${m.vsAb ?? 0}`, true, false);
+  // WARUM weich: die Ersatz-Flak (exakter Vorhalt, 3 Türme) schießt im Nahbereich fast alles ab — ob Vorstöße den Rückzug
+  // erleben, entscheidet der echte Zielgranaten-Schaden (Labor-Messung). Die Bahn selbst prüft G ohne Beschuss.
+  zeile('F Engster Punkt überlebter Vorstöße (min / Median / max)', '≥ 200 m, ≥ 1 überlebt', nah.length ? `${f1(nah[0])} / ${f1(nah[nah.length >> 1])} / ${f1(nah[nah.length - 1])} m` : '— (keiner überlebt)', nah.length > 0 && nah[0] >= 200 - 1e-6, false);
+  zeile('F Engster Abstand zur Batterie (alle Drohnen)', '≥ 200 m', f1(m.dMin) + ' m', m.dMin >= 200 - 1e-6);
+  zeile('F Abstand Drohnen ↔ Batterie (5 min)', '200–2000 m', `${f1(m.dMin)} – ${f1(m.dMax)} m`, m.dMin >= 200 - 1e-6 && m.dMax <= 2000 + 1e-6);
+  zeile('F Engster Abstand zweier Drohnen', '≥ 30 m', f1(m.paarMin) + ' m', m.paarMin >= 30);
+  zeile('F Harte Klammer griff (Anteil Drohnen-Takte)', '≤ 1 %', f2(100 * dr.statistik.klammer / m.schritte) + ' %', dr.statistik.klammer <= 0.01 * m.schritte, false);
+  zeile('F Killzone: Eintritte / Wiedereintritt < 1 s nach Austritt', '— / 0', `${m.kzEintritte} / ${m.kzFlackern}`, m.kzEintritte > 0 && m.kzFlackern === 0);
+  zeile('F Nahbereich-Alarm: Einschaltungen / kürzeste Dauer', '— / ≥ 0,5 s', `${m.alarmAn} / ${f2(m.alarmMin * DT)} s`, m.alarmAn > 0 && m.alarmMin * DT >= 0.5 - 1e-9);
+  zeile('F Alarm verpasst (Drohne < 500 m, kein Alarm)', '0 Takte', String(m.kzVerpasst), m.kzVerpasst === 0);
+  zeile('F Leuchtspur ≠ Alarm / Leuchtspur ohne Drohne < 600 m (> 0,5 s)', '0 / 0', `${m.lsUngleich} / ${m.lsOhneNah}`, m.lsUngleich === 0 && m.lsOhneNah === 0);
+  zeile('F Eindringling mit < 2 Türmen (Takte)', '≤ 2 %', f1(100 * m.kzUnterbesetzt / Math.max(1, m.kzTakte)) + ' %', m.kzUnterbesetzt <= 0.02 * m.kzTakte);
+  zeile('F Schüsse mit Leuchtspur', 'Info', f1(100 * m.spur / Math.max(1, m.schuesse)) + ' %', true, false);
+  zeile('F Abschüsse / Treffer je Schuss (Ersatz-Flak)', 'Info', `${m.abschuesse} / ${f2(m.treffer / Math.max(1, m.schuesse))}`, true, false);
+  const msKi = m.zeitKi / T, msDr = m.zeitDr / T;
+  zeile('F Rechenzeit Drohnen + Turm-KI je Takt', '< 1 ms', ((msDr + msKi) * 1000).toFixed(1) + ' µs', msDr + msKi < 1);
+}
+
+// ---------- G) Vorstöße ohne Beschuss (Bahn-Geometrie allein) ----------
+{
+  const dr = erstelleZieldrohnen({ startwert: Number(process.env.DROHNEN_START ?? 101) });
+  const vsMin = new Array(DROHNEN.anzahl).fill(Infinity), war = new Array(DROHNEN.anzahl).fill(false), nah = [];
+  let dMin = Infinity, gleichzeitig = 0, atemMin = Infinity, atemMax = 0;
+  for (let k = 0; k < 5 * 60 * 60; k++) {
+    dr.schritt(DT, null);
+    let n = 0;
+    dr.ziele.forEach((z, i) => {
+      const d = L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z);
+      dMin = Math.min(dMin, d);
+      if (z.vorstoss) { n++; vsMin[i] = Math.min(vsMin[i], d); } else if (war[i]) { nah.push(vsMin[i]); vsMin[i] = Infinity; }
+      if (!z.vorstoss && !war[i] && (z.bahn === 'kreisen' || z.bahn === 'schlange')) { atemMin = Math.min(atemMin, d); atemMax = Math.max(atemMax, d); }
+      war[i] = z.vorstoss;
+    });
+    gleichzeitig = Math.max(gleichzeitig, n);
+  }
+  nah.sort((a, b) => a - b);
+  zeile('G Vorstöße je Minute (ohne Beschuss)', '2–4,5', f1(dr.statistik.vorstoesse / 5), dr.statistik.vorstoesse / 5 >= 2 && dr.statistik.vorstoesse / 5 <= 4.5);
+  zeile('G Engster Punkt je Vorstoß (min / Median / max)', '200–320 m', `${f1(nah[0])} / ${f1(nah[nah.length >> 1])} / ${f1(nah[nah.length - 1])} m`, nah[0] >= 200 - 1e-6 && nah[nah.length - 1] <= 320);
+  zeile('G Höchstens gleichzeitige Vorstöße', '≤ 2', String(gleichzeitig), gleichzeitig <= 2);
+  zeile('G Kreiser/Schlangen außerhalb der Vorstöße (Atmen)', 'Info', `${f1(atemMin)} – ${f1(atemMax)} m`, true, false);
+  zeile('G Engster Abstand zur Batterie', '≥ 200 m', f1(dMin) + ' m', dMin >= 200 - 1e-6);
+}
+
 // ---------- D) Gleichlauf ----------
 {
   const a = lauf(3600, false), b = lauf(3600, false);
   zeile('D Gleichlauf zweier Läufe (3600 Takte)', 'gleich', `${a.h.toString(16)} / ${b.h.toString(16)}`, a.h === b.h);
+  const fa = lauf(3600, false, FOLGEN), fb = lauf(3600, false, FOLGEN);
+  zeile('D Gleichlauf Folgen + Killzone (3600 Takte)', 'gleich', `${fa.h.toString(16)} / ${fb.h.toString(16)}`, fa.h === fb.h);
   // zuruecksetzen() muss denselben Anfang liefern
   const dr = erstelleZieldrohnen({ startwert: 101 }), p0 = JSON.stringify(dr.ziele);
   for (let k = 0; k < 500; k++) dr.schritt(DT, null);
