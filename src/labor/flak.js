@@ -5,7 +5,7 @@
 //        Sim-Schritt und werden deshalb nach JEDEM Schritt an die Grafik gegeben (grafik.nachSchritt).
 import * as THREE from 'three';
 import { erstelleRenderer } from '../grafik/renderer.js';
-import { erstelleFlakGrafik } from '../grafik/waffen/index.js';
+import { erstelleFlakGrafik } from '../grafik/waffen/flakgrafik.js';
 import { erstelleFlakLabor } from '../sim/flaklabor.js';
 import { STANDARD_SEKTOR } from '../sim/waffen/lafetten.js';
 import { erstellePruefstand } from './pruefstand.js';
@@ -93,20 +93,14 @@ function hud(dt) {
   el.feuer.classList.toggle('halt', !befehl.feuerFrei);
   setze('schirm', befehl.modus === 'sperrfeuer' ? befehl.schirmAbstand + ' m' : 'Zünder nach Ziel');
   setze('granaten', String(zaehleGranaten()));
-  setze('wolken', String(grafik.anzahlWolken?.() ?? '–'));
+  setze('wolken', String(grafik.zaehler.wolken));
   setze('schussrate', String(Math.round(rate.wert)));
   setze('treffer', String(labor.zaehler.treffer));
   setze('abschuesse', String(labor.zaehler.abschuesse));
   setze('bildzeit', bildMittel.toFixed(1) + ' ms');
   if (meldungBis && performance.now() > meldungBis) { el.meldung.classList.remove('sichtbar'); meldungBis = 0; }
 }
-function zaehleGranaten() {
-  const g = labor.flak.geschosse;
-  if (typeof g?.anzahl === 'number') return g.anzahl;
-  if (Array.isArray(g)) { let n = 0; for (const x of g) if (x.aktiv) n++; return n; }
-  if (g?.aktiv) { let n = 0; for (let i = 0; i < g.aktiv.length; i++) if (g.aktiv[i]) n++; return n; }
-  return 0;
-}
+function zaehleGranaten() { return labor.flak.geschosse.anzahlAktiv; }
 
 // ---------------- Hauptschleife ----------------
 let zeit = 0, rest = 0, zuletzt = performance.now(), pause = false, gelesen = 0;
