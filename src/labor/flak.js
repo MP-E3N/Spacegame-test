@@ -155,6 +155,18 @@ window.spiel = {
   THREE, bild, labor, grafik, befehl, kam, SCHRITT,
   /** n Sim-Schritte ohne Bild rechnen (Effekte werden mit übernommen). */
   takt(n = 60) { for (let i = 0; i < n; i++) simSchritt(); return { takt: labor.zaehler.takt, schuesse: labor.zaehler.schuesse, treffer: labor.zaehler.treffer, abschuesse: labor.zaehler.abschuesse }; },
+  /** Ganze Bilder von Hand rechnen (Sim + Kamera + Effekte + Zeichnen), je 1/60 s.
+   *  WARUM: im verdeckten Browser-Pane läuft requestAnimationFrame nicht — sonst steht die Kamera im Ursprung. */
+  bilder(n = 60) {
+    for (let i = 0; i < n; i++) {
+      simSchritt(); zeit += SCHRITT;
+      kameraSetzen({ dx: 0, dy: 0, rad: 0 });
+      grafik.aktualisiere(labor.flak, 1, SCHRITT, zeit);
+      drohnenGrafik.aktualisiere(labor.drohnen.ziele, 1, zeit);
+    }
+    bild.zeichnen(); hud(SCHRITT * n);
+    return { ...grafik.zaehler, granaten: labor.flak.geschosse.anzahlAktiv, ...labor.zaehler };
+  },
   /** Kamera wählen: 'batterie' | 'uebersicht'. */
   kamera(name) { kam.modus = name; return name; },
   pause(an = true) { pause = an; return pause; },

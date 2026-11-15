@@ -1,7 +1,9 @@
 // ZWECK: Messungen der Flak-Simulation ohne Browser (`node tests/waffen.mjs`), Runde 6.
 //   1) Richtzeit 90° (Gier) eines Turms · 2) Schuss/s der Batterie · 3) schädliche Detonationen/s gegen einen
 //   Geradeausflieger (Ersatz-Befehl mit selbst gerechnetem Vorhalt) · 4) Gleichlauf: Prüfsumme nach 3600 Schritten
-//   in zwei Läufen gleich, anderer Startwert anders · 5) Rechenzeit ms/Schritt (volle Batterie, ~240 Geschosse, 10 Ziele).
+//   in zwei Läufen gleich, anderer Startwert anders · 5) Rechenzeit ms/Schritt (volle Batterie, ~240 Geschosse, 10 Ziele)
+//   6) Nachbar-Sperre (flach über den Nachbarturm → gesperrt, kein Schuss) · 7) Splitterwolke: Durchflug durch einen
+//   Sperrfeuer-Schirm (800 m) · 8) höchstens ein Treffer-Ereignis je Ziel und Schritt.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
 import { erstelleFlak, FLAK } from '../src/sim/waffen/flak.js';
@@ -47,8 +49,8 @@ const bewege = (z) => { z.vorPos.x = z.pos.x; z.vorPos.y = z.pos.y; z.vorPos.z =
 {
   const flak = erstelleFlak({ startwert: 1 });
   const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1];
-  t.nick = t.vorNick = 0; // nur Gier messen
-  befehle[1].punkt = { x: l.x + 2000, y: l.y + l.zapfen.y, z: l.z };
+  t.nick = t.vorNick = 0.3; // nur Gier messen; WARUM erhöht: flach nach +X steht Turm 2 im Weg (Nachbar-Sperre)
+  befehle[1].punkt = { x: l.x + 2000, y: l.y + l.zapfen.y + 2000 * Math.tan(0.3), z: l.z };
   let n = 0;
   while (!t.ausgerichtet && n < 600) { flak.schritt(DT, befehle, []); n++; }
   const s = n * DT;
@@ -73,7 +75,7 @@ const bewege = (z) => { z.vorPos.x = z.pos.x; z.vorPos.y = z.pos.y; z.vorPos.z =
   const flak = erstelleFlak({ startwert: 3 });
   const befehle = leererBefehl();
   const ziel = neuesZiel(7, -750, 300, 800, 150, 0, 0);
-  let det = 0, schaedlich = 0, schaden = 0, nah = 0;
+  let det = 0, schaedlich = 0, schaden = 0, nah = 0, mehrfach = 0, tot = -1;
   const schritte = 600;
   for (let i = 0; i < schritte; i++) {
     bewege(ziel);
@@ -81,12 +83,16 @@ const bewege = (z) => { z.vorPos.x = z.pos.x; z.vorPos.y = z.pos.y; z.vorPos.z =
     flak.schritt(DT, befehle, [ziel]);
     det += flak.ereignisse.detonationen.length;
     for (const d of flak.ereignisse.detonationen) if (d.art === 'nah') nah++;
-    schaedlich += flak.ereignisse.treffer.length; // ein Ziel → je Detonation höchstens ein Treffer
+    schaedlich += flak.ereignisse.treffer.length; // ein Ziel → höchstens ein (zusammengefasster) Treffer je Schritt
+    if (flak.ereignisse.treffer.length > 1) mehrfach++;
     for (const t of flak.ereignisse.treffer) schaden += t.schaden;
+    if (tot < 0 && schaden >= 100) tot = (i + 1) * DT;
   }
   const proS = schaedlich / (schritte * DT);
-  zeile('schädliche Detonationen/s (800 m, 150 m/s)', '≥ 1', proS.toFixed(1), proS >= 1);
-  zeile('Trefferquote (schädlich / alle Detonationen)', 'Info', det ? (100 * schaedlich / det).toFixed(0) + ' %' : '–', true, false);
+  zeile('Schritte mit Treffer/s (Zielfeuer, 800 m, 150 m/s)', '≥ 1', proS.toFixed(1), proS >= 1);
+  zeile('Detonationen gesamt (Zielgranaten)', 'Info', String(det), true, false);
+  zeile('Zeit bis 100 HP Schaden (ab Feuerbeginn)', 'Info', tot > 0 ? tot.toFixed(2) + ' s' : 'nie', true, false);
+  zeile('Treffer je Ziel und Schritt', '≤ 1', mehrfach ? mehrfach + '× mehr' : '1', mehrfach === 0);
   zeile('davon Annäherungszünder', 'Info', String(nah), true, false);
   zeile('Schaden in 10 s (Drohne = 100 HP)', 'Info', schaden.toFixed(0), true, false);
 }
@@ -115,6 +121,46 @@ const a = lauf(303), b = lauf(303), c = lauf(304);
 zeile('Gleichlauf 3600 Schritte (gleicher Startwert)', 'gleich', `${a.summe} / ${b.summe}`, a.summe === b.summe);
 zeile('anderer Startwert → andere Prüfsumme', 'anders', c.summe, c.summe !== a.summe);
 zeile('Rechenzeit Sim-Schritt (6 Türme, 10 Ziele)', '≤ 0,3 ms', a.ms.toFixed(3) + ' ms', a.ms <= 0.3);
+
+// ---------- 6) Nachbar-Sperre ----------
+{
+  const flak = erstelleFlak({ startwert: 6 });
+  const befehle = leererBefehl(), t = flak.tuerme[4], l = LAFETTEN[4]; // hintere Reihe, Turm 1 steht 14 m vor ihm (+Z)
+  befehle[4].punkt = { x: l.x, y: l.y + l.zapfen.y + 5, z: l.z + 2000 }; befehle[4].feuer = true; befehle[4].toleranz = 0.02;
+  let schuesse = 0;
+  for (let i = 0; i < 180; i++) { flak.schritt(DT, befehle, []); schuesse += flak.ereignisse.schuesse.length; }
+  zeile('Nachbar-Sperre: flach nach +Z über Turm 1', 'gesperrt, 0 Schuss', `${t.gesperrt ? 'gesperrt' : 'frei'}, ${schuesse} Schuss, Nick ${t.nick.toFixed(2)}`, t.gesperrt && schuesse === 0);
+  befehle[4].punkt.y = l.y + l.zapfen.y + 2000 * Math.tan(0.3);
+  schuesse = 0;
+  for (let i = 0; i < 180; i++) { flak.schritt(DT, befehle, []); schuesse += flak.ereignisse.schuesse.length; }
+  zeile('Nachbar-Sperre: erhöht (Nick 0,3) nach +Z', 'frei, feuert', `${t.gesperrt ? 'gesperrt' : 'frei'}, ${schuesse} Schuss`, !t.gesperrt && schuesse > 0);
+}
+
+// ---------- 7) Splitterwolke: Durchflug durch den Sperrfeuer-Schirm ----------
+// Schirm wie die Turm-KI: Lissajous-Streichen je Turm auf einer Kugelschale 800 m (Sperrgranaten, zielId null).
+{
+  let toedlich = 0, summe = 0, sofort = 0;
+  const N = 12;
+  for (let k = 0; k < N; k++) {
+    const flak = erstelleFlak({ startwert: 70 + k });
+    const befehle = leererBefehl();
+    const g0 = (k / (N - 1) - 0.5) * 0.8, n0 = 0.3 + 0.35 * ((k * 5) % N) / N; // Einflugrichtung im Sektor
+    const dir = { x: Math.sin(g0) * Math.cos(n0), y: Math.sin(n0), z: Math.cos(g0) * Math.cos(n0) };
+    const ziel = neuesZiel(1, dir.x * 1300, 4 + dir.y * 1300, dir.z * 1300, -dir.x * 150, -dir.y * 150, -dir.z * 150);
+    let schaden = 0;
+    for (let i = 0; i < 360; i++) { // 6 s: 1300 m → 400 m, quert den Schirm bei ~3,3 s
+      bewege(ziel);
+      befehle.forEach((b, m) => { const w = i * DT * 1.6 + m * Math.PI / 3, g = 0.52 * Math.sin(w), n = 0.48 + 0.31 * Math.sin(2 * w + m);
+        b.punkt.x = 800 * Math.sin(g) * Math.cos(n); b.punkt.y = 4 + 800 * Math.sin(n); b.punkt.z = 800 * Math.cos(g) * Math.cos(n);
+        b.zielId = null; b.feuer = true; b.toleranz = 0.06; b.zuender = 800 / FLAK.v0; });
+      flak.schritt(DT, befehle, [ziel]);
+      for (const t of flak.ereignisse.treffer) schaden += t.schaden;
+    }
+    summe += schaden; if (schaden >= 100) toedlich++;
+  }
+  zeile('Durchflug Schirm 800 m: tödlich (≥ 100 HP)', 'Info (Ziel: guter Teil)', `${toedlich} / ${N}`, true, false);
+  zeile('Durchflug Schirm 800 m: mittlerer Schaden', '≥ 30 HP (Wächter)', (summe / N).toFixed(0) + ' HP', summe / N >= 30);
+}
 
 // ---------- Ausgabe ----------
 const breite = (k) => Math.max(k.length, ...zeilen.map((z) => String(z[k]).length));

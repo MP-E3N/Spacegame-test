@@ -1,6 +1,6 @@
 // ZWECK: Flak-Simulation der Prüfstand-Batterie: Türme richten (Grenzen, Richtgeschwindigkeit), Zwillingsrohre im
 //        Wechsel feuern, Streuung mit festem Startwert, Geschoss-Pool, Zeit- und Annäherungszünder, Detonationsschaden.
-// LIEFERT: FLAK (Zahlen) · erstelleFlak({ startwert, lafetten }) → { tuerme, geschosse, ereignisse, schritt(dt, befehle, ziele),
+// LIEFERT: FLAK (Zahlen) · erstelleFlak({ startwert, lafetten }) → { tuerme, geschosse, splitter, ereignisse, schritt(dt, befehle, ziele),
 //          zuruecksetzen(), pruefsumme() } — Felder siehe Protokoll Runde 6, Entscheidung 3.
 // REGEL: fester Schritt 1/60 s, kein Math.random (zufall je Turm), keine neuen Objekte im Schritt (Pools, Ereignis-Vorrat).
 //        Winkel wie turm.js: gier 0 = Rohr nach Welt +Z, gier > 0 zu +X; nick > 0 = nach oben (Turm-Rahmen = Welt-Rahmen).
@@ -17,7 +17,16 @@ export const FLAK = {
   zuenderStreu: 0.04,         // ±4 % → Schirm ~60 m tief bei 800 m
   naheZuender: 12,            // m über dem Zielradius
   scharfNach: 6,              // Schritte (~60 m): WARUM: kein Annäherungszünder direkt vor dem Rohr
-  wirkRadius: 25, vollRadius: 6, schaden: 35,
+  // Zwei Granatsorten (Runde 6, Nachauftrag), gewählt nach dem Befehl:
+  //   ZIELGRANATE (befehl.zielId gesetzt, Zielfeuer): nur Sofortschaden, kein Nachwirken.
+  //   SPERRGRANATE (zielId null, Sperrfeuer): schwacher Sofortschaden + SPLITTERWOLKE, die ~0,7 s nachwirkt.
+  // WARUM: Ohne Nachwirken quert ein Angreifer die ~60 m tiefe Wand in ~0,4 s fast unbeschadet (Messung: 0 Abschüsse);
+  //        mit Splittern auch im Zielfeuer wurde das Zielfeuer zu tödlich (Prox-Detonation direkt am Ziel + Wolke).
+  wirkRadius: 25, vollRadius: 6, schadenZiel: 11, schadenSperr: 14,
+  // Splitter: Schaden/s im Radius, linear mit dem Alter abnehmend, am Rand halb (ganze Lebensdauer in der Mitte ≈ dps · dauer/60 / 2 ≈ 120 HP).
+  splitterRadius: 40, splitterDauer: 42, splitterDps: 350, poolSplitter: 96,
+  // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
+  nachbarHuelle: 3.7, nachbarHoehe: 5.2,
   richtGeschw: [60 * Math.PI / 180, 40 * Math.PI / 180], // rad/s [gier, nick]
   poolGeschosse: 256,
   vorratEreignisse: 128,
@@ -43,7 +52,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   const N = FLAK.poolGeschosse;
   const geschosse = {
     max: N, anzahlAktiv: 0, verworfen: 0,
-    aktiv: new Uint8Array(N), turm: new Uint8Array(N),
+    aktiv: new Uint8Array(N), turm: new Uint8Array(N), sperr: new Uint8Array(N), // sperr 1 = Sperrgranate
     pos: new Float64Array(N * 3), vorPos: new Float64Array(N * 3), vel: new Float64Array(N * 3),
     alter: new Uint16Array(N),  // Schritte seit dem Abschuss (Grafik: Leuchtspur wächst aus der Mündung)
     rest: new Uint16Array(N),   // Schritte bis zum Zeitzünder
@@ -62,10 +71,31 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     abklingen: 0, rohr: 0, schuesse: 0, rnd: null,
   }));
   let zeiger = 0, schrittNr = 0;
+  const NS = FLAK.poolSplitter;
+  const splitter = { max: NS, anzahlAktiv: 0, pos: new Float64Array(NS * 3), rest: new Uint16Array(NS), zeiger: 0 };
+  // Nachbar-Sperrzonen je Turm: { gier, halb, nickMin } aus der Lafetten-Tabelle (einmal berechnet)
+  for (const t of tuerme) {
+    t.sperrzonen = [];
+    for (const n of lafetten) {
+      if (n === t.lafette) continue;
+      const dx = n.x - t.lafette.x, dz = n.z - t.lafette.z, d = Math.hypot(dx, dz);
+      if (d > 40) continue;
+      const frei = Math.max(1, d - t.lafette.zapfen.z - 2.7); // waagrecht vom Zapfen bis zur Hülle des Nachbarn
+      t.sperrzonen.push({ gier: Math.atan2(dx, dz), halb: Math.atan2(FLAK.nachbarHuelle, d),
+        nickMin: Math.atan2(FLAK.nachbarHoehe - t.lafette.zapfen.y, frei) });
+    }
+  }
+  /** Mindest-Nick für Gier g (−∞ = keine Sperre). */
+  function sperrNick(t, g) {
+    let m = -Infinity;
+    for (const z of t.sperrzonen) if (Math.abs(umbruch(g - z.gier)) < z.halb && z.nickMin > m) m = z.nickMin;
+    return m;
+  }
   const MITTE = []; // Mitte zwischen den Rohren je Lafette (einmal angelegt)
 
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0;
+    splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
       t.gier = t.vorGier = t.sollGier = t.lafette.gier[0];
@@ -89,7 +119,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   }
 
   // ---------- Detonation: Schaden mit Abfall auf alle aktiven Ziele ----------
-  function detoniere(x, y, z, art, ziele) {
+  function detoniere(x, y, z, art, ziele, sperr) {
+    const schaden = sperr ? FLAK.schadenSperr : FLAK.schadenZiel;
     const d = ereignisse.detonationen.neu();
     d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = FLAK.wirkRadius; d.art = art;
     for (let k = 0; k < ziele.length; k++) {
@@ -98,8 +129,38 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
       const ab = Math.max(0, Math.hypot(ziel.pos.x - x, ziel.pos.y - y, ziel.pos.z - z) - ziel.r);
       if (ab >= FLAK.wirkRadius) continue;
       const f = ab <= FLAK.vollRadius ? 1 : (1 - (ab - FLAK.vollRadius) / (FLAK.wirkRadius - FLAK.vollRadius)) ** 2;
-      const tr = ereignisse.treffer.neu();
-      tr.zielId = ziel.id; tr.schaden = FLAK.schaden * f; tr.pos.x = ziel.pos.x; tr.pos.y = ziel.pos.y; tr.pos.z = ziel.pos.z;
+      treffe(ziel, schaden * f);
+    }
+    // Splitterwolke: Ring fester Größe, ist er voll, wird die älteste ersetzt (deterministisch)
+    if (!sperr) return;
+    const i = splitter.zeiger; splitter.zeiger = (i + 1) % NS;
+    if (splitter.rest[i] === 0) splitter.anzahlAktiv++;
+    splitter.pos[i * 3] = x; splitter.pos[i * 3 + 1] = y; splitter.pos[i * 3 + 2] = z; splitter.rest[i] = FLAK.splitterDauer;
+  }
+
+  /** Höchstens EIN Treffer-Ereignis je Ziel und Schritt (Schaden summiert). */
+  function treffe(ziel, schaden) {
+    const liste = ereignisse.treffer;
+    for (let k = 0; k < liste.length; k++) if (liste[k].zielId === ziel.id) { liste[k].schaden += schaden; return; }
+    const tr = liste.neu();
+    tr.zielId = ziel.id; tr.schaden = schaden; tr.pos.x = ziel.pos.x; tr.pos.y = ziel.pos.y; tr.pos.z = ziel.pos.z;
+  }
+
+  /** Splitterwolken wirken nach: Schaden/s im Radius, linear mit dem Alter abnehmend. Vor den neuen Detonationen. */
+  function splitterSchritt(dt, ziele) {
+    if (!splitter.anzahlAktiv) return;
+    const R = FLAK.splitterRadius;
+    for (let i = 0; i < NS; i++) {
+      if (!splitter.rest[i]) continue;
+      const staerke = splitter.rest[i] / FLAK.splitterDauer; // 1 → 0
+      const sx = splitter.pos[i * 3], sy = splitter.pos[i * 3 + 1], sz = splitter.pos[i * 3 + 2];
+      for (let k = 0; k < ziele.length; k++) {
+        const ziel = ziele[k];
+        if (!ziel.aktiv) continue;
+        const ab = Math.hypot(ziel.pos.x - sx, ziel.pos.y - sy, ziel.pos.z - sz) - ziel.r;
+        if (ab < R) treffe(ziel, FLAK.splitterDps * staerke * dt * (1 - Math.max(0, ab) / R * 0.5));
+      }
+      if (--splitter.rest[i] === 0) splitter.anzahlAktiv--;
     }
   }
 
@@ -134,10 +195,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
       }
       if (bestZiel >= 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--;
-        detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele);
+        detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sperr[i]);
       } else if (--rest[i] === 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--;
-        detoniere(pos[j], pos[j + 1], pos[j + 2], 'zeit', ziele);
+        detoniere(pos[j], pos[j + 1], pos[j + 2], 'zeit', ziele, geschosse.sperr[i]);
       }
     }
   }
@@ -171,6 +232,9 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     let gesperrt = false;
     if (!volleDrehung && Math.abs(relSoll) > gHalb) { relSoll = Math.sign(relSoll) * gHalb; gesperrt = true; }
     if (sollN < nMin) { sollN = nMin; gesperrt = true; } else if (sollN > nMax) { sollN = nMax; gesperrt = true; }
+    // Nachbar-Sperre: Soll zeigt flach auf einen Nachbarturm → Nick klemmen, nicht feuern
+    const nSperr = sperrNick(t, gMitte + relSoll);
+    if (sollN < nSperr) { sollN = nSperr; gesperrt = true; }
     t.sollGier = gMitte + relSoll; t.sollNick = sollN; t.gesperrt = gesperrt;
     t.imBereich = !gesperrt && entf <= FLAK.reichweite;
 
@@ -185,6 +249,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     t.ausgerichtet = Math.hypot(fehlG, fehlN) <= (b.toleranz ?? 0.01);
     muendungWelt(t, -1, t.muendung);
 
+    // WARUM auch die IST-Lage prüfen: beim Schwenken streicht das Rohr evtl. flach über den Nachbarn
+    if (t.nick < sperrNick(t, t.gier)) { t.gesperrt = true; t.imBereich = false; }
     if (!(b.feuer && t.imBereich && t.ausgerichtet && t.bereit)) return;
     const i = freiesGeschoss();
     if (i < 0) { geschosse.verworfen++; return; }
@@ -198,6 +264,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMin, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * FLAK.zuenderStreu);
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
+    geschosse.sperr[i] = b.zielId == null ? 1 : 0;
     geschosse.pos[j] = geschosse.vorPos[j] = tmp.x;
     geschosse.pos[j + 1] = geschosse.vorPos[j + 1] = tmp.y;
     geschosse.pos[j + 2] = geschosse.vorPos[j + 2] = tmp.z;
@@ -213,6 +280,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   function schritt(dt, befehle, ziele) {
     schrittNr++;
     ereignisse.schuesse.leeren(); ereignisse.detonationen.leeren(); ereignisse.treffer.leeren();
+    splitterSchritt(dt, ziele);           // Nachwirkung älterer Detonationen (die neue wirkt in diesem Schritt sofort)
     geschosseSchritt(dt, ziele);          // erst fliegen (neue Geschosse starten an der Mündung, sichtbar ab diesem Bild)
     for (let i = 0; i < tuerme.length; i++) turmSchritt(tuerme[i], dt, befehle ? befehle[i] : null);
   }
@@ -224,10 +292,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     mische(schrittNr);
     for (const t of tuerme) { mische(t.gier); mische(t.nick); mische(t.schuesse); }
     for (let i = 0; i < N; i++) if (geschosse.aktiv[i]) { mische(i); mische(geschosse.pos[i * 3]); mische(geschosse.pos[i * 3 + 1]); mische(geschosse.pos[i * 3 + 2]); }
-    mische(ereignisse.detonationen.length); mische(ereignisse.treffer.length);
+    mische(ereignisse.detonationen.length); mische(ereignisse.treffer.length); mische(splitter.anzahlAktiv);
     return h.toString(16);
   }
 
   zuruecksetzen();
-  return { tuerme, geschosse, ereignisse, schritt, zuruecksetzen, pruefsumme, get schrittNr() { return schrittNr; } };
+  return { tuerme, geschosse, splitter, ereignisse, schritt, zuruecksetzen, pruefsumme, get schrittNr() { return schrittNr; } };
 }
