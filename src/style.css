@@ -19,6 +19,8 @@ body.zieht #leinwand { cursor: grabbing; }
 #nachbrenner { color: #333; }
 #nachbrenner.an { color: #8ab4ff; text-shadow: 0 0 6px #4a7aff; }
 #drift { color: #e06040; min-height: 1em; }
+#rumpf { color: #c9a060; border-top: 1px solid var(--linie); padding-top: 4px; margin-top: 2px; }
+#rumpf.kritisch { color: #e06040; }
 
 #hilfe { position: absolute; left: 18px; top: 16px; font-size: 12px; line-height: 1.7; background: var(--grund); border: 1px solid var(--linie); padding: 8px 12px; color: #c9a060; }
 #hilfe b { color: #f2c070; font-weight: normal; border: 1px solid var(--linie); padding: 0 4px; }

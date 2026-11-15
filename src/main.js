@@ -9,7 +9,8 @@ import { erstelleAsteroiden } from './grafik/asteroiden.js';
 import { erstelleBollwerk } from './grafik/schiff/bollwerk.js';
 import { erstelleAmbos } from './grafik/schiff/ambos.js';
 import { erstelleKamera } from './grafik/kamera.js';
-import { erstelleSchiffSim, lokaleGeschwindigkeit } from './sim/schiff.js';
+import { lokaleGeschwindigkeit } from './sim/schiff.js';
+import { erstelleSimWelt } from './sim/welt.js';
 import { leseEingabe } from './eingabe.js';
 import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig, zeigeSchiff } from './hud.js';
 
@@ -23,9 +24,11 @@ const asteroiden = erstelleAsteroiden(bild.scene);
 const SCHIFFE = [erstelleBollwerk(bild.scene), erstelleAmbos(bild.scene)];
 let modell = SCHIFFE[0];
 const kamera = erstelleKamera(bild.camera);
-const sim = erstelleSchiffSim();
+const welt = erstelleSimWelt('bollwerk');
+const sim = welt.schiff; // Kurzname: Schiffs-Simulation (Zustand sim.z)
 function waehleSchiff(i) {
   modell = SCHIFFE[i];
+  welt.waehle(modell.name.toLowerCase()); // Flugwerte + Kollisionskugeln des Schiffs
   SCHIFFE.forEach((s) => { s.gruppe.visible = s === modell; });
   kamera.setzeSkala(modell.laenge / 150);
   bild.setzeSchattenRadius(Math.max(110, modell.laenge * 0.62));
@@ -37,13 +40,14 @@ const lagePos = new THREE.Vector3(), lageRot = new THREE.Quaternion(), vl = new 
 let zeit = 0, rest = 0, zuletzt = performance.now(), standbild = false;
 const offen = { stopp: false, daempfer: false }; // Einmal-Befehle, die noch kein Sim-Schritt verbraucht hat
 const schrittBefehl = {};                         // Vorlage, keine Neuanlage pro Schritt
+let schadenImBild = 0, wrackGemeldet = false;
 
 function darstellen(dt) {
   sim.lage(rest / SCHRITT, lagePos, lageRot);
   modell.darstellen(lagePos, lageRot, sim.z, zeit, dt);
   asteroiden.aktualisiere(zeit);
   bild.folgeSchatten(lagePos);
-  zeigeHud(sim.z, lokaleGeschwindigkeit(sim.z, vl));
+  zeigeHud(sim.z, lokaleGeschwindigkeit(sim.z, vl), welt.werte);
 }
 
 function frame(jetzt) {
@@ -52,7 +56,7 @@ function frame(jetzt) {
   const e = leseEingabe();
   const ersatz = window.spiel.befehlErsatz; // DEBUG: Skripte steuern das Schiff
   const befehl = ersatz ? { ...e.befehl, ...ersatz } : e.befehl;
-  if (e.neustart) { sim.zuruecksetzen(); zeigeMeldung('Neustart'); }
+  if (e.neustart) { welt.zuruecksetzen(); wrackGemeldet = false; zeigeMeldung('Neustart'); }
   if (e.hilfe) hilfeUmschalten();
   if (e.schiff) { waehleSchiff((SCHIFFE.indexOf(modell) + 1) % SCHIFFE.length); zeigeMeldung('Schiff: ' + modell.kennung + ' ' + modell.name); }
   if (e.kamera) zeigeMeldung('Kamera: ' + KAMERA_NAMEN[kamera.naechsterModus()]);
@@ -67,11 +71,14 @@ function frame(jetzt) {
     while (rest >= SCHRITT) {
       Object.assign(schrittBefehl, befehl);
       schrittBefehl.stopp = offen.stopp; schrittBefehl.daempferUmschalten = offen.daempfer;
-      sim.schritt(SCHRITT, schrittBefehl);
+      const k = welt.schritt(SCHRITT, schrittBefehl);
+      if (k.schaden > 0) schadenImBild += k.schaden;
       if (offen.daempfer) zeigeMeldung(sim.z.daempfer ? 'Trägheitsdämpfer EIN' : 'Trägheitsdämpfer AUS — das Schiff treibt');
       offen.stopp = false; offen.daempfer = false;
       rest -= SCHRITT;
     }
+    if (schadenImBild > 0) { zeigeMeldung('KOLLISION — Rumpf −' + Math.max(1, Math.round(schadenImBild / welt.werte.hpMax * 100)) + ' %'); schadenImBild = 0; }
+    if (sim.z.zerstoert && !wrackGemeldet) { zeigeMeldung('SCHIFF ZERSTÖRT — N = Neustart'); wrackGemeldet = true; }
     darstellen(dt);
     kamera.update(dt, lagePos, lageRot, e);
     staub.aktualisiere(bild.camera.position, sim.z.vel);
@@ -85,10 +92,10 @@ const ANSICHTEN = { // [gier, nick, abstand] der freien Kamera im Schiffs-Rahmen
   heck: [2.75, 0.22, 190], seite: [1.45, 0.12, 230], bug: [0.55, 0.18, 200], oben: [2.2, 1.0, 230], unten: [2.5, -0.5, 220], weit: [2.3, 0.3, 520],
 };
 window.spiel = {
-  THREE, bild, sim, SCHIFFE, get modell() { return modell; }, waehleSchiff, kamera, SCHRITT,
+  THREE, bild, welt, sim, SCHIFFE, get modell() { return modell; }, waehleSchiff, kamera, SCHRITT,
   befehlErsatz: null,
   /** n Simulationsschritte mit Befehl rechnen (ohne Bild). */
-  takt(n, befehl = {}) { for (let i = 0; i < n; i++) sim.schritt(SCHRITT, befehl); return { pos: sim.z.pos.toArray(), v: sim.z.vel.length() }; },
+  takt(n, befehl = {}) { for (let i = 0; i < n; i++) welt.schritt(SCHRITT, befehl); return { pos: sim.z.pos.toArray(), v: sim.z.vel.length() }; },
   /** Festen Blickwinkel zeichnen und einfrieren (Screenshots). */
   ansicht(name = 'heck') {
     const a = ANSICHTEN[name]; if (!a) return Object.keys(ANSICHTEN);

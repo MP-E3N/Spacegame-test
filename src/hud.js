@@ -1,14 +1,14 @@
 // ZWECK: Schlichte Anzeige der Steuer-Station: Fahrt, Schubhebel, Dämpfer, Nachbrenner, Meldungen, Hilfe.
-// LIEFERT: zeigeHud(z, vLokal) · zeigeMeldung(text) · zeigeSchiff(text) · hilfeUmschalten() · ladenFertig()
+// LIEFERT: zeigeHud(z, vLokal, werte) · zeigeMeldung(text) · zeigeSchiff(text) · hilfeUmschalten() · ladenFertig()
 // REGEL: liest nur; DOM-Elemente einmal suchen, nur bei Änderung schreiben.
 
 const $ = (id) => document.getElementById(id);
-const el = { fahrt: $('fahrt'), hebel: $('hebel-balken'), hebelWert: $('hebel-wert'), daempfer: $('daempfer'), nb: $('nachbrenner'), drift: $('drift'), meldung: $('meldung'), hilfe: $('hilfe') };
+const el = { fahrt: $('fahrt'), hebel: $('hebel-balken'), hebelWert: $('hebel-wert'), daempfer: $('daempfer'), nb: $('nachbrenner'), drift: $('drift'), rumpf: $('rumpf'), meldung: $('meldung'), hilfe: $('hilfe') };
 const alt = {};
 const setze = (k, text) => { if (alt[k] !== text) { el[k].textContent = text; alt[k] = text; } };
 let meldungBis = 0;
 
-export function zeigeHud(z, vl) {
+export function zeigeHud(z, vl, werte) {
   setze('fahrt', Math.round(vl.z).toString());
   const h = z.hebel;
   // Balken: 0 liegt bei 20 % Höhe (Rückwärtsbereich darunter)
@@ -21,6 +21,9 @@ export function zeigeHud(z, vl) {
   el.nb.classList.toggle('an', z.nachbrenner > 0.05);
   const quer = Math.hypot(vl.x, vl.y);
   setze('drift', quer > 1 ? 'DRIFT ' + Math.round(quer) + ' m/s' : '');
+  const anteil = werte ? Math.max(0, z.hp / werte.hpMax) : 1;
+  setze('rumpf', z.zerstoert ? 'RUMPF 0 % — WRACK' : 'RUMPF ' + Math.ceil(anteil * 100) + ' %');
+  el.rumpf.classList.toggle('kritisch', anteil < 0.3);
   if (meldungBis && performance.now() > meldungBis) { el.meldung.classList.remove('sichtbar'); meldungBis = 0; }
 }
 
