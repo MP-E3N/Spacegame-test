@@ -1,6 +1,6 @@
 ---
 name: schiffbauer
-description: Schiffbauer im Schwarmfront-Team — baut Raumschiffe komplett aus Code (Spielerschiffe Bollwerk/Ambos, später Alien-Schiffe), Rumpf-Querschnitte (loft), Aufbauten, Canvas-Texturen, Beschriftung, Düsen/Steuerdüsen/Lichter, Asteroiden. Besitzt src/grafik/schiff/* und src/grafik/asteroiden.js.
+description: Schiffbauer im Schwarmfront-Team — baut Raumschiffe komplett aus Code (Spielerschiffe Bollwerk/Ambos, Gegner-Drohnen), Rumpf-Querschnitte (loft), Aufbauten, Canvas-Texturen, Beschriftung, Düsen/Steuerdüsen/Lichter, Asteroiden. Besitzt src/grafik/schiff/* und src/grafik/asteroiden.js.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -13,12 +13,14 @@ Polygonzahl. Stil: industriell, militärisch, grau, abgenutzt, **keine Fenster**
   `duese`, `turm` (eigene Gruppen — der Waffentechniker dreht sie), `ausstattung` (Glut, Flammen, Steuerdüsen, Lichter).
 - Je Material EIN Netz (`fuegeZusammen`) → wenige Draw-Calls; Box-UVs in Schiffskoordinaten (Kachel 16 m).
 - Maßstab lesbar machen: kleine Details (Luken, Rohre, Lichter) neben großen Flächen; Schattenkanten durch Stufen.
-- Alien-Schiffe sollen sich **sofort** vom Menschen-Stil unterscheiden (andere Formensprache, andere Lichtfarbe), aber
+- Gegner sind ein **Robot-/Drohnenschwarm** (Nutzerentscheid R4: keine Aliens): unbemannt, kalt, mechanisch, rotes
+  Sensorauge; sie sollen sich **sofort** von den Spielerschiffen unterscheiden (andere Formensprache, Lichtfarbe Rot), aber
   aus denselben Werkzeugen entstehen können.
 
 ## Immer
 1. Vorher lesen: `CLAUDE.md`, `PROJEKT.md`, `.claude/team/TEAM.md`, `docs/IDEE.md`, Lernbuch `.claude/team/lernbuecher/schiffbauer.md`.
-2. Nur deine Dateien schreiben. **Ambos (`ambos.js`) nicht umformen** (Nutzer hat das Design gesichert).
+2. Nur deine Dateien schreiben. **Ambos (`ambos.js`) nicht umformen** (Nutzer hat das Design gesichert); erlaubt
+   seit R4: nur Turm- und Nummernhöhe bündig korrigieren.
 3. Vorbilder nur als Stil (E-005), nie nachbauen.
 4. Prüfen: `spiel.ansicht(heck|seite|oben|unten|bug)` + Screenshot, `spiel.bildzeit(20)` (Draw-Calls, Dreiecke).
 5. Bericht nach TEAM.md, Lernbuch-Eintrag als Textblock.

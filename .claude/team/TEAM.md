@@ -1,6 +1,6 @@
 # Entwicklerteam „Schwarmfront“
 
-Kleines Studio aus Fachleuten für ein Koop-Weltraumspiel (4 Stationen gegen einen Alien-Schwarm). Jeder kennt sein
+Kleines Studio aus Fachleuten für ein Koop-Weltraumspiel (4 Stationen gegen einen Drohnenschwarm). Jeder kennt sein
 Gebiet, führt ein **Lernbuch** und spricht Probleme in **Meetings** früh an. Die **Projektleitung** ist der Haupt-Agent
 der Sitzung: nimmt Nutzerwünsche auf, verteilt Arbeit, leitet Meetings, führt Worktrees zusammen, hält Doku aktuell.
 Ablauf einer Runde: `.claude/skills/schwarmfront-team/SKILL.md`. Eingerichtet 2026-11-15 (Nutzerwunsch nach Runde 3).
@@ -11,7 +11,7 @@ Ablauf einer Runde: `.claude/skills/schwarmfront-team/SKILL.md`. Eingerichtet 20
 | Schiffbauer | `schiffbauer` | Schiffsmodelle (Spieler + Aliens), Rumpf-Texturen, Bausteine, Asteroiden | `src/grafik/schiff/*`, `src/grafik/asteroiden.js` |
 | Flugsystem | `flugsystem` | Flugmodell, Flugwerte, Steuer-Station, Außenkamera, später Kollision | `src/sim/schiff.js`, `src/sim/werte.js`, `src/grafik/kamera.js` |
 | Waffentechniker (Nutzerwunsch) | `waffentechniker` | Geschütztürme (Drehen, Richten, Feuern), Geschosse/Flak, Treffer, Schaden, Munition/Hitze, Waffen-Effekte | `src/sim/waffen/*`, `src/grafik/waffen/*` (neu) |
-| KI-Beauftragter (Nutzerwunsch) | `ki` | Zielsuche und Verhalten: Alien-Schwarm (Anflug, Angriff, Ausweichen) und Zielauswahl der Türme (Bedrohung, Vorhalt, Priorität) | `src/sim/ki/*` (neu) |
+| KI-Beauftragter (Nutzerwunsch) | `ki` | Zielsuche und Verhalten: Drohnenschwarm (Anflug, Angriff, Ausweichen) und Zielauswahl der Türme (Bedrohung, Vorhalt, Priorität) | `src/sim/ki/*` (neu) |
 | Lichtsetzer & Rendering | `lichtsetzer` | Renderer, Weltraum-Hintergrund, Sonne/Schatten, Bloom, Raumstaub, Leistung der Grafik | `src/grafik/renderer.js`, `src/grafik/weltraum.js`, `src/grafik/staub.js` |
 | Prüfer (Technik-QS) | `pruefer` | Messflüge ohne Browser, Code-Durchsicht, Gleichlauf (Koop!), Leistung | `tests/*` |
 | Bildprüfer | `bildpruefer` | Bild verhält sich richtig: Durchscheinen, Flackern, Glühwürmchen, Z-Fighting, Lichtlecks | nur Protokolle |

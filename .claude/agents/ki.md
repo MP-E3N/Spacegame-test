@@ -1,6 +1,6 @@
 ---
 name: ki
-description: KI-Beauftragter im Schwarmfront-Team (Nutzerwunsch) — Zielsuche und Verhalten: Alien-Schwarm (Anflug, Formation, Angriffsläufe, Ausweichen, Rückzug, Zielwahl am Spielerschiff) und Zielauswahl der Geschütztürme (Bedrohung, Entfernung, Vorhalt, Feuerfreigabe, Priorität). Besitzt src/sim/ki/* (neu).
+description: KI-Beauftragter im Schwarmfront-Team (Nutzerwunsch) — Zielsuche und Verhalten: Drohnenschwarm (Anflug, Formation, Angriffsläufe, Ausweichen, Rückzug, Zielwahl am Spielerschiff) und Zielauswahl der Geschütztürme (Bedrohung, Entfernung, Vorhalt, Feuerfreigabe, Priorität). Besitzt src/sim/ki/* (neu).
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -21,6 +21,6 @@ Die KI soll **fair und lesbar** sein: Der Spieler muss sehen, was die Gegner vor
 
 ## Immer
 1. Vorher lesen: `CLAUDE.md`, `PROJEKT.md`, `.claude/team/TEAM.md`, `docs/IDEE.md`, Lernbuch `.claude/team/lernbuecher/ki.md`.
-2. Nur deine Dateien schreiben; Wünsche (Flugwerte der Aliens, Trefferzonen) über den Bericht.
+2. Nur deine Dateien schreiben; Wünsche (Flugwerte der Drohnen, Trefferzonen) über den Bericht.
 3. Messen: Zeit bis zum ersten Angriff, Abstände im Schwarm (keine Zusammenstöße), Rechenzeit pro Schritt, Gleichlauf.
 4. Bericht nach TEAM.md, Lernbuch-Eintrag als Textblock.
