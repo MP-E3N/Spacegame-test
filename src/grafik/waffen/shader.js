@@ -13,7 +13,7 @@ const additiv = { side: THREE.DoubleSide, transparent: true, depthWrite: false, 
 export function spurMaterial() {
   return new THREE.ShaderMaterial({
     ...additiv,
-    uniforms: { uPixel, uBreite: { value: 0.7 } },
+    uniforms: { uPixel, uBreite: { value: 0.35 } }, // m (R8: 0,7 -> 0,35, Nutzer: "kleiner")
     vertexShader: /* glsl */`
       attribute vec3 aKopf; attribute vec3 aSchweif; attribute float aHell;
       uniform float uPixel; uniform float uBreite;
@@ -24,7 +24,7 @@ export function spurMaterial() {
         vec3 zurKam = cameraPosition - p;
         vec3 seite = normalize(cross(achse, zurKam) + vec3(1e-6));
         // WARUM Mindestbreite + Helligkeit x Flaechenverhaeltnis: ferne Spuren duenner als 1 px blinken sonst unter Bloom
-        float b = max(uBreite, 1.5 * uPixel * length(zurKam));
+        float b = max(uBreite, 1.0 * uPixel * length(zurKam)); // mind. 1 px
         vHell = aHell * uBreite / b;
         p += seite * position.x * b * 0.5;
         vUv = position.xy;
