@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 8 nur lokal committet).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 8+9 nur lokal committet).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -43,11 +43,16 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   oben, dauerhaft, klickbar, aktive Schalter hervorgehoben (H blendet aus). (4) Leuchtspur 0,35 m / 25 m. (5) Mündungsrauch
   nur jeder 3. Schuss, klein und kurz. Labor 5 min bei 1000 m/s: Sperrfeuer 58 Abschüsse / 8 von 14 Vorstößen überlebt,
   Zielfeuer 71 / 3 von 14 (620: 41, 1100: 76). Protokoll `…/2026-11-15-runde8.md`.
-- **Nutzer-Urteil zu Runde 8 offen.** Offene Fragen an ihn: Detonationswolken ziehen lange braune Rauchfahnen (war
-  „zu rauchig“ auch so gemeint?); Station unten links verdeckt in der Prüfstand-Kamera die linken Türme.
-  Stellschrauben: Zielgranate in `FLAK` (Sorten-Tabelle, `schaden: 1.2` HP!) + Splitter, Sperr-Splitter 45 m / 0,9 s / 500 HP/s,
-  Vorstoß-Panzer `DROHNEN.vorstoss.panzer` 0,25, Kugel in `TURMKI`. Offen (Kann): Schadensskala vor der Übernahme ins
-  Spiel neu ordnen (Drohnen-HP ×10), Panzer je Betriebsart, Messung mit mehreren Startwerten, Turmteile 30 Draw-Calls.
+- Nutzer zu R8 → **Runde 9 (umgesetzt, lokal committet, nicht gepusht):** (1) **Streukugel 60 m** im Zielfeuer
+  (Waffen-Deckel 0,10·d, Nahbereich bewusst min(20, 0,06·d), damit die Leuchtspur gerade aus dem Rohr kommt) → Median
+  50 m um das Ziel; **3 Zusatz-Explosionen je Detonation** (nur Grafik, versetzt 15–30 m, verzögert 0,06–0,27 s);
+  (2) **Standard 1100 m/s**; (3) **Sperrkästen:** Sperrfeuer legt bis zu 3 Kästen direkt auf die Drohnengruppen
+  (Größe aus der Gruppenstreuung) statt einer Wand auf festem Radius → Median 260 → 100 m. Balance 1100 m/s, 5 min:
+  Sperr 60 Abschüsse / 5 von 14 Vorstößen überlebt, Ziel 44 / 5 von 14. Protokoll `…/2026-11-15-runde9.md`.
+- **Nutzer-Urteil zu Runde 9 offen.** Offene Fragen: Rauchfahnen der Detonationen (lange braune Bänder je Kasten);
+  Station unten links verdeckt die linken Türme. Stellschrauben: Sorten-Tabelle in `FLAK.sorte` (Ziel 1,6 HP / 7 HP/s,
+  Sperr 1 HP / 25 HP/s — Skala unhandlich), `DROHNEN.vorstoss.panzer` 0,28, Kugel/Kästen in `TURMKI`. Offen (Kann):
+  Schadensskala neu ordnen (Drohnen-HP ×10), Messung mit mehreren Startwerten, Turmteile 30 Draw-Calls.
 - **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
@@ -108,6 +113,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 9** (Nutzer-Rückmeldung zu R8, mit Team): Streukugel 60 m, Zusatz-Explosionen, Standard 1100 m/s, Sperrkästen
+  auf den Drohnengruppen, Balance bei 1100. Lokal committet.
 - **Runde 8** (Nutzer-Rückmeldung zu R7, mit Team): Streukugel + Flächenschaden statt Annäherungszünder, v0-Stufen
   620–1100 umschaltbar, Bedienfeld mit Tastenknöpfen, kleinere Leuchtspur, weniger Mündungsrauch. Lokal committet.
 - **Runde 7** (Nutzer-Rückmeldung Flak-Labor, mit Team): große Wolken, Schirm folgt, Leuchtspur nur im Nahbereich,

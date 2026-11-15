@@ -15,3 +15,5 @@
 - 2026-11-15 Runde 8 — Bei Umschaltern prüfen, ob zuruecksetzen() den umgeschalteten Wert mit zurücksetzt (sonst gibt es
   nur Gleichlauf, solange der Aufrufer ihn jeden Takt neu setzt). Mindestmaße (toleranzMin) gegen Deckel (0,05·d) bei
   kleinem d gegenrechnen. Beide Befunde in derselben Runde behoben.
+- 2026-11-15 Runde 9 — Kein Sprung der Kastenmitte heißt nicht kein Sprung der Rohre: Neuverteilung der Türme gesondert
+  messen. Wächter, die nach einer Balance gelockert werden, an die Zahlentabelle koppeln statt an eine feste Zahl nahe null.

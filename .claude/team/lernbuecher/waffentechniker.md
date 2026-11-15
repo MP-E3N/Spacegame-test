@@ -26,3 +26,6 @@
   Zündort mit Bruchteil des letzten Schritts, v0 je Turm, Sperr-Splitter 45 m / 0,9 s / 500 HP/s. Messung: Kugel-Median
   15,92 m (Soll 15,9), R = 0 → 0,8 m bei jeder v0-Stufe, Durchflug 46 HP. Lehre: Abgeschaltete Mechaniken auf ihren
   Balance-Anteil prüfen. Ganze Schritte reichen für den Zähler, für den Ort nicht. Umschaltwerte in zuruecksetzen() mitnehmen.
+- 2026-11-15 Runde 9 — Effekt-Ring mit gemischten Lebensdauern (kurz/lang) ersetzt schon bei halb vollem Vorrat lebende
+  Wolken → nächster freier Platz ab dem Zeiger + Zähler ueberschrieben (277 → 0 in 120 s). Verzögerte Effekte über
+  negatives Alter, alle Schleifen müssen a < 0 überspringen.

@@ -15,3 +15,6 @@
 - 2026-11-15 Runde 8 — Streuung über labor.flak.ereignisse.detonationen je bilder(1) gegen labor.drohnen.ziele[].pos
   messen (Perzentile statt Augenmaß). Spurbreite schnell gerechnet: px = Breite·(H/2)/tan(fov/2)/Abstand. Leuchtspuren
   laufen erst im Nahbereich, vorher etwa 30 bilder laufen lassen. Überdeckung von HUD-Feldern per getBoundingClientRect.
+- 2026-11-15 Runde 9 — Abstand der Detonationen längs/quer zur Drohnengeschwindigkeit zerlegen (negativ längs = Vorhalt
+  fehlt). Nach Kamerawechsel bildzeit zweimal messen (erstes Bild = Kompilierzeit). FEHLER: Zielfeuer-Kugel während des
+  Nahbereichs gemessen (dort bewusst klein) → falsches Muss. Messungen nach Lage trennen (ki.lage.nahbereich).

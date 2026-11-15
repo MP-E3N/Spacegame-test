@@ -22,3 +22,7 @@
   schon abgeschossene Ziele, nicht vom Ausweichen (mit unverwundbaren Drohnen 19 m). Lehre: Abstand mit unverwundbaren
   Drohnen messen; Rohschaden je Vorstoß ebenfalls ohne Tod messen (sonst bei 100/Panzer gedeckelt). Ersatz-Flak mit
   exaktem Vorhalt ist zu tödlich für Balance-Aussagen. Mindestmaße (8 m) unter denselben Deckel wie die Waffe (0,05·d) legen.
+- 2026-11-15 Runde 9 — Sperrfeuer-Abstand 260 m kam von EINER Kugelschale über radial 830–1800 m verteilte Drohnen und
+  einem Muster, das den ganzen Sektor streicht. Sperrkästen auf dem dichten Kern je Gruppe (Lücken in Metern, Drohnen
+  bleiben ihrem Kasten zugeordnet) → 100 m. Neuverteilen jedes Takts ließ Kästen 125 m danebenhängen. Zenit: Nachführen
+  je Achse statt Großkreis (sonst 181°/s Gier). Richttempo-Messung immer mit Winkel-Umbruch.

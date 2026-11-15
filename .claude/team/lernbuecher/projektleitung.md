@@ -25,3 +25,5 @@
   Schaden. Erst das Zusammenspiel im Labor zeigte die Balance (Zielfeuer 240 Abschüsse) → ein Experte als Besitzer der
   ganzen Balance-Schleife mit eng begrenzter Freigabe (nur Zahlen der Zielgranate) war schnell und sauber. Hilfen, die sich
   selbst ausblenden (setTimeout), findet der Nutzer nicht → Bedienung dauerhaft sichtbar und klickbar.
+- 2026-11-15 Runde 9 — Ganze Runde ohne neue Agenten (nur SendMessage) — Kontext aus R8 trägt. Befunde der Testrunde
+  vor dem Weitergeben selbst nachmessen (Bildprüfer-Muss war Artefakt). Messziele vorher auf Verträglichkeit prüfen.
