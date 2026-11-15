@@ -248,8 +248,12 @@ function punktLauf({ d = 1000, streuKugel = 0, v0 = FLAK.v0, schritte = 600, rei
   zeile(`Streukugel R ${R} m: größter Abstand`, `≤ ${R + 3} m`, mx.toFixed(2) + ' m', mx <= R + 3);
   const echt = punktLauf({ streuKugel: R, schritte: 3000, rein: false });
   zeile('Streukugel mit Turm-/Zünderstreuung: Median / max', 'Info', `${median(echt.ab).toFixed(1)} / ${Math.max(...echt.ab).toFixed(1)} m`, true, false);
-  const nah = punktLauf({ d: 200, streuKugel: R, schritte: 1200 });
-  zeile('Streukugel bei 200 m: Deckel 0,05 · d = 10 m (+ 0,8 m Rohrversatz)', '≤ 11 m', Math.max(...nah.ab).toFixed(2) + ' m', nah.ab.length > 0 && Math.max(...nah.ab) <= 11);
+  // Deckel 0,10 · d (R9): Kugel 60 m wird bei 300 m auf 30 m, bei 600 m auf 60 m begrenzt (+ 0,8 m Rohrversatz)
+  for (const [d, max] of [[300, 31], [600, 61]]) {
+    const nah = punktLauf({ d, streuKugel: 60, schritte: 1200 });
+    const mx = nah.ab.length ? Math.max(...nah.ab) : Infinity;
+    zeile(`Streukugel 60 m bei ${d} m: Deckel 0,10 · d`, `≤ ${max} m`, mx.toFixed(2) + ' m', mx <= max);
+  }
 }
 
 // ---------- 12) R = 0: Detonation am Punkt bei jeder v0-Stufe ----------
