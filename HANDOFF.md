@@ -97,9 +97,9 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
 
 ## Verlauf
 - **Runde 7** (Nutzer-Rückmeldung Flak-Labor, mit Team): große Wolken, Schirm folgt, Leuchtspur nur im Nahbereich,
-  Vorstöße. Lokal committet, nicht gepusht.
+  Vorstöße. Gepusht 75b6470.
 - **Runde 6** (Flak-Labor, mit Team): Demo-Seite `flak.html` mit Sperr- und Zielfeuer, Zieldrohnen, Splitterwolke,
-  Nachbar-Sperre. Protokoll `.claude/team/protokolle/2026-11-15-runde6.md`. Lokal committet, nicht gepusht.
+  Nachbar-Sperre. Protokoll `.claude/team/protokolle/2026-11-15-runde6.md`. Gepusht 75b6470.
 - **Runde 5** (Fundament, mit Team): Sim-Welt, Schiffsdaten/Türme/Feld in der Sim, Kollision + HP, Drift/Tempo, Ambos wendiger,
   Türme gegliedert und bündig. Protokoll `.claude/team/protokolle/2026-11-15-runde5.md`. Gepusht.
 - **Runde 4:** Team eingerichtet (9 Rollen, neu Waffentechniker + KI-Beauftragter), Bestandsaufnahme, Nutzer-Entscheidungen.
