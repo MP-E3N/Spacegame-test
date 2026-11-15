@@ -1,6 +1,6 @@
 // ZWECK: WebGL-Renderer, Kamera, Licht (eine harte Sonne mit Schatten), Weltraum-Hintergrund, Spiegel-Umgebung,
 //        Nachbearbeitung (HDR → Bloom → AgX-Tonemapping).
-// LIEFERT: erstelleRenderer(leinwand) → { renderer, scene, camera, sonne, himmel, folgeSchatten(pos), zeichnen(),
+// LIEFERT: erstelleRenderer(leinwand) → { renderer, scene, camera, sonne, himmel, folgeSchatten(pos), setzeSchattenRadius(r), zeichnen(),
 //          messwerte(), groesse() }
 // REGEL: Lichtanzahl bleibt fest (Shader-Neukompilierung = Ruckler). Hintergrund folgt der Kamera (weltraum.js).
 // WARUM harte Sonne + wenig Fülllicht: im All gibt es keine Luft, die Licht streut → starke Kontraste wie im Film.
@@ -78,6 +78,11 @@ export function erstelleRenderer(leinwand) {
     sonne.position.copy(v).addScaledVector(SONNE_RICHTUNG, 300);
   }
 
+  /** Schattenbereich an die Schiffsgröße anpassen (halbe Kantenlänge in m). */
+  function setzeSchattenRadius(rad) {
+    sc.left = -rad; sc.right = rad; sc.top = rad; sc.bottom = -rad; sc.updateProjectionMatrix();
+  }
+
   function zeichnen() {
     groesse();
     renderer.info.reset();
@@ -86,7 +91,7 @@ export function erstelleRenderer(leinwand) {
   }
 
   return {
-    renderer, scene, camera, sonne, himmel, bloom, folgeSchatten, zeichnen, groesse,
+    renderer, scene, camera, sonne, himmel, bloom, folgeSchatten, setzeSchattenRadius, zeichnen, groesse,
     messwerte: () => ({ drawCalls: renderer.info.render.calls, dreiecke: renderer.info.render.triangles, breite: breite * renderer.getPixelRatio(), hoehe: hoehe * renderer.getPixelRatio() }),
   };
 }

@@ -1,5 +1,6 @@
 // ZWECK: Außenkamera ums Schiff.
-// LIEFERT: erstelleKamera(camera) → { update(dt, pos, rot, eingabe), naechsterModus(), setzeModus(name), modus(), setzeFrei(gier, nick, abstand) }
+// LIEFERT: erstelleKamera(camera) → { update(dt, pos, rot, eingabe), naechsterModus(), setzeModus(name), modus(),
+//          setzeFrei(gier, nick, abstand), setzeSkala(schiffslaenge / 150) }
 // MODI: verfolger (hinten oben, rollt mit dem Schiff), weit (Übersicht), frei (Maus ziehen = drehen, Rad = Zoom).
 // REGEL: liest nur die interpolierte Schiffslage; ändert nichts an der Simulation.
 // WARUM die Verfolgerkamera dem Rollen folgt: im All gibt es kein Oben — der Horizont ist das eigene Schiff.
@@ -12,6 +13,7 @@ const BLICK = { verfolger: new THREE.Vector3(0, 8, 45), weit: new THREE.Vector3(
 export function erstelleKamera(camera) {
   let modus = 'verfolger';
   let gier = 2.4, nick = 0.25, abstand = 210; // freie Kamera, Winkel im Schiffs-Rahmen
+  let skala = 1; // Schiffsgröße relativ zu 150 m (Versätze wachsen mit)
   const pos = new THREE.Vector3(), ziel = new THREE.Vector3(), hoch = new THREE.Vector3(0, 1, 0);
   const sollPos = new THREE.Vector3(), sollZiel = new THREE.Vector3(), sollHoch = new THREE.Vector3();
   let erstesMal = true;
@@ -20,15 +22,15 @@ export function erstelleKamera(camera) {
     const m = e?.maus;
     if (modus === 'frei' && m) {
       gier -= m.dx * 0.005; nick = Math.max(-1.45, Math.min(1.45, nick + m.dy * 0.005));
-      if (m.rad) abstand = Math.max(70, Math.min(900, abstand * Math.pow(1.12, m.rad)));
+      if (m.rad) abstand = Math.max(70 * skala, Math.min(900 * skala, abstand * Math.pow(1.12, m.rad)));
     }
     // Soll-Lage relativ zum Schiff (pos/ziel sind Versätze, keine Weltpunkte)
     if (modus === 'frei') {
       sollPos.set(Math.sin(gier) * Math.cos(nick), Math.sin(nick), Math.cos(gier) * Math.cos(nick)).multiplyScalar(abstand).applyQuaternion(sRot);
       sollZiel.set(0, 0, 0);
     } else {
-      sollPos.copy(VERSATZ[modus]).applyQuaternion(sRot);
-      sollZiel.copy(BLICK[modus]).applyQuaternion(sRot);
+      sollPos.copy(VERSATZ[modus]).multiplyScalar(skala).applyQuaternion(sRot);
+      sollZiel.copy(BLICK[modus]).multiplyScalar(skala).applyQuaternion(sRot);
     }
     sollHoch.set(0, 1, 0).applyQuaternion(sRot);
     if (erstesMal) { pos.copy(sollPos); ziel.copy(sollZiel); hoch.copy(sollHoch); erstesMal = false; }
@@ -50,6 +52,7 @@ export function erstelleKamera(camera) {
     naechsterModus() { modus = MODI[(MODI.indexOf(modus) + 1) % MODI.length]; return modus; },
     setzeModus(n) { if (MODI.includes(n)) modus = n; },
     modus: () => modus,
-    setzeFrei(g, n, a) { gier = g; nick = n; abstand = a; modus = 'frei'; erstesMal = true; },
+    setzeFrei(g, n, a) { gier = g; nick = n; abstand = a * skala; modus = 'frei'; erstesMal = true; },
+    setzeSkala(s) { abstand *= s / skala; skala = s; },
   };
 }

@@ -18,9 +18,16 @@
 - Schubhebel (bleibt stehen, wenn man loslässt) statt Gaspedal — passt zu einer Steuer-Station.
 - Trägheitsdämpfer (T) nur für die Fahrt: an = Schiff fliegt in Bugrichtung, aus = treibt (Newton).
   Drehung ist immer gedämpft — **warum:** mit Tastatur sonst unbeherrschbar.
-- Werte in `src/sim/werte.js` (vMax 140 m/s, Nachbrenner ×1,6, Gieren ~17°/s).
+- Werte in `src/sim/werte.js`. Runde 1: vMax 140 m/s → Spieltest „viel zu schnell“ → Runde 2: vMax 60 m/s,
+  Nachbrenner ×1,5, Gieren ~10°/s.
 
 ## E-004 Weltraum „unendlich weit“ (2026-11-15)
 - Nebel, Sterne, Sonne und Planet hängen in einer Gruppe, die der Kamera folgt → keine Parallaxe, nie erreichbar.
 - Raumstaub (Würfel um die Kamera, Modulo im Shader, Versatz in JS berechnet) zeigt Fahrt und Richtung.
 - Asteroidenfeld vor dem Start als Bezugspunkt (noch ohne Kollision).
+
+## E-005 Vorbilder nur als Stil, nie als Nachbau (2026-11-15)
+- Nutzer zeigte Pegasus-Blueprints (BSG, ArtStation) und wünschte ein abgewandeltes Schiff ohne Lizenzverletzung.
+- **Regel:** Übernommen wird nur der Typ (großer Träger: Panzerkopf, Hals, Startdecks an Auslegern, Triebwerksblock).
+  Silhouette, Proportionen, Triebwerksanordnung, Decks, Details, Name und Beschriftung sind eigen.
+  Keine Bilder/Texturen/Logos aus Vorlagen übernehmen. (Keine Rechtsberatung — im Zweifel weiter abwandeln.)

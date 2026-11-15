@@ -1,6 +1,6 @@
 // ZWECK: Tastatur + Maus → ein Befehl für die Steuer-Station und Kamera-/Bedien-Einmaltasten.
 // LIEFERT: leseEingabe() → { befehl: {hebel, stopp, gieren, nicken, rollen, quer, hoch, nachbrenner, daempferUmschalten},
-//          kamera, hilfe, neustart, maus: {dx, dy, rad} }
+//          kamera, hilfe, neustart, schiff, maus: {dx, dy, rad} }
 // REGEL: `befehl` hat genau die Form, die sim/schiff.js erwartet — später kommt er von der Steuer-Station über das Netz.
 
 const gedrueckt = new Set();
@@ -41,6 +41,7 @@ export function leseEingabe() {
     kamera: einmal.has('KeyC'),
     hilfe: einmal.has('KeyH'),
     neustart: einmal.has('KeyN'),
+    schiff: einmal.has('KeyV'),
     maus: { dx: mausDx, dy: mausDy, rad },
   };
   einmal.clear();

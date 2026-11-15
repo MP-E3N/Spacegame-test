@@ -20,7 +20,7 @@ npm test           # Messflüge ohne Browser
 | ← / → | seitlich versetzen · R / F hoch / runter |
 | T | Trägheitsdämpfer an/aus (aus = Schiff treibt) |
 | C | Kamera: Verfolger → Übersicht → frei · Maus ziehen = umsehen, Rad = Zoom |
-| N | Neustart · H Hilfe |
+| V | Schiff wechseln (Bollwerk / Ambos) · N Neustart · H Hilfe |
 
 ## Aufbau
 | Datei | Inhalt |
@@ -32,13 +32,15 @@ npm test           # Messflüge ohne Browser
 | `src/grafik/renderer.js` | Renderer, Sonne + Schatten, Spiegel-Umgebung, Bloom, AgX |
 | `src/grafik/weltraum.js` | Nebel/Milchstraße, Sterne, Sonne, Gasriese (folgen der Kamera) |
 | `src/grafik/staub.js`, `asteroiden.js` | Raumstaub-Striche, Asteroidenfeld |
-| `src/grafik/schiff/modell.js`, `texturen.js` | Fregatte „FK-07 Ambos“ aus Code, Rumpf-Texturen |
+| `src/grafik/schiff/bollwerk.js` | Schlachtträger „BT-12 Bollwerk“ (Hauptschiff) |
+| `src/grafik/schiff/ambos.js` | Fregatte „FK-07 Ambos“ (gesichertes erstes Design) |
+| `src/grafik/schiff/bauteile.js`, `texturen.js` | gemeinsame Bausteine + Effekte, Rumpf-Texturen |
 | `src/grafik/kamera.js` | Außenkamera |
 | `tests/flug.mjs` | Messflüge: Fahrt, Bremsen, Drehraten, Drift, Treiben, Gleichlauf |
 
 ## Schnittstellen
 - `erstelleSchiffSim()` → `{ z, schritt(dt, befehl), zuruecksetzen(), lage(alpha, pos, rot) }`
   `befehl = { hebel, stopp, gieren, nicken, rollen, quer, hoch, nachbrenner, daempferUmschalten }`
-- `erstelleSchiffModell(scene)` → `{ gruppe, tuerme, darstellen(pos, rot, z, zeit, dt) }`
+- `erstelleBollwerk(scene)` / `erstelleAmbos(scene)` → `{ name, kennung, laenge, gruppe, tuerme, darstellen(pos, rot, z, zeit, dt) }`
 - Debug: `spiel.ansicht(name)` (heck, seite, bug, oben, unten, weit) friert ein, `spiel.standbildWeg()`,
   `spiel.takt(n, befehl)`, `spiel.bildzeit(n)`, `spiel.befehlErsatz = {hebel: 1, …}`.

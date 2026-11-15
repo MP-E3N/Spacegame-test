@@ -6,11 +6,12 @@ import * as THREE from 'three';
 import { erstelleRenderer } from './grafik/renderer.js';
 import { erstelleStaub } from './grafik/staub.js';
 import { erstelleAsteroiden } from './grafik/asteroiden.js';
-import { erstelleSchiffModell } from './grafik/schiff/modell.js';
+import { erstelleBollwerk } from './grafik/schiff/bollwerk.js';
+import { erstelleAmbos } from './grafik/schiff/ambos.js';
 import { erstelleKamera } from './grafik/kamera.js';
 import { erstelleSchiffSim, lokaleGeschwindigkeit } from './sim/schiff.js';
 import { leseEingabe } from './eingabe.js';
-import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig } from './hud.js';
+import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig, zeigeSchiff } from './hud.js';
 
 const SCHRITT = 1 / 60;
 const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei — Maus ziehen, Rad zoomt' };
@@ -18,9 +19,19 @@ const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei �
 const bild = erstelleRenderer(document.getElementById('leinwand'));
 const staub = erstelleStaub(bild.scene);
 const asteroiden = erstelleAsteroiden(bild.scene);
-const modell = erstelleSchiffModell(bild.scene);
+// Beide Schiffe einmal bauen, nur eins ist sichtbar (V wechselt). WARUM vorab: Wechsel ohne Ruckler.
+const SCHIFFE = [erstelleBollwerk(bild.scene), erstelleAmbos(bild.scene)];
+let modell = SCHIFFE[0];
 const kamera = erstelleKamera(bild.camera);
 const sim = erstelleSchiffSim();
+function waehleSchiff(i) {
+  modell = SCHIFFE[i];
+  SCHIFFE.forEach((s) => { s.gruppe.visible = s === modell; });
+  kamera.setzeSkala(modell.laenge / 150);
+  bild.setzeSchattenRadius(Math.max(110, modell.laenge * 0.62));
+  zeigeSchiff(modell.kennung + ' ' + modell.name);
+}
+waehleSchiff(0);
 
 const lagePos = new THREE.Vector3(), lageRot = new THREE.Quaternion(), vl = new THREE.Vector3();
 let zeit = 0, rest = 0, zuletzt = performance.now(), standbild = false;
@@ -41,6 +52,7 @@ function frame(jetzt) {
   const befehl = ersatz ? { ...e.befehl, ...ersatz } : e.befehl;
   if (e.neustart) { sim.zuruecksetzen(); zeigeMeldung('Neustart'); }
   if (e.hilfe) hilfeUmschalten();
+  if (e.schiff) { waehleSchiff((SCHIFFE.indexOf(modell) + 1) % SCHIFFE.length); zeigeMeldung('Schiff: ' + modell.kennung + ' ' + modell.name); }
   if (e.kamera) zeigeMeldung('Kamera: ' + KAMERA_NAMEN[kamera.naechsterModus()]);
   if ((e.maus.dx || e.maus.dy) && kamera.modus() !== 'frei') { kamera.setzeModus('frei'); zeigeMeldung('Kamera: ' + KAMERA_NAMEN.frei + ' (C = zurück)'); }
   if (befehl.daempferUmschalten) zeigeMeldung(sim.z.daempfer ? 'Trägheitsdämpfer AUS — das Schiff treibt' : 'Trägheitsdämpfer EIN');
@@ -67,7 +79,7 @@ const ANSICHTEN = { // [gier, nick, abstand] der freien Kamera im Schiffs-Rahmen
   heck: [2.75, 0.22, 190], seite: [1.45, 0.12, 230], bug: [0.55, 0.18, 200], oben: [2.2, 1.0, 230], unten: [2.5, -0.5, 220], weit: [2.3, 0.3, 520],
 };
 window.spiel = {
-  THREE, bild, sim, modell, kamera, SCHRITT,
+  THREE, bild, sim, SCHIFFE, get modell() { return modell; }, waehleSchiff, kamera, SCHRITT,
   befehlErsatz: null,
   /** n Simulationsschritte mit Befehl rechnen (ohne Bild). */
   takt(n, befehl = {}) { for (let i = 0; i < n; i++) sim.schritt(SCHRITT, befehl); return { pos: sim.z.pos.toArray(), v: sim.z.vel.length() }; },

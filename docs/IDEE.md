@@ -7,7 +7,7 @@ Nichts „Schönes“, kein Glanz; **keine Fenster** — die Brücke liegt gepan
 Bildschirme bzw. die **Außenansicht**.
 
 ## Bausteine
-- **Raumschiff** der Spieler (Fregatte/Korvette, ~150 m) — ✅ Modell „FK-07 Ambos“ aus Code (Runde 1).
+- **Raumschiff** der Spieler — ✅ „BT-12 Bollwerk“ (Schlachtträger, ~255 m, Runde 2); „FK-07 Ambos“ (Fregatte, ~150 m, U-Boot-Look) bleibt gesichert.
 - **Alien-Schiffe**: ein paar kleinere, angriffslustige Schiffe (Schwarm) — offen.
 - **Zentrale mit 4 Stationen** — offen. Vorschlag:
   1. **Steuer** (Helm): Schubhebel, Kurs, Ausweichen — ✅ als Tastatursteuerung vorhanden.

@@ -1,5 +1,5 @@
 // ZWECK: Schlichte Anzeige der Steuer-Station: Fahrt, Schubhebel, Dämpfer, Nachbrenner, Meldungen, Hilfe.
-// LIEFERT: zeigeHud(z, vLokal) · zeigeMeldung(text) · hilfeUmschalten() · ladenFertig()
+// LIEFERT: zeigeHud(z, vLokal) · zeigeMeldung(text) · zeigeSchiff(text) · hilfeUmschalten() · ladenFertig()
 // REGEL: liest nur; DOM-Elemente einmal suchen, nur bei Änderung schreiben.
 
 const $ = (id) => document.getElementById(id);
@@ -29,4 +29,5 @@ export function zeigeMeldung(text) {
   meldungBis = performance.now() + 2200;
 }
 export function hilfeUmschalten() { el.hilfe.classList.toggle('versteckt'); }
+export function zeigeSchiff(text) { const k = document.querySelector('#station .kopf'); if (k) k.textContent = 'STEUER · ' + text; }
 export function ladenFertig() { $('laden')?.remove(); }
