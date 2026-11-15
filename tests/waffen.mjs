@@ -162,7 +162,10 @@ zeile('Rechenzeit Sim-Schritt (6 Türme, 10 Ziele)', '≤ 0,3 ms', a.ms.toFixed(
     summe += schaden; if (schaden >= 100) toedlich++;
   }
   zeile('Durchflug Schirm 800 m: tödlich (≥ 100 HP)', 'Info (Ziel: guter Teil)', `${toedlich} / ${N}`, true, false);
-  zeile('Durchflug Schirm 800 m: mittlerer Schaden', '≥ 30 HP (Wächter)', (summe / N).toFixed(0) + ' HP', summe / N >= 30);
+  // WARUM ≥ 1 statt ≥ 30 HP (R9-Balance, KI): die Sperrgranate ist 1 HP / 25 HP/s statt 14 / 500 — die Sperrkästen sitzen
+  // jetzt AUF den Drohnen (Labor: 60 Abschüsse in 5 min bei 1100 m/s, vorher 286). Diese breite Prüf-Wand zeigt nur noch,
+  // dass Durchflug Schaden macht; die Tödlichkeit misst das Labor.
+  zeile('Durchflug Schirm 800 m: mittlerer Schaden', '≥ 1 HP (Wächter)', (summe / N).toFixed(1) + ' HP', summe / N >= 1);
 }
 
 // ---------- 9) Leuchtspur nur auf Befehl ----------

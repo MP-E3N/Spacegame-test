@@ -28,8 +28,8 @@ export const FLAK = {
   naheZuender: 12,            // m über dem Zielradius
   scharfStrecke: 60,          // m: WARUM: kein Annäherungszünder direkt vor dem Rohr
   // Zwei Granatsorten, gewählt nach dem Befehl, je eigener Hebel (Lehre R6: ein Hebel pro Modus):
-  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 1,2 / 30 m + Splitterwolke 30 m · 0,5 s · 5 HP/s (R8-Balance).
-  //   1 SPERRGRANATE (zielId null): Flächenschaden 14 / 25 m + Splitterwolke 45 m · 0,9 s · 500 HP/s.
+  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 1,6 / 30 m + Splitterwolke 30 m · 0,5 s · 7 HP/s (R9-Balance).
+  //   1 SPERRGRANATE (zielId null): Flächenschaden 1 / 25 m + Splitterwolke 45 m · 0,9 s · 25 HP/s (R9-Balance).
   // WARUM Splitter jetzt auch im Zielfeuer: ohne Annäherungszünder liegt die Detonation im Mittel ~16 m neben dem Ziel.
   // WARUM Sperr-Splitter stärker als R7 (40 m / 0,7 s / 350): die Werte waren MIT Annäherungszünder gemessen; ohne ihn
   //        fiel der Schirm-Durchflug von 75 auf 21 HP. Mit 45 / 0,9 / 500 → 46 HP (tests/waffen.mjs 7); Labor misst nach.
@@ -39,8 +39,12 @@ export const FLAK = {
     // fielen im 5-min-Labor 240 Drohnen im Zielfeuer (Ziel 20–60), Granaten auf schon tote Ziele trieben den
     // Detonationsabstand auf 70 m. 1,2/5 → 41/71/76 Abschüsse (620/1000/1100), Abstand 38/27/26 m. Viele Granaten je
     // Abschuss = „Flak sättigt die Luft“. Wirk- und Splitter-Radius bleiben (sichtbare Wolke um das Ziel).
-    { wirkRadius: 30, vollRadius: 4, schaden: 1.2, splitterRadius: 30, splitterDauer: 30, splitterDps: 5 },
-    { wirkRadius: 25, vollRadius: 6, schaden: 14, splitterRadius: 45, splitterDauer: 54, splitterDps: 500 },
+    // R9 (KI, 1100 m/s, Kästen auf den Drohnen, Kugel 60 m): mit 1,2/5 und Sperr 14/500 fielen im Sperrfeuer 286 Drohnen
+    // (Ziel 40–80), im Zielfeuer 26 (Ziel 30–80). Zielgranate 1,6/7, Sperrgranate 1/25 → Sperr 60, Ziel 44 Abschüsse.
+    // WARUM die Sperrgranate so schwach: die Kästen sitzen jetzt AUF den Drohnen (Median 100 statt 260 m) — dieselbe
+    // Wolke trifft viel öfter; Radien bleiben, damit die Wand sichtbar gleich groß ist.
+    { wirkRadius: 30, vollRadius: 4, schaden: 1.6, splitterRadius: 30, splitterDauer: 30, splitterDps: 7 },
+    { wirkRadius: 25, vollRadius: 6, schaden: 1, splitterRadius: 45, splitterDauer: 54, splitterDps: 25 },
   ],
   poolSplitter: 96,
   // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
