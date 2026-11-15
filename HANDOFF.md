@@ -1,7 +1,7 @@
 # HANDOFF — Schwarmfront
 
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau),
-> `docs/IDEE.md` (Spielidee des Nutzers). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
+> `docs/IDEE.md` (Spielidee des Nutzers). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
 
 ## Stand (2026-11-15, Runde 3)
 Nutzerwunsch zum Bollwerk umgesetzt: **runde Tanks hinten entfernt** (statt dessen kantige, zweistufige Rückenpanzerung
