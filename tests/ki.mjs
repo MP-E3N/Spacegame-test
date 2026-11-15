@@ -6,10 +6,12 @@
 //   F) 5 min Sperrfeuer „folgt“ (R7): Wandmitte ↔ Bedrohung (Winkel), Nachführtempo ≤ 12°/s, Richttempo, Vorstöße/min,
 //      engster Abstand ≥ 200 m, Killzone-Hysterese (kein Flackern), Leuchtspur nur im Nahbereich, Türme am Eindringling
 //   H) Umschalten Folgen ↔ fest mitten im Lauf: kein Sprung der Schirmmitte/des Abstands über das Nachführtempo
-//   D) Gleichlauf: zwei Läufe (Zielfeuer + Folgen) + zuruecksetzen() → gleicher Hash
+//   I) v0 umschalten mitten im Lauf (R8): Türme mit Richttempo, kein NaN, Vorhalt sofort mit neuem v0, kein Zielwechsel
+//   J) Abschüsse je v0-Stufe mit Schaden nach Entscheidung 3 (Info), C zusätzlich Streukugel-Regel + Detonationsabstand
+//   D) Gleichlauf: zwei Läufe (Zielfeuer + Folgen + v0-Umschalten) + zuruecksetzen() → gleicher Hash
 //   E) src/sim/ki/** ohne Math.random, DOM, grafik/
-// Ersatz-Waffen: Turm richtet sich sofort aus; Granate fliegt gerade mit v0, zündet nach `zuender` (exakt zwischen den
-// Takten interpoliert), Schaden 15 linear abfallend bis 25 m (Annahme, Waffen legen fest). Streuung 0,5° mit eigenem Zufall.
+// Ersatz-Waffen: Turm richtet sich sofort aus (in I mit Richttempo); Granate fliegt gerade mit dem v0 des Turms, zielt
+// auf einen Punkt in der Streukugel, zündet nach `zuender` bzw. auf dem Kugelpunkt (nur Zeitzünder, R8). Streuung 0,25°.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,64 +31,104 @@ const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const f1 = (x) => x.toFixed(1), f2 = (x) => x.toFixed(2);
 
 // ---------- Ersatz-Waffen ----------
-function ersatzTuerme() {
+// R8: Streuung 0,25° (Entscheidung 2), v0 je Turm (umschaltbar), Streukugel, nur Zeitzünder, Schaden nach Entscheidung 3.
+function ersatzTuerme(v0 = V0) {
   return LAFETTEN.map((l) => ({ id: l.id, gier: 0, nick: 0.3, muendung: { x: l.x, y: l.y + l.zapfen.y, z: l.z },
-    v0: V0, reichweite: 2500, richtGeschw: [60 * GRAD, 40 * GRAD], streuung: 0.5 * GRAD, imBereich: true, ausgerichtet: true, bereit: true, gesperrt: false }));
+    v0, reichweite: 2500, richtGeschw: [60 * GRAD, 50 * GRAD], streuung: 0.25 * GRAD, imBereich: true, ausgerichtet: true, bereit: true, gesperrt: false }));
 }
+// Schaden je Granatsorte (Entscheidung 3; Sperrgranate = flak.js R7): sofort, quadratischer Abfall ab vollRadius bis
+// wirkRadius (Abstand zur Hülle); Splitterwolke linear mit dem Alter, am Rand halb.
+const SCHADEN = {
+  ziel: { sofort: 22, wirk: 30, voll: 4, splitterR: 30, splitterTakte: 30, splitterDps: 120 },
+  sperr: { sofort: 14, wirk: 25, voll: 6, splitterR: 40, splitterTakte: 42, splitterDps: 350 },
+};
 function richte(tuerme, befehle) { // sofort ausgerichtet
   for (let i = 0; i < tuerme.length; i++) {
     const m = tuerme[i].muendung, p = befehle[i].punkt, dx = p.x - m.x, dy = p.y - m.y, dz = p.z - m.z, d = L(dx, dy, dz);
     tuerme[i].gier = Math.atan2(dx, dz); tuerme[i].nick = Math.asin(dy / d);
   }
 }
-function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12) {
-  const rnd = zufall(seed), geschosse = [];
+/** modell 'r7' = Verhaltens-Prüfungen (15 HP linear bis 25 m, keine Splitter — WARUM: die Schwarm-/Zielwahl-Grenzen in C/F
+ *  sind gegen diese Tödlichkeit geeicht; der exakte Ersatz-Vorhalt ist tödlicher als die echte Waffe) ·
+ *  'r8' = Schaden nach Entscheidung 3 (nur Info-Messungen je v0-Stufe; die Balance misst das Labor). */
+function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12, modell = 'r7') {
+  const rnd = zufall(seed), geschosse = [], splitter = [];
   const ereignisse = { schuesse: [], detonationen: [], treffer: [] };
   let takt = 0;
   return {
     ereignisse, geschosse,
     schritt(tuerme, befehle, ziele) {
       ereignisse.schuesse.length = 0; ereignisse.detonationen.length = 0; ereignisse.treffer.length = 0;
+      // Splitterwolken älterer Detonationen wirken nach
+      for (let k = splitter.length - 1; k >= 0; k--) {
+        const w = splitter[k], S = w.art, staerke = w.rest / S.splitterTakte;
+        for (const z of ziele) {
+          if (!z.aktiv) continue;
+          const ab = L(z.pos.x - w.x, z.pos.y - w.y, z.pos.z - w.z) - z.r;
+          if (ab < S.splitterR) ereignisse.treffer.push({ zielId: z.id, schaden: S.splitterDps * staerke * DT * (1 - Math.max(0, ab) / S.splitterR * 0.5), pos: w });
+        }
+        if (--w.rest <= 0) { splitter[k] = splitter[splitter.length - 1]; splitter.pop(); }
+      }
       for (let i = 0; i < tuerme.length; i++) {
-        const b = befehle[i];
-        if (!b.feuer || (takt + i * 2) % takteJeSchuss) continue;
-        const m = tuerme[i].muendung, p = b.punkt;
-        let dx = p.x - m.x, dy = p.y - m.y, dz = p.z - m.z; const d = L(dx, dy, dz);
-        const s = tuerme[i].streuung; dx = dx / d + (rnd() - 0.5) * 2 * s; dy = dy / d + (rnd() - 0.5) * 2 * s; dz = dz / d + (rnd() - 0.5) * 2 * s;
+        const b = befehle[i], tm = tuerme[i], v0 = tm.v0;
+        if (!b.feuer || tm.ausgerichtet === false || (takt + i * 2) % takteJeSchuss) continue;
+        const m = tm.muendung;
+        let qx = b.punkt.x, qy = b.punkt.y, qz = b.punkt.z;
+        const dp = L(qx - m.x, qy - m.y, qz - m.z);
+        // Streukugel (wie die Waffe, Entscheidung 2): Punkt gleichverteilt in der Kugel um `punkt`, Radius ≤ 0,05·d,
+        // genau 3 Zufallszahlen (Gleichlauf); Zeitzünder auf diesen Punkt.
+        const R = Math.min(b.streuKugel ?? 0, 0.05 * dp);
+        let zuender = b.zuender;
+        if (R > 0) {
+          const cu = 2 * rnd() - 1, ph = 2 * Math.PI * rnd(), r = R * Math.cbrt(rnd()), su = Math.sqrt(1 - cu * cu);
+          qx += r * su * Math.cos(ph); qy += r * cu; qz += r * su * Math.sin(ph);
+          zuender = L(qx - m.x, qy - m.y, qz - m.z) / v0;
+        }
+        let dx = qx - m.x, dy = qy - m.y, dz = qz - m.z; const d = L(dx, dy, dz);
+        const s = tm.streuung; dx = dx / d + (rnd() - 0.5) * 2 * s; dy = dy / d + (rnd() - 0.5) * 2 * s; dz = dz / d + (rnd() - 0.5) * 2 * s;
         const l = L(dx, dy, dz);
-        geschosse.push({ x: m.x, y: m.y, z: m.z, vx: dx / l * V0, vy: dy / l * V0, vz: dz / l * V0, rest: b.zuender, turm: i });
+        geschosse.push({ x: m.x, y: m.y, z: m.z, vx: dx / l * v0, vy: dy / l * v0, vz: dz / l * v0, rest: zuender, turm: i,
+          ziel: b.zielId !== null, nah: R > 0 && b.streuKugel < SCHADEN_KUGEL_ZIEL });
         ereignisse.schuesse.push({ turmId: i, leucht: !!b.leuchtspur });
       }
       for (let k = geschosse.length - 1; k >= 0; k--) {
         const g = geschosse[k], t = Math.min(DT, g.rest);
         g.x += g.vx * t; g.y += g.vy * t; g.z += g.vz * t; g.rest -= DT;
         if (g.rest > 0) continue;
-        const pos = { x: g.x, y: g.y, z: g.z };
-        ereignisse.detonationen.push({ pos, radius: 25, art: 'zeit', turm: g.turm });
-        // Ziel-Lage zum Zündzeitpunkt (zwischen den Takten): pos + vel·(t − DT) ≈ Lage am Ende dieses Takts zurückgerechnet
+        const pos = { x: g.x, y: g.y, z: g.z }, S = g.ziel ? SCHADEN.ziel : SCHADEN.sperr;
+        // Nächste Drohne zum Zündzeitpunkt (zwischen den Takten): Lage am Ende dieses Takts zurückgerechnet
+        let naechste = Infinity;
         for (const z of ziele) {
           if (!z.aktiv) continue;
           const back = DT - t, zx = z.pos.x - z.vel.x * back, zy = z.pos.y - z.vel.y * back, zz = z.pos.z - z.vel.z * back;
           const e = L(zx - pos.x, zy - pos.y, zz - pos.z);
-          if (e < 25) ereignisse.treffer.push({ zielId: z.id, schaden: 15 * (1 - e / 25), pos });
+          naechste = Math.min(naechste, e);
+          if (modell === 'r7') { if (e < 25) ereignisse.treffer.push({ zielId: z.id, schaden: 15 * (1 - e / 25), pos }); continue; }
+          const ab = Math.max(0, e - z.r);
+          if (ab < S.wirk) ereignisse.treffer.push({ zielId: z.id, schaden: S.sofort * (ab <= S.voll ? 1 : (1 - (ab - S.voll) / (S.wirk - S.voll)) ** 2), pos });
         }
+        ereignisse.detonationen.push({ pos, radius: S.wirk, art: 'zeit', turm: g.turm, ziel: g.ziel, nah: g.nah, naechste });
+        if (modell !== 'r7') splitter.push({ x: pos.x, y: pos.y, z: pos.z, rest: S.splitterTakte, art: S });
         geschosse[k] = geschosse[geschosse.length - 1]; geschosse.pop();
       }
       takt++;
     },
   };
 }
+const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Kugel < Zielfeuer-Radius = Nahbereich (Messung getrennt)
 
 // ---------- A) Vorhalt ----------
 {
-  const ki = erstelleTurmKi({ startwert: 202 }), tuerme = ersatzTuerme();
-  const m = tuerme[1].muendung, befehl = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 };
+  const ki = erstelleTurmKi({ startwert: 202 });
   const faelle = [
     ['quer', { x: 1, y: 0, z: 0 }], ['anfliegend', { x: 0, y: 0, z: -1 }], ['fliehend', { x: 0, y: 0, z: 1 }],
     ['schräg steigend', { x: 0.6, y: 0.5, z: -0.62 }], ['quer sinkend', { x: -0.8, y: -0.3, z: 0.52 }],
   ];
-  let maxRech = 0, maxTakt = 0;
-  for (const [, r] of faelle) {
+  let maxRech = 0, maxTakt = 0, kugelZiel = true;
+  const befehl = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 };
+  // R8: Vorhalt mit dem v0 des Turms — beide Enden der Umschalt-Stufen
+  for (const V0 of [620, 1100]) for (const [, r] of faelle) {
+    const tuerme = ersatzTuerme(V0), m = tuerme[1].muendung;
     const l = L(r.x, r.y, r.z);
     // Ziel 1500 m vor Turm 1, 30° hoch, 150 m/s
     const ziel = { id: 7, pos: { x: m.x, y: m.y + 1500 * Math.sin(0.52), z: m.z + 1500 * Math.cos(0.52) },
@@ -98,10 +140,14 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12) {
     maxRech = Math.max(maxRech, L(gx - ziel.pos.x - ziel.vel.x * t, gy - ziel.pos.y - ziel.vel.y * t, gz - ziel.pos.z - ziel.vel.z * t));
     const tk = Math.round(t / DT) * DT; // Detonation auf dem nächsten ganzen Takt
     maxTakt = Math.max(maxTakt, L(m.x + dx / d * V0 * tk - ziel.pos.x - ziel.vel.x * tk, m.y + dy / d * V0 * tk - ziel.pos.y - ziel.vel.y * tk, m.z + dz / d * V0 * tk - ziel.pos.z - ziel.vel.z * tk));
+    if (b.streuKugel !== 20 || Math.abs(b.toleranz - Math.max(20 / d, 0.008)) > 1e-12) kugelZiel = false;
   }
-  zeile('A Vorhaltfehler rechnerisch (5 Bahnen, 1500 m, 150 m/s)', '< 1 m', f2(maxRech) + ' m', maxRech < 1);
-  zeile('A Vorhaltfehler, Zündung nur auf ganzen Takten', '≤ 7 m (Info)', f1(maxTakt) + ' m', maxTakt <= 7, false);
-  // unlösbar: Ziel flieht schneller als die Granate
+  zeile('A Vorhaltfehler rechnerisch (5 Bahnen × v0 620/1100, 1500 m, 150 m/s)', '< 1 m', f2(maxRech) + ' m', maxRech < 1);
+  // WARUM ≤ 11 m: Zündung auf ganzen Takten verschiebt um ≤ DT/2 → (v0 + 150)·DT/2 = 10,4 m bei 1100 m/s
+  zeile('A Vorhaltfehler, Zündung nur auf ganzen Takten', '≤ 11 m (Info)', f1(maxTakt) + ' m', maxTakt <= 11, false);
+  zeile('A Zielfeuer: streuKugel 20 m, toleranz = max(20, 8)/d', 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
+  // unlösbar: Ziel flieht schneller als die Granate (v0 620)
+  const tuerme = ersatzTuerme(620), m = tuerme[1].muendung;
   const flieht = { id: 9, pos: { x: m.x, y: m.y + 500, z: m.z + 1400 }, vel: { x: 0, y: 0, z: 700 }, r: 6, aktiv: true, angriff: false };
   ki.zuruecksetzen();
   const b = ki.schritt(DT, befehl, [flieht], tuerme)[1];
@@ -218,16 +264,18 @@ function messeR7(k, dr, ki, bef, flak, befehl, m, z0) {
   });
 }
 
-function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }) {
+/** opt = { v0 (m/s, Start), v0Plan: Map(takt → v0) — R8: Umschalten mitten im Lauf } */
+function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }, opt = {}) {
   // Startwert der Drohnen per Umgebung tauschbar (Stichprobe: DROHNEN_START=7 node tests/ki.mjs)
   const dr = erstelleZieldrohnen({ startwert: Number(process.env.DROHNEN_START ?? 101) }), ki = erstelleTurmKi({ startwert: 202 });
-  const tuerme = ersatzTuerme(), flak = erstelleErsatzFlak(303, 12);
+  const tuerme = ersatzTuerme(opt.v0 ?? V0), flak = erstelleErsatzFlak(303, 12, opt.modell);
   const mess = {
     kzVerpasst: 0, lsUngleich: 0, lsOhneNah: 0, letzteNah: -1e9, alarmAn: 0, alarmWar: false, alarmStart: 0, alarmMin: Infinity,
     kzEintritte: 0, kzFlackern: 0, kzTakte: 0, kzUnterbesetzt: 0, spur: 0,
     vsNah: [], winkel: [], drehMax: 0, abstandTempoMax: 0, imSektor: 0, bedrohung: 0, zweiSchirme: 0, folgTakte: 0,
     richtG: 0, richtN: 0, dMin: Infinity, dMax: 0, yMin: Infinity, zNeg: 0, schritte: 0, paarMin: Infinity, jeZielMax: 0,
-    abschuesse: 0, neustartOk: 0, neustartFehler: 0, ersterAngriff: null, durchSchirm: 0, nan: 0, zeitDr: 0, zeitKi: 0, treffer: 0, schuesse: 0 };
+    abschuesse: 0, neustartOk: 0, neustartFehler: 0, ersterAngriff: null, durchSchirm: 0, nan: 0, zeitDr: 0, zeitKi: 0, treffer: 0, schuesse: 0,
+    kugelFalsch: 0, detZiel: [], detNah: [] };
   const wartet = new Map(); // slot → { takt, id }
   const innen = new Array(DROHNEN.anzahl).fill(false);
   const vsMin = new Array(DROHNEN.anzahl).fill(Infinity), vsWar = new Array(DROHNEN.anzahl).fill(false);
@@ -236,6 +284,8 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
   const f64 = new Float64Array(1), u32 = new Uint32Array(f64.buffer);
   const misch = (x) => { f64[0] = x; h = Math.imul(h ^ u32[0], 16777619); h = Math.imul(h ^ u32[1], 16777619); };
   for (let k = 0; k < takte; k++) {
+    const nv = opt.v0Plan?.get(k);
+    if (nv) for (const t of tuerme) t.v0 = nv;
     let t0 = performance.now();
     const erg = dr.schritt(DT, flak.ereignisse);
     let t1 = performance.now();
@@ -246,11 +296,20 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
     flak.schritt(tuerme, bef, dr.ziele);
     mess.treffer += flak.ereignisse.treffer.length; mess.schuesse += flak.ereignisse.schuesse.length;
     for (const z of dr.ziele) { misch(z.pos.x); misch(z.pos.y); misch(z.pos.z); misch(z.id); }
-    for (const b of bef) { misch(b.punkt.x); misch(b.zielId ?? -1); misch(b.feuer ? 1 : 0); misch(b.leuchtspur ? 1 : 0); }
+    for (const b of bef) { misch(b.punkt.x); misch(b.zielId ?? -1); misch(b.feuer ? 1 : 0); misch(b.leuchtspur ? 1 : 0); misch(b.streuKugel); }
     for (const sc of ki.lage.schirme) { misch(sc.gier); misch(sc.nick); misch(sc.abstand); }
     if (!mitMessung) continue;
     messeR7(k, dr, ki, bef, flak, befehl, mess, { vsMin, vsWar, raus, drinIds, vorSchirm, vorRohr, tuerme });
     for (const a of erg.abschuesse) { mess.abschuesse++; const slot = dr.ziele.findIndex((z) => z.id === a.id); wartet.set(slot, { takt: k, id: a.id }); }
+    // R8: Streukugel-Regel je Befehl (Sperrfeuer/kein Ziel 0, Nahbereich min(12, 0,05·d), Zielfeuer 20) + toleranz
+    bef.forEach((b, i) => {
+      const mu = tuerme[i].muendung, d = L(b.punkt.x - mu.x, b.punkt.y - mu.y, b.punkt.z - mu.z);
+      const nah = b.zielId !== null && ki.lage.eindringlinge.includes(b.zielId);
+      const soll = b.zielId === null ? 0 : nah ? Math.min(12, 0.05 * d) : 20;
+      const tol = b.zielId === null ? TURMKI.toleranzSperr : Math.max(Math.max(Math.min(soll, 0.05 * d), 8) / d, 0.008);
+      if (!(Math.abs(b.streuKugel - soll) < 1e-6 && Math.abs(b.toleranz - tol) < 1e-9)) mess.kugelFalsch++;
+    });
+    for (const dt of flak.ereignisse.detonationen) if (dt.ziel && Number.isFinite(dt.naechste)) (dt.nah ? mess.detNah : mess.detZiel).push(dt.naechste);
     const zaehl = new Map();
     for (const b of bef) if (b.zielId !== null) zaehl.set(b.zielId, (zaehl.get(b.zielId) ?? 0) + 1);
     // Killzone-Eindringlinge dürfen 3 Türme haben (R7), alle anderen höchstens 2
@@ -298,6 +357,12 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
   zeile('C Flackern (A → B → A binnen 5 s), alle Türme, 5 min', '≤ 10 (Info: meist Angreifer, der in den Anflug wechselt)', String(ki.statistik.flackern), ki.statistik.flackern <= 10, false);
   zeile('C Zwangswechsel (Ziel weg/außer Reichweite) je Minute, alle Türme', 'Info', f1(zw), true, false);
   zeile('C Treffer je Schuss (Ersatz-Flak, Info)', 'Info', f2(m.treffer / Math.max(1, m.schuesse)), true, false);
+  zeile('C Streukugel/toleranz nach Regel (Befehle × Takte falsch)', '0', String(m.kugelFalsch), m.kugelFalsch === 0);
+  const dz = m.detZiel.slice().sort((a, b) => a - b), dn = m.detNah.slice().sort((a, b) => a - b);
+  const unter4 = (a) => 100 * a.filter((x) => x < 4).length / Math.max(1, a.length);
+  // WARUM weich: der Abstand enthält neben der Kugel die Ausweichhaken der Drohnen (Vorhalt-Fehler) — das Labor misst echt
+  zeile('C Zielfeuer: Detonation ↔ nächste Drohne (Median / < 4 m)', '10–25 m / < 5 %', `${f1(dz[dz.length >> 1] ?? NaN)} m / ${f1(unter4(dz))} % (n = ${dz.length})`, dz.length > 0 && dz[dz.length >> 1] >= 10 && dz[dz.length >> 1] <= 25 && unter4(dz) < 5, false);
+  zeile('C Nahbereich: Detonation ↔ nächste Drohne (Median / < 4 m)', 'Info', `${f1(dn[dn.length >> 1] ?? NaN)} m / ${f1(unter4(dn))} % (n = ${dn.length})`, true, false);
   const msDr = m.zeitDr / T, msKi = m.zeitKi / T;
   zeile('C Rechenzeit Drohnen je Takt', '< 0,1 ms', (msDr * 1000).toFixed(1) + ' µs', msDr < 0.1, false);
   zeile('C Rechenzeit Turm-KI je Takt', '< 0,1 ms', (msKi * 1000).toFixed(1) + ' µs', msKi < 0.1, false);
@@ -407,12 +472,84 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   zeile('H Zum Vergleich: größter Schritt sonst (Mitte / Abstand)', 'Info', `${f2(normalW / GRAD)}° / ${f2(normalA)} m`, normalW <= grenzeW && normalA <= grenzeA, false);
 }
 
+// ---------- I) v0 umschalten mitten im Lauf (R8): 620 → 1100 → 620 → 1100 → 1000 ----------
+// Türme mit echtem Richttempo (60/50°/s) statt sofort ausgerichtet; Ersatz-Flak feuert nur ausgerichtet.
+const V0_PLAN = new Map([[20 * 60, 1100], [40 * 60, 620], [60 * 60, 1100], [70 * 60, 1000]]);
+for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }], ['Sperrfeuer folgt', FOLGEN]]) {
+  const dr = erstelleZieldrohnen({ startwert: 101 }), ki = erstelleTurmKi({ startwert: 202 }), tuerme = ersatzTuerme(620);
+  const flak = erstelleErsatzFlak(303, 6);
+  const wd = (a, b) => { const d = a - b; return d - 2 * Math.PI * Math.floor((d + Math.PI) / (2 * Math.PI)); };
+  let rateG = 0, rateN = 0, nan = 0, geprueft = 0, vorhaltMax = 0, sprungU = 0, sprungN = 0, zielWechselU = 0, nachrichtMax = 0;
+  const vorBef = tuerme.map(() => null), warte = tuerme.map(() => -1);
+  for (let k = 0; k < 80 * 60; k++) {
+    const nv = V0_PLAN.get(k);
+    if (nv) for (const t of tuerme) t.v0 = nv;
+    dr.schritt(DT, flak.ereignisse);
+    const bef = ki.schritt(DT, bef0, dr.ziele, tuerme);
+    for (let i = 0; i < tuerme.length; i++) {
+      const t = tuerme[i], b = bef[i], mu = t.muendung;
+      if (![b.punkt.x, b.punkt.y, b.punkt.z, b.zuender, b.toleranz, b.streuKugel].every(Number.isFinite)) nan++;
+      const dx = b.punkt.x - mu.x, dy = b.punkt.y - mu.y, dz = b.punkt.z - mu.z, d = L(dx, dy, dz) || 1;
+      const sG = Math.atan2(dx, dz), sN = Math.asin(dy / d);
+      // Befehls-Sprung (Winkel des Befehls): im Umschalt-Takt vs. sonst, nur bei gleichem Ziel
+      const v = vorBef[i];
+      if (v && b.zielId !== null && v.ziel === b.zielId) {
+        const w = Math.hypot(wd(sG, v.g) * Math.cos(sN), sN - v.n);
+        if (nv) sprungU = Math.max(sprungU, w); else sprungN = Math.max(sprungN, w);
+      }
+      if (nv && v && v.ziel !== null && v.ziel !== b.zielId) zielWechselU++;
+      vorBef[i] = { g: sG, n: sN, ziel: b.zielId };
+      // Richten mit Grenzen
+      const g0 = t.gier, n0 = t.nick, mg = t.richtGeschw[0] * DT, mn = t.richtGeschw[1] * DT;
+      t.gier = wd(t.gier + Math.max(-mg, Math.min(mg, wd(sG, t.gier))), 0);
+      t.nick += Math.max(-mn, Math.min(mn, sN - t.nick));
+      rateG = Math.max(rateG, Math.abs(wd(t.gier, g0)) / DT); rateN = Math.max(rateN, Math.abs(t.nick - n0) / DT);
+      if (!Number.isFinite(t.gier + t.nick)) nan++;
+      const warAus = t.ausgerichtet;
+      t.ausgerichtet = Math.hypot(wd(sG, t.gier) * Math.cos(t.nick), sN - t.nick) <= b.toleranz;
+      // Wieder ausgerichtet nach dem Umschalten (gleiches Ziel): Takte zählen
+      if (nv && warAus && !t.ausgerichtet && b.zielId !== null) warte[i] = k;
+      if (warte[i] >= 0 && (t.ausgerichtet || b.zielId === null)) { nachrichtMax = Math.max(nachrichtMax, k - warte[i]); warte[i] = -1; }
+      // Vorhalt im Umschalt-Takt mit dem NEUEN v0: Granate (gerade, v0) und Ziel treffen sich in punkt
+      if (nv && b.zielId !== null) {
+        const z = dr.ziele.find((q) => q.id === b.zielId), ab = {};
+        if (z && abfangen(mu, z.pos, z.vel, t.v0, ab) && ab.t * t.v0 >= TURMKI.zuenderStrecke && ab.t <= 4) {
+          const tt = b.zuender;
+          vorhaltMax = Math.max(vorhaltMax, L(mu.x + dx / d * t.v0 * tt - z.pos.x - z.vel.x * tt, mu.y + dy / d * t.v0 * tt - z.pos.y - z.vel.y * tt, mu.z + dz / d * t.v0 * tt - z.pos.z - z.vel.z * tt));
+          geprueft++;
+        }
+      }
+    }
+    flak.schritt(tuerme, bef, dr.ziele);
+  }
+  zeile(`I ${name}: v0 620→1100→620→1100→1000, NaN in Befehl/Turm`, '0', String(nan), nan === 0);
+  zeile(`I ${name}: Turm-Ist-Winkel Gier / Nick (max)`, '≤ 60 / 50°/s', `${f1(rateG / GRAD)} / ${f1(rateN / GRAD)}°/s`, rateG <= 60 * GRAD + 1e-9 && rateN <= 50 * GRAD + 1e-9);
+  if (name === 'Zielfeuer') zeile(`I ${name}: Vorhalt im Umschalt-Takt mit neuem v0 (${geprueft} Befehle)`, '< 1 m', f2(vorhaltMax) + ' m', geprueft > 0 && vorhaltMax < 1);
+  zeile(`I ${name}: Befehls-Sprung im Umschalt-Takt / sonst (max, gleiches Ziel ≠ null)`, 'Info', `${f2(sprungU / GRAD)}° / ${f2(sprungN / GRAD)}°`, true, false);
+  zeile(`I ${name}: Zielwechsel im Umschalt-Takt / wieder ausgerichtet nach`, '0 / ≤ 0,5 s', `${zielWechselU} / ${f2(nachrichtMax * DT)} s`, zielWechselU === 0 && nachrichtMax * DT <= 0.5, false);
+}
+
+// ---------- J) Abschüsse je v0-Stufe, Schaden nach Entscheidung 3 (Info; Balance misst das Labor) ----------
+{
+  const teile = [];
+  for (const v0 of [620, 820, 1000, 1100]) {
+    const z = lauf(5 * 60 * 60, true, { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }, { v0, modell: 'r8' }).mess;
+    const f = lauf(5 * 60 * 60, true, FOLGEN, { v0, modell: 'r8' }).mess;
+    const dz = z.detZiel.slice().sort((a, b) => a - b);
+    teile.push(`${v0}: Z ${z.abschuesse} / S ${f.abschuesse} / Vorstoß überlebt ${f.vsNah.length}/${f.vsNah.length + (f.vsAb ?? 0)} / Med ${f1(dz[dz.length >> 1] ?? NaN)} m`);
+  }
+  zeile('J 5 min je v0: Abschüsse Zielfeuer / Sperrfeuer, Vorstöße überlebt (Ersatz-Flak, Panzer R7)', 'Info', teile.join(' · '), true, false);
+}
+
 // ---------- D) Gleichlauf ----------
 {
   const a = lauf(3600, false), b = lauf(3600, false);
   zeile('D Gleichlauf zweier Läufe (3600 Takte)', 'gleich', `${a.h.toString(16)} / ${b.h.toString(16)}`, a.h === b.h);
   const fa = lauf(3600, false, FOLGEN), fb = lauf(3600, false, FOLGEN);
   zeile('D Gleichlauf Folgen + Killzone (3600 Takte)', 'gleich', `${fa.h.toString(16)} / ${fb.h.toString(16)}`, fa.h === fb.h);
+  const va = lauf(5400, false, { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }, { v0Plan: V0_PLAN, modell: 'r8' });
+  const vb = lauf(5400, false, { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }, { v0Plan: V0_PLAN, modell: 'r8' });
+  zeile('D Gleichlauf mit v0-Umschalten + Streukugel + Splitter (5400 Takte)', 'gleich', `${va.h.toString(16)} / ${vb.h.toString(16)}`, va.h === vb.h);
   // zuruecksetzen() muss denselben Anfang liefern
   const dr = erstelleZieldrohnen({ startwert: 101 }), p0 = JSON.stringify(dr.ziele);
   for (let k = 0; k < 500; k++) dr.schritt(DT, null);

@@ -12,7 +12,11 @@
 //          schießen Zielgranaten auf ihn; solange der Nahbereich aktiv ist (+0,5 s Nachlauf) → leuchtspur für ALLE Türme.
 // LIEFERT: erstelleTurmKi({ startwert }) → { befehle, lage, schritt(dt, befehl, ziele, turmZustand) → befehle,
 //          zuruecksetzen(), statistik } · TURMKI (Werte) · abfangen(m, pos, vel, v0, aus) (für Tests)
-//          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur }
+//          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
+//          streuKugel (m, 0 = aus) }
+//        · streuKugel (R8, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“): Radius der Kugel um `punkt`, in
+//          die die Waffe jede Granate auf einen eigenen Punkt schießt (Zeitzünder dorthin). Zielfeuer 20 m, Nahbereich
+//          min(12, 0,05·d), Sperrfeuer/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0 (620–1100 m/s).
 //          lage = { nahbereich (bool), schirme: [{ mitte{x,y,z}, abstand, gierHalb, nickHalb, tuerme[], gier, nick,
 //          sollGier, sollNick, sollAbstand }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
@@ -22,8 +26,17 @@ import { zufall } from '../zufall.js';
 import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR } from '../waffen/lafetten.js';
 
 export const TURMKI = {
-  v0: 620, reichweite: 2500, zuender: [0.1, 4],   // Ersatzwerte, falls turmZustand fehlt (Zahlen Waffentechniker R7)
+  // Ersatzwerte, falls turmZustand fehlt. v0-Standard 1000 m/s (Entscheidung R8). Zünder: frühestens nach 60 m Flug
+  // (als Strecke, R8: bei 1100 m/s wären 0,1 s schon 110 m), spätestens nach 4 s.
+  v0: 1000, reichweite: 2500, zuender: [0.1, 4], zuenderStrecke: 60,
   nick: [-0.05, 1.45],
+  // Streukugel (R8): Radius in m. WARUM 20 m: gleichverteilt in der Kugel liegt der Median bei 0,79·R ≈ 16 m, unter 4 m
+  // nur (4/20)³ ≈ 1 % → Messgröße „Median 10–25 m, < 5 % unter 4 m“. Nahbereich dichter und mit der Entfernung
+  // kleiner (0,05·d ≈ 2,9° Versatz), sonst verlassen die Granaten das Rohr sichtbar schief.
+  streuKugel: { ziel: 20, nahMax: 12, nahAnteil: 0.05 },
+  // toleranz = max(Kugel, toleranzMin) / d, mindestens toleranzRadMin. WARUM Kugel nur bis 0,05·d: die Waffe deckelt
+  // den Versatz auf 0,05·Entfernung — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
+  toleranzMin: 8, toleranzRadMin: 0.008, kugelDeckel: 0.05,
   // Sperrfeuer: Gier-Dreieck 4 s, Nick-Dreieck 4/1,5 s. Spitzentempo bei gierHalb 0,52: 4·0,52/4 = 0,52 rad/s (30°/s)
   // < 60°/s Gier; Nick 4·0,31/2,67 = 0,47 rad/s (27°/s) < 50°/s → die Türme kommen dem Muster nach.
   periodeGier: 4, verhaeltnis: 1.5,
@@ -59,6 +72,8 @@ export const TURMKI = {
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const dreieck = (u) => 1 - 4 * Math.abs(u - Math.floor(u) - 0.5); // −1 … 1 … −1, Periode 1
 const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
+/** Feuer-Spielraum (rad) zur Streukugel in Entfernung d: max(min(Kugel, 0,05·d), 8 m) / d, mindestens 0,008 rad. */
+const kugelToleranz = (kugel, d) => Math.max(Math.max(Math.min(kugel, TURMKI.kugelDeckel * d), TURMKI.toleranzMin) / d, TURMKI.toleranzRadMin);
 const ZWEI_PI = 2 * Math.PI;
 const winkelDiff = (a, b) => { const d = a - b; return d - ZWEI_PI * Math.floor((d + Math.PI) / ZWEI_PI); }; // → [−π, π)
 
@@ -86,7 +101,7 @@ export function abfangen(m, pos, vel, v0, aus) {
 
 export function erstelleTurmKi({ startwert = 202 } = {}) {
   const K = TURMKI, F = K.folgen, KZ = K.killzone, n = LAFETTEN.length;
-  const befehle = LAFETTEN.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false }));
+  const befehle = LAFETTEN.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0 }));
   // Ersatz-Mündung (Drehpunkt der Wiege), falls turmZustand noch keine liefert
   const ersatzM = LAFETTEN.map((l) => ({ x: l.x, y: l.y + l.zapfen.y, z: l.z }));
   const halt = new Float64Array(n);           // Haltezeit des aktuellen Ziels je Turm
@@ -118,7 +133,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
     statistik.maxJeZiel = 0; statistik.unloesbar = 0; statistik.alarmAn = 0; statistik.gruppenWechsel = 0;
-    for (const b of befehle) { b.zielId = null; b.feuer = false; b.leuchtspur = false; }
+    for (const b of befehle) { b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; }
     lage.nahbereich = false; lage.schirme.length = 0; lage.eindringlinge.length = 0;
   }
 
@@ -126,7 +141,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   function bewerte(i, z, m, v0, rw, rx, ry, rz, aus) {
     if (!z.aktiv) return -1;
     if (!abfangen(m, z.pos, z.vel, v0, aus)) { statistik.unloesbar++; return -1; }
-    if (aus.t < K.zuender[0] || aus.t > K.zuender[1] || aus.t * v0 > rw) return -1;
+    if (aus.t * v0 < K.zuenderStrecke || aus.t > K.zuender[1] || aus.t * v0 > rw) return -1;
     const dx = aus.x - m.x, dy = aus.y - m.y, dz = aus.z - m.z, d = L(dx, dy, dz);
     const nick = Math.asin(dy / d), lim = LAFETTEN[i].nick ?? K.nick;
     if (nick < lim[0] || nick > lim[1]) return -1;
@@ -144,7 +159,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const cn = Math.cos(nick);
     b.punkt.x = M.x + Math.sin(gier) * cn * R; b.punkt.y = M.y + Math.sin(nick) * R; b.punkt.z = M.z + Math.cos(gier) * cn * R;
     const t = L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) / v0;
-    b.zuender = Math.min(Math.max(t, K.zuender[0]), K.zuender[1]);
+    b.zuender = Math.min(Math.max(t, K.zuenderStrecke / v0), K.zuender[1]);
   }
 
   /** Lissajous-Punkt für Turm k (Phase k/nG) im Sektor (gm ± gh, nm ± nh). */
@@ -208,10 +223,11 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const b = befehle[i], z = ziele[nahTurm[i]];
     b.zielId = z.id;
     if (abfangen(m, z.pos, z.vel, v0, ab) && ab.t <= K.zuender[1]) {
-      b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z; b.zuender = Math.max(ab.t, K.zuender[0]);
-    } else { b.punkt.x = z.pos.x; b.punkt.y = z.pos.y; b.punkt.z = z.pos.z; b.zuender = K.zuender[0]; }
+      b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z; b.zuender = Math.max(ab.t, K.zuenderStrecke / v0);
+    } else { b.punkt.x = z.pos.x; b.punkt.y = z.pos.y; b.punkt.z = z.pos.z; b.zuender = K.zuenderStrecke / v0; }
     const d = L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) || 1;
-    b.toleranz = Math.min(Math.max(25 / d, 0.008), 0.08);
+    b.streuKugel = Math.min(K.streuKugel.nahMax, K.streuKugel.nahAnteil * d);
+    b.toleranz = kugelToleranz(b.streuKugel, d);
     b.feuer = frei;
   }
 
@@ -344,7 +360,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           // WARUM Phase nach fester Turmnummer (nicht Platz im Schirm): sonst springt das Muster, wenn ein Turm in die
           // Killzone wechselt oder zurückkommt (Messung R7: Befehls-Sprünge bis 5900°/s)
           streiche(b, m, v0, i, n, s.gier, s.gierHalb, s.nick, s.nickHalb, s.abstand);
-          b.zielId = null; b.feuer = frei; b.toleranz = K.toleranzSperr;
+          b.zielId = null; b.feuer = frei; b.toleranz = K.toleranzSperr; b.streuKugel = 0; // Wand: Muster sättigt schon
         }
       }
     } else {
@@ -393,14 +409,14 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           b.zielId = ziele[cur].id;
           b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z;
           b.zuender = ab.t;
-          const d = ab.t * v0;
-          b.toleranz = Math.min(Math.max(25 / d, 0.008), 0.05); // Wolkenradius ~25 m im Winkel, gedeckelt
+          b.streuKugel = K.streuKugel.ziel;
+          b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0);
           b.feuer = frei;
           if (zaehl[cur] > statistik.maxJeZiel) statistik.maxJeZiel = zaehl[cur];
         } else {
           // kein Ziel: Ruhestellung Sektormitte auf dem Schirm, nicht feuern
           if (b.zielId !== null) statistik.zwang[i]++;
-          b.zielId = null; b.feuer = false; b.toleranz = K.toleranzSperr;
+          b.zielId = null; b.feuer = false; b.toleranz = K.toleranzSperr; b.streuKugel = 0;
           setzeAufSchale(b, m, v0, S.gierMitte, (S.nickMin + S.nickMax) / 2, R);
         }
       }
