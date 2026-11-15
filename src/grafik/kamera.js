@@ -3,9 +3,11 @@
 //          setzeFrei(gier, nick, abstand), setzeSkala(schiffslaenge / 150) }
 // MODI: verfolger (hinten oben, rollt mit dem Schiff), weit (Übersicht), frei (Maus ziehen = drehen, Rad = Zoom).
 // REGEL: liest nur die interpolierte Schiffslage; ändert nichts an der Simulation.
+// WARUM schmales Fenster → weiter weg: das Bild ist dann horizontal enger; ohne Ausgleich ragt das Schiff seitlich heraus.
 // WARUM die Verfolgerkamera dem Rollen folgt: im All gibt es kein Oben — der Horizont ist das eigene Schiff.
 import * as THREE from 'three';
 
+const BREIT = 1.4; // Seitenverhältnis, ab dem das Schiff ohne Ausgleich ins Bild passt
 const MODI = ['verfolger', 'weit', 'frei'];
 const VERSATZ = { verfolger: new THREE.Vector3(0, 32, -125), weit: new THREE.Vector3(70, 60, -260) };
 const BLICK = { verfolger: new THREE.Vector3(0, 8, 45), weit: new THREE.Vector3(0, 0, 30) };
@@ -29,7 +31,8 @@ export function erstelleKamera(camera) {
       sollPos.set(Math.sin(gier) * Math.cos(nick), Math.sin(nick), Math.cos(gier) * Math.cos(nick)).multiplyScalar(abstand).applyQuaternion(sRot);
       sollZiel.set(0, 0, 0);
     } else {
-      sollPos.copy(VERSATZ[modus]).multiplyScalar(skala).applyQuaternion(sRot);
+      const schmal = Math.min(2.2, Math.max(1, BREIT / (camera.aspect || BREIT))); // 1 bei Querformat ≥ 1,4
+      sollPos.copy(VERSATZ[modus]).multiplyScalar(skala * schmal).applyQuaternion(sRot);
       sollZiel.copy(BLICK[modus]).multiplyScalar(skala).applyQuaternion(sRot);
     }
     sollHoch.set(0, 1, 0).applyQuaternion(sRot);
