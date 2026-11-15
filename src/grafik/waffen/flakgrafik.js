@@ -14,6 +14,7 @@ import { uPixel, spurMaterial, gluehMaterial, rauchMaterial } from './shader.js'
 
 const MAX_SPUR = 256, MAX_GLUEH = 128, MAX_RAUCH = 384;
 const SPUR_LAENGE = 45;        // m
+const WOLKE_R = 42, WOLKE_DECKKRAFT = 0.7; // Quad-Radius m (dichter Kern ~28 m), Deckkraft — Runde 7 (Nutzer: „größer“)
 const SIM_DT = 1 / 60;
 const RUECK = 0.7, RUECK_ZEIT = 0.17; // m, s
 const ZWEI_PI = Math.PI * 2;
@@ -85,12 +86,15 @@ export function erstelleFlakGrafik(scene, camera) {
   function nachSchritt(flak) {
     const e = flak.ereignisse;
     for (const s of e.schuesse) {
-      neuesGluehen(s.pos.x + s.richtung.x * 1.2, s.pos.y + s.richtung.y * 1.2, s.pos.z + s.richtung.z * 1.2, 3.2, 0.07, 1, 0);
+      neuesGluehen(s.pos.x + s.richtung.x * 1.2, s.pos.y + s.richtung.y * 1.2, s.pos.z + s.richtung.z * 1.2, 4, 0.07, 1, 0);
+      // Mündungsrauch: kleiner Puff, treibt etwas mit dem Rohr — WARUM: ohne Leuchtspur soll man trotzdem sehen, dass geschossen wird
+      neueWolke(s.pos.x + s.richtung.x * 3, s.pos.y + s.richtung.y * 3, s.pos.z + s.richtung.z * 3, 1.5, 5, 0.6,
+        s.richtung.x * 8, s.richtung.y * 8, s.richtung.z * 8);
       rueck[s.turmId * 2 + s.rohr] = 0;
     }
     for (const d of e.detonationen) {
       neuesGluehen(d.pos.x, d.pos.y, d.pos.z, d.art === 'nah' ? 13 : 11, 0.3, 1, 1);
-      neueWolke(d.pos.x, d.pos.y, d.pos.z, 3, 18, 2.8);
+      neueWolke(d.pos.x, d.pos.y, d.pos.z, 6, WOLKE_R, 2.8); // Sichtgröße ≈ Splitter-Wirkradius (Runde 7)
     }
   }
 
@@ -101,7 +105,7 @@ export function erstelleFlakGrafik(scene, camera) {
     for (let k = 0; k < 3; k++) neuesGluehen(pos.x + (rnd() - 0.5) * 14 * g, pos.y + (rnd() - 0.5) * 14 * g, pos.z + (rnd() - 0.5) * 14 * g, 14 * g, 0.4 + rnd() * 0.3, 1, 1);
     for (let k = 0; k < 7; k++) {
       const vx = rnd() - 0.5, vy = rnd() - 0.5, vz = rnd() - 0.5, l = Math.hypot(vx, vy, vz) || 1, v = (10 + rnd() * 12) * g;
-      neueWolke(pos.x + vx / l * 5 * g, pos.y + vy / l * 5 * g, pos.z + vz / l * 5 * g, 6 * g, 26 * g, 4 + rnd() * 1.5, vx / l * v, vy / l * v, vz / l * v);
+      neueWolke(pos.x + vx / l * 5 * g, pos.y + vy / l * 5 * g, pos.z + vz / l * 5 * g, 8 * g, 46 * g, 4 + rnd() * 1.5, vx / l * v, vy / l * v, vz / l * v);
     }
   }
 
@@ -132,7 +136,7 @@ export function erstelleFlakGrafik(scene, camera) {
     const gs = flak.geschosse, K = spur.puffer.aKopf.array, S = spur.puffer.aSchweif.array, H = spur.puffer.aHell.array;
     let n = 0;
     for (let i = 0; i < gs.max && n < MAX_SPUR; i++) {
-      if (!gs.aktiv[i]) continue;
+      if (!gs.aktiv[i] || !gs.leucht[i]) continue; // Spur nur für Leuchtspur-Granaten (Runde 7)
       const j = i * 3;
       const x = gs.vorPos[j] + (gs.pos[j] - gs.vorPos[j]) * alpha, y = gs.vorPos[j + 1] + (gs.pos[j + 1] - gs.vorPos[j + 1]) * alpha,
         z = gs.vorPos[j + 2] + (gs.pos[j + 2] - gs.vorPos[j + 2]) * alpha;
@@ -188,7 +192,7 @@ export function erstelleFlakGrafik(scene, camera) {
       RP[n * 3] = W.pos[i * 3]; RP[n * 3 + 1] = W.pos[i * 3 + 1]; RP[n * 3 + 2] = W.pos[i * 3 + 2];
       // Radius: schnell auf rMax (0,4 s), danach langsam weiter
       RR[n] = W.r0[i] + (W.rMax[i] - W.r0[i]) * (1 - Math.exp(-a / 0.13)) + a * 1.5;
-      RA[n] = Math.min(1, a / 0.05) * 0.9 * (1 - u) ** 1.4;
+      RA[n] = Math.min(1, a / 0.05) * WOLKE_DECKKRAFT * (1 - u) ** 1.4;
       RG[n] = Math.max(0, 1 - a / 0.4);
       RS[n] = W.saat[i];
     }

@@ -13,7 +13,7 @@ export const FLAK = {
   reichweite: 2500,           // m
   schussAbstand: 6,           // Schritte zwischen zwei Schüssen eines Zwillings (10 Schuss/s je Turm)
   streuung: 0.5 * Math.PI / 180, // rad, größte Abweichung je Achse (Dreiecksverteilung)
-  zuenderMin: 0.3, zuenderMax: 4.0, // s
+  zuenderMin: 0.1, zuenderMax: 4.0, // s (0,1 s ≈ 62 m: Nahbereich, Runde 7)
   zuenderStreu: 0.04,         // ±4 % → Schirm ~60 m tief bei 800 m
   naheZuender: 12,            // m über dem Zielradius
   scharfNach: 6,              // Schritte (~60 m): WARUM: kein Annäherungszünder direkt vor dem Rohr
@@ -27,7 +27,10 @@ export const FLAK = {
   splitterRadius: 40, splitterDauer: 42, splitterDps: 350, poolSplitter: 96,
   // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
   nachbarHuelle: 3.7, nachbarHoehe: 5.2,
-  richtGeschw: [60 * Math.PI / 180, 40 * Math.PI / 180], // rad/s [gier, nick]
+  richtGeschw: [60 * Math.PI / 180, 50 * Math.PI / 180], // rad/s [gier, nick] (Nick 50°/s ab Runde 7)
+  // Leuchtspur nur auf Befehl (Runde 7, Nutzer: bei BSG sieht man sie „so gut wie nie“). befehl.leuchtspur fehlt →
+  // dieser Anteil, über einen Zähler je Turm. WARUM Zähler statt Zufall: die Zufallsfolge (Streuung/Zünder) bleibt gleich.
+  leuchtAnteil: 0,
   poolGeschosse: 256,
   vorratEreignisse: 128,
 };
@@ -53,6 +56,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   const geschosse = {
     max: N, anzahlAktiv: 0, verworfen: 0,
     aktiv: new Uint8Array(N), turm: new Uint8Array(N), sperr: new Uint8Array(N), // sperr 1 = Sperrgranate
+    leucht: new Uint8Array(N), // 1 = Leuchtspur-Granate (beim Abschuss festgelegt)
+    anzahlLeucht: 0,
     pos: new Float64Array(N * 3), vorPos: new Float64Array(N * 3), vel: new Float64Array(N * 3),
     alter: new Uint16Array(N),  // Schritte seit dem Abschuss (Grafik: Leuchtspur wächst aus der Mündung)
     rest: new Uint16Array(N),   // Schritte bis zum Zeitzünder
@@ -67,7 +72,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     gier: 0, nick: 0, vorGier: 0, vorNick: 0, sollGier: 0, sollNick: 0,
     imBereich: false, ausgerichtet: false, bereit: true, gesperrt: false,
     v0: FLAK.v0, reichweite: FLAK.reichweite, muendung: v3(),
-    richtGeschw: FLAK.richtGeschw.slice(), streuung: FLAK.streuung,
+    richtGeschw: FLAK.richtGeschw.slice(), streuung: FLAK.streuung, leuchtZaehler: 0,
     abklingen: 0, rohr: 0, schuesse: 0, rnd: null,
   }));
   let zeiger = 0, schrittNr = 0;
@@ -94,10 +99,11 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   const MITTE = []; // Mitte zwischen den Rohren je Lafette (einmal angelegt)
 
   function zuruecksetzen() {
-    geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0;
+    geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
+      t.leuchtZaehler = 0;
       t.gier = t.vorGier = t.sollGier = t.lafette.gier[0];
       t.nick = t.vorNick = t.sollNick = 0.2;
       t.imBereich = t.ausgerichtet = t.gesperrt = false; t.bereit = true;
@@ -194,10 +200,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
         }
       }
       if (bestZiel >= 0) {
-        aktiv[i] = 0; geschosse.anzahlAktiv--;
+        aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
         detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sperr[i]);
       } else if (--rest[i] === 0) {
-        aktiv[i] = 0; geschosse.anzahlAktiv--;
+        aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
         detoniere(pos[j], pos[j + 1], pos[j + 2], 'zeit', ziele, geschosse.sperr[i]);
       }
     }
@@ -265,6 +271,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
     geschosse.sperr[i] = b.zielId == null ? 1 : 0;
+    let leucht = b.leuchtspur;
+    if (leucht == null) { t.leuchtZaehler += FLAK.leuchtAnteil; leucht = t.leuchtZaehler >= 1; if (leucht) t.leuchtZaehler -= 1; }
+    geschosse.leucht[i] = leucht ? 1 : 0;
+    if (leucht) geschosse.anzahlLeucht++;
     geschosse.pos[j] = geschosse.vorPos[j] = tmp.x;
     geschosse.pos[j + 1] = geschosse.vorPos[j + 1] = tmp.y;
     geschosse.pos[j + 2] = geschosse.vorPos[j + 2] = tmp.z;
