@@ -1,0 +1,28 @@
+/* ZWECK: Seite + Anzeige der Steuer-Station. Stil: Militär-Konsole, nüchtern, bernsteinfarben. */
+:root { --bern: #e0a040; --bern-matt: #7a5a2a; --grund: rgba(14, 15, 16, 0.72); --linie: rgba(224, 160, 64, 0.35); }
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: Consolas, 'Courier New', monospace; color: var(--bern); }
+#leinwand { display: block; width: 100vw; height: 100vh; cursor: grab; }
+body.zieht #leinwand { cursor: grabbing; }
+#hud { position: fixed; inset: 0; pointer-events: none; }
+
+#station { position: absolute; left: 18px; bottom: 18px; background: var(--grund); border: 1px solid var(--linie); padding: 10px 14px 12px; min-width: 210px; }
+#station .kopf { font-size: 11px; letter-spacing: 0.15em; color: var(--bern-matt); border-bottom: 1px solid var(--linie); padding-bottom: 6px; margin-bottom: 8px; }
+#station .zeile { display: flex; gap: 14px; align-items: stretch; }
+#hebel { position: relative; width: 14px; height: 110px; border: 1px solid var(--linie); }
+#hebel-null { position: absolute; left: -4px; right: -4px; bottom: 20%; border-top: 1px solid var(--bern-matt); }
+#hebel-balken { position: absolute; left: 2px; right: 2px; bottom: 20%; height: 0; background: var(--bern); }
+#hebel-balken.rueck { background: #c0503a; }
+.werte { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.gross { font-size: 34px; line-height: 1; color: #f2c070; }
+.gross small { font-size: 12px; margin-left: 4px; color: var(--bern-matt); }
+#daempfer.aus { color: #e06040; }
+#nachbrenner { color: #333; }
+#nachbrenner.an { color: #8ab4ff; text-shadow: 0 0 6px #4a7aff; }
+#drift { color: #e06040; min-height: 1em; }
+
+#hilfe { position: absolute; left: 18px; top: 16px; font-size: 12px; line-height: 1.7; background: var(--grund); border: 1px solid var(--linie); padding: 8px 12px; color: #c9a060; }
+#hilfe b { color: #f2c070; font-weight: normal; border: 1px solid var(--linie); padding: 0 4px; }
+#hilfe.versteckt { display: none; }
+#meldung { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 14px; letter-spacing: 0.1em; background: var(--grund); border: 1px solid var(--linie); padding: 6px 14px; opacity: 0; transition: opacity 0.3s; }
+#meldung.sichtbar { opacity: 1; }
+#laden { position: fixed; inset: 0; display: grid; place-items: center; background: #000; font-size: 14px; letter-spacing: 0.2em; }
