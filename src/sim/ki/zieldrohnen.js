@@ -41,7 +41,9 @@ export const DROHNEN = {
     // eng verteilt → das Überleben kippt steil. 5 min bei 620/1000/1100: 0,22 → Sperr 100/86/93 %, Ziel 93/50/50 %;
     // 0,25 → Sperr 92/57/60 %, Ziel 43/21/7 %; 0,27 → Sperr 67/53/64 %, Ziel 27/14/7 %. Gewählt 0,25 (Standard 1000 m/s
     // trifft beide Ziele: Sperr 30–60 %, Ziel ≥ 20 %).
-    panzer: 0.25,
+    // R9 (1100 m/s, neue Granaten-Zahlen): 0,28 → Sperr 5/14, Ziel 5/14 überleben (36 %); 620: 6/14 bzw. 9/14.
+    // Das Überleben kippt steil (Rohschaden je Vorstoß eng verteilt) — einzelne Läufe streuen um ±1–3 Vorstöße.
+    panzer: 0.28,
     weichMin: 230, hoeheWeich: 110,   // im Vorstoß: weiche Grenzen tiefer, harte Klammer bleibt 200 m / 80 m
   },
   atmen: { mitte: 1200, hub: 300, periode: 60 }, // Kreis-/Schlangen-Mitte pendelt 900 ↔ 1500 m
