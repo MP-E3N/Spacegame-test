@@ -13,7 +13,7 @@ import { zufall } from '../zufall.js';
 import { LAFETTEN } from './lafetten.js';
 
 export const FLAK = {
-  v0: 1000,                   // m/s Standard (R8: 40-mm-Klasse); je Turm über turm.v0 umschaltbar, keine Schwerkraft
+  v0: 1100,                   // m/s Standard (R9, Nutzer: „die höchste“ = Nahbereichsabwehr); je Turm über turm.v0 umschaltbar
   reichweite: 2500,           // m
   schussAbstand: 6,           // Schritte zwischen zwei Schüssen eines Zwillings (10 Schuss/s je Turm)
   streuung: 0.25 * Math.PI / 180, // rad, größte Abweichung je Achse (Dreiecksverteilung); seit R8 streut v. a. die Streukugel
@@ -21,7 +21,8 @@ export const FLAK = {
   zuenderStreu: 0.04,         // ±4 % Zielgranaten ohne Streukugel
   zuenderStreuKugel: 0.01,    // ±1 % mit Streukugel (die Kugel liefert die Tiefe, Entscheidung R8/2)
   zuenderStreuSperr: 0.08,    // ±8 % Sperrgranaten → Schirm ~120 m tief bei 800 m: einzelne Wolken davor/dahinter (Runde 7)
-  streuKugelAnteil: 0.05,     // Kugelradius höchstens 0,05 · Entfernung — WARUM: nah läge die Granate sonst > 3° neben dem Rohr
+  streuKugelAnteil: 0.10,     // Kugelradius höchstens 0,10 · Entfernung (≈ 5,7°) — WARUM: darüber kommt die Granate sichtbar
+                              // schief aus dem Rohr; Leuchtspur nur im Nahbereich, dort hält die KI die Kugel klein (R9)
   // Annäherungszünder (R8 aus, Code bleibt): er war der eigentliche „Direkttreffer“ — zündete bei r + 12 m an jedem Ziel.
   annaeherung: false,
   naheZuender: 12,            // m über dem Zielradius
