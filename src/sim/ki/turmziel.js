@@ -1,8 +1,9 @@
 // ZWECK: Turm-KI des Flak-Labors — entscheidet je Turm und Schritt, WOHIN gerichtet wird, WANN gefeuert wird, WANN die
 //        Granate zündet und ob sie Leuchtspur trägt.
-//        · sperrfeuer, folgen (Standard): 1–2 Schirme folgen der Bedrohung (vorausgesagte Lage der Drohnen, träge
-//          nachgeführt, schmaler Sektor); die Rohre streichen jeden Schirm im Dreieck-Lissajous-Muster ab, alle
-//          Zielpunkte auf einer Kugelschale um BATTERIE_MITTE (Radius = Schirmabstand des Schirms).
+//        · sperrfeuer, folgen (Standard, R9 „Sperrkästen“, Nutzer: „Das Sperrfeuer soll sich an den feindlichen
+//          Objekten ausrichten“): die Drohnen werden in bis zu 3 Gruppen geteilt (Gier-Lücke oder radiale Lücke), je
+//          Gruppe ein Kasten AUF der vorausgesagten Lage (Größe aus der Streuung der Gruppe: quer, hoch, tief), träge
+//          nachgeführt; die Rohre streichen den Kasten im Dreieck-Lissajous-Muster in drei Achsen ab (Gier, Nick, Abstand).
 //        · sperrfeuer, folgen === false: fester Sektor + befehl.schirmAbstand. Der Sektor ist der beim Umschalten
 //          gemerkte (Mitte + Breite des größten Schirms, „Wand bleibt, wo sie ist“), ohne Schirm STANDARD_SEKTOR;
 //          befehl.sektor überschreibt ihn ausdrücklich. Abstand gleitet mit ≤ 150 m/s; Umschalten in beide
@@ -15,10 +16,10 @@
 //          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
 //          streuKugel (m, 0 = aus) }
 //        · streuKugel (R8, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“): Radius der Kugel um `punkt`, in
-//          die die Waffe jede Granate auf einen eigenen Punkt schießt (Zeitzünder dorthin). Zielfeuer 20 m, Nahbereich
-//          min(12, 0,05·d), Sperrfeuer/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0 (620–1100 m/s).
+//          die die Waffe jede Granate auf einen eigenen Punkt schießt (Zeitzünder dorthin). Zielfeuer 60 m, Nahbereich
+//          min(20, 0,06·d) (R9, Nutzer: „viel größer“), Sperrfeuer/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0 (620–1100 m/s).
 //          lage = { nahbereich (bool), schirme: [{ mitte{x,y,z}, abstand, gierHalb, nickHalb, tuerme[], gier, nick,
-//          sollGier, sollNick, sollAbstand }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
+//          sollGier, sollNick, sollAbstand, breite, hoehe, tiefeHalb (m, halbe Kastenmaße) }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
 //        Simulation: kein DOM, kein Math.random, fester Schritt; keine neuen Objekte im Schritt.
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
@@ -30,16 +31,15 @@ export const TURMKI = {
   // (als Strecke, R8: bei 1100 m/s wären 0,1 s schon 110 m), spätestens nach 4 s.
   v0: 1000, reichweite: 2500, zuender: [0.1, 4], zuenderStrecke: 60,
   nick: [-0.05, 1.45],
-  // Streukugel (R8): Radius in m. WARUM 20 m: gleichverteilt in der Kugel liegt der Median bei 0,79·R ≈ 16 m, unter 4 m
-  // nur (4/20)³ ≈ 1 % → Messgröße „Median 10–25 m, < 5 % unter 4 m“. Nahbereich dichter und mit der Entfernung
-  // kleiner (0,05·d ≈ 2,9° Versatz), sonst verlassen die Granaten das Rohr sichtbar schief.
-  streuKugel: { ziel: 20, nahMax: 12, nahAnteil: 0.05 },
-  // toleranz = max(Kugel, toleranzMin) / d, mindestens toleranzRadMin. WARUM Kugel nur bis 0,05·d: die Waffe deckelt
-  // den Versatz auf 0,05·Entfernung — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
-  toleranzMin: 8, toleranzRadMin: 0.008, kugelDeckel: 0.05,
-  // Sperrfeuer: Gier-Dreieck 4 s, Nick-Dreieck 4/1,5 s. Spitzentempo bei gierHalb 0,52: 4·0,52/4 = 0,52 rad/s (30°/s)
-  // < 60°/s Gier; Nick 4·0,31/2,67 = 0,47 rad/s (27°/s) < 50°/s → die Türme kommen dem Muster nach.
-  periodeGier: 4, verhaeltnis: 1.5,
+  // Streukugel: Radius in m. R9 (Nutzer: „viel größer“): Zielfeuer 60 m → Median 0,79·R ≈ 47 m, sichtbar eine Wolke um
+  // das Ziel. Nahbereich min(20, 0,06·d): bei 250 m 15 m ≈ 3,4° Versatz — die Spur verlässt das Rohr noch gerade genug.
+  streuKugel: { ziel: 60, nahMax: 20, nahAnteil: 0.06 },
+  // toleranz = min(max(Kugel, toleranzMin), Deckel·d) / d, mindestens toleranzRadMin. WARUM unter dem Deckel: die Waffe
+  // deckelt den Versatz auf 0,10·Entfernung (R9) — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
+  toleranzMin: 8, toleranzRadMin: 0.008, kugelDeckel: 0.10,
+  // Sperrfeuer: Gier-Dreieck 4 s, Nick-Dreieck 4/1,5 s, Abstands-Dreieck 4/1,25 s (R9). Spitzentempo bei gierHalb 0,52:
+  // 4·0,52/4 = 0,52 rad/s (30°/s) < 60°/s Gier; Nick 4·0,31/2,67 = 0,47 rad/s (27°/s) < 50°/s.
+  periodeGier: 4, verhaeltnis: 1.5, verhaeltnisTiefe: 1.25,
   toleranzSperr: 0.06,
   gewichte: { naehe: 1.0, annaeherung: 0.8, angriff: 0.5, winkel: 0.3 },
   tempoBezug: 180,        // m/s → Annäherung 1,0
@@ -51,18 +51,33 @@ export const TURMKI = {
   maxJeZiel: 2,
   takteJeBewertung: 6,    // Turm i bewertet neu, wenn takt % 6 == i % 6 (gestaffelt)
   gesperrtFrei: 0.5,      // s: so lange gesperrt (Nachbar-Sperre/Grenze) → Ziel freigeben
-  // Folgen (R7): Schirm vor die Bedrohung legen
+  // Folgen (R9 Sperrkästen). WARUM Kästen statt 1–2 Wände: Messung R8 (unverwundbar, 1100 m/s) — Detonation ↔ nächste
+  // Drohne Median 260 m (quer 188, tief 127); die Drohnen standen radial 830–1800 m (σ 346 m), nur 11 % lagen im Schirm.
   folgen: {
-    vorne: 120,                 // m: Schirm so weit VOR dem (vorausgesagten) Schwerpunkt
+    vorne: 0,                   // m: Kasten AUF dem vorausgesagten Schwerpunkt (R7 lag er 120 m davor)
     abstand: [450, 2000],
-    tau: 1.5,                   // s: Glättung der Schirmmitte und des Abstands
-    // WARUM 20 statt 12°/s (R7, Projektleitung): 12°/s ließ die Wand im Mittel 12,3° hinter der Bedrohung, 20°/s 8,4°;
-    // Richttempo bleibt eingehalten (Muster ≤ 20°/s + Nachführen 20°/s < 60°/s Gier, Nick 17 + 20 < 50°/s).
-    maxDreh: 20 * Math.PI / 180, // rad/s: Nachführtempo der Mitte
-    maxAbstandTempo: 150,       // m/s
-    gierHalb: [0.12, 0.35], gierRand: 0.08, nickHalb: [0.08, 0.2], nickRand: 0.05,
-    luecke: [0.6, 0.45],        // rad: größte Gier-Lücke > 0,6 → zwei Gruppen, < 0,45 → wieder eine (Hysterese)
-    umgruppieren: 2,            // s: frühestens so oft Gruppen/Türme neu verteilen
+    // WARUM 0,3 s (R7: 1,5): Glättung hinkt einem bewegten Ziel um v·τ hinterher — bei 150 m/s und 0,7 s ≈ 105 m
+    // (Messung R9: Median 131 m → 109 m mit 0,3 s); die Sprünge begrenzen maxDreh/maxAbstandTempo
+    tau: 0.3,                   // s: Glättung der Kastenmitte und des Abstands
+    tauGroesse: 1.0,            // s: Glättung der Kastengröße
+    // WARUM 35°/s: Muster ≤ 4·0,35/4 = 20°/s Gier bzw. 4·0,15/2,67 = 13°/s Nick + Nachführen 35°/s < 60 / 50°/s Richttempo
+    maxDreh: 35 * Math.PI / 180, // rad/s: Nachführtempo der Mitte, Gier
+    maxDrehNick: 30 * Math.PI / 180, // rad/s: Nick (Muster ≤ 13°/s + 30 < 50°/s)
+    maxAbstandTempo: 300,       // m/s
+    // WARUM kleiner als im Plan (σ+40, 60–250): Messung R9 Median 109 → 98 m mit σ+25, 50–200 (Kern-Gewichtung)
+    quer: [25, 50, 200],        // m: halbe Breite/Höhe = Streuung der Gruppe + 25, geklammert 50–200
+    tiefe: [25, 50, 200],       // m: halbe Tiefe = radiale Streuung + 25, geklammert 50–200
+    nickMax: 1.2,               // rad: Kastenmitte höchstens so hoch
+    gierHalbMax: 0.35, nickHalbMax: 0.15, // rad: Deckel fürs Richttempo (s. maxDreh)
+    // m: Lücke quer (Bogen), hoch (Bogen) oder radial > 300 → neuer Kasten, < 220 → wieder zusammen (Hysterese).
+    // WARUM in Metern und 3 Achsen statt Gier-Lücke 0,6 rad: bei 1500 m sind 0,6 rad 900 m — zwei Drohnen 500 m
+    // auseinander teilten sich einen Kasten, nur 15 % der Drohnen lagen darin (Messung R9).
+    luecke: [300, 220],
+    // Kern-Gewichtung (m): der Kasten sitzt auf dem DICHTEN Teil der Gruppe (2 Schritte Mittelwert-Verschiebung mit
+    // Gewicht exp(−(Abstand/kern)²)), statt zwischen Ausreißern
+    kern: 200,
+    maxKaesten: 3,
+    umgruppieren: 2,            // s: frühestens so oft Kästen/Türme neu verteilen
     minTuerme: 2,
   },
   // Killzone (R7, Entscheidung 3): Hysterese ein < 500 m, aus > 600 m um BATTERIE_MITTE, Alarm-Nachlauf 0,5 s
@@ -77,6 +92,8 @@ const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
  *  Kugel der Waffe reicht (Befund Prüfer R8: bei 60 m 7,6° statt höchstens 2,9°). */
 const kugelToleranz = (kugel, d) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), TURMKI.kugelDeckel * d) / d, TURMKI.toleranzRadMin);
 const ZWEI_PI = 2 * Math.PI;
+// Zuordnung Gruppen → Kästen: alle Reihenfolgen von 3 (feste Tabelle, keine Objekte im Schritt)
+const PERM = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
 const winkelDiff = (a, b) => { const d = a - b; return d - ZWEI_PI * Math.floor((d + Math.PI) / ZWEI_PI); }; // → [−π, π)
 
 /**
@@ -117,12 +134,16 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   const vorZiel = new Float64Array(n).fill(-1), wechselZeit = new Float64Array(n).fill(-1e9); // Flackern: A → B → A in < 5 s
   const ab = { t: 0, x: 0, y: 0, z: 0 }, abBest = { t: 0, x: 0, y: 0, z: 0 };
 
-  // Schirme (fest 2 Stück, lage.schirme zeigt 0–2 davon)
-  const schirmVorrat = [0, 1].map(() => ({ mitte: { x: 0, y: 0, z: 0 }, abstand: 800, gierHalb: 0.3, nickHalb: 0.15, tuerme: [],
-    gier: 0, nick: 0.4, sollGier: 0, sollNick: 0.4, sollAbstand: 800 }));
+  // Kästen (fest 3 Stück, lage.schirme zeigt 0–3 davon; Name „schirme“ bleibt für Seite/Tests)
+  const schirmVorrat = [0, 1, 2].map(() => ({ mitte: { x: 0, y: 0, z: 0 }, abstand: 800, gierHalb: 0.3, nickHalb: 0.15, tuerme: [],
+    gier: 0, nick: 0.4, sollGier: 0, sollNick: 0.4, sollAbstand: 800,
+    breite: 150, hoehe: 80, tiefeHalb: 0, sollBreite: 150, sollHoehe: 80, sollTiefe: 0, gewicht: 0 }));
   const lage = { nahbereich: false, schirme: [], eindringlinge: [] };
   // Arbeitsfelder Folgen
   const bG = new Float64Array(MAXZ), bN = new Float64Array(MAXZ), bD = new Float64Array(MAXZ), bW = new Float64Array(MAXZ);
+  const bE = new Float64Array(MAXZ), bQ = new Float64Array(MAXZ), bH = new Float64Array(MAXZ), bK = new Float64Array(MAXZ), bX = new Float64Array(MAXZ), bY = new Float64Array(MAXZ), bZ = new Float64Array(MAXZ), grp = new Int32Array(MAXZ);
+  const gmX = new Float64Array(3), gmY = new Float64Array(3), gmZ = new Float64Array(3);
+  const kastenGruppe = new Int32Array(3), kOrd = new Int32Array(3), kAnz = new Int32Array(3);
   const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAFETTEN.map((l, i) => i).sort((a, b) => LAFETTEN[a].x - LAFETTEN[b].x || a - b);
   let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
   const fest = { gierMitte: 0, gierHalb: 0, nickMin: 0, nickMax: 0 }; // gemerkter fester Sektor
@@ -164,13 +185,14 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     b.zuender = Math.min(Math.max(t, K.zuenderStrecke / v0), K.zuender[1]);
   }
 
-  /** Lissajous-Punkt für Turm k (Phase k/nG) im Sektor (gm ± gh, nm ± nh). */
-  function streiche(b, m, v0, k, nG, gm, gh, nm, nh, R) {
-    const Tg = K.periodeGier, Tn = Tg / K.verhaeltnis;
-    // WARUM eigene Nick-Phase (k·5/12 statt proportional zur Gier-Phase): sonst laufen alle Türme zeitversetzt
-    // dieselbe geschlossene Lissajous-Kurve ab → Linie statt Fläche.
-    const gier = gm + gh * dreieck(zeit / Tg + k / nG + phase0);
-    const nick = nm + nh * dreieck(zeit / Tn + (k * 5 % 12) / 12 + phase0 * 0.37);
+  /** Lissajous-Punkt für Turm k im Kasten s (Gier ± gierHalb, Nick ± nickHalb, Abstand ± tiefeHalb). */
+  function streiche(b, m, v0, k, s) {
+    const Tg = K.periodeGier, Tn = Tg / K.verhaeltnis, Tr = Tg / K.verhaeltnisTiefe;
+    // WARUM eigene Phasen je Achse: sonst laufen alle Türme zeitversetzt dieselbe geschlossene Kurve ab → Linie statt
+    // Fläche. Gier-Phase k·0,382 (goldener Schnitt, R9): je zwei Türme eines Kastens liegen weit auseinander.
+    const gier = s.gier + s.gierHalb * dreieck(zeit / Tg + k * 0.381966 + phase0);
+    const nick = s.nick + s.nickHalb * dreieck(zeit / Tn + (k * 5 % 12) / 12 + phase0 * 0.37);
+    const R = s.abstand + s.tiefeHalb * dreieck(zeit / Tr + (k * 7 % 11) / 11 + phase0 * 0.71);
     setzeAufSchale(b, m, v0, gier, nick, R);
   }
 
@@ -233,99 +255,218 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     b.feuer = frei;
   }
 
-  // ---------- Folgen: Schirme aus der Bedrohung ----------
+  // ---------- Folgen: Sperrkästen auf der Bedrohung (R9) ----------
+  /** Gruppen bilden: gierige Teilung an der größten Lücke quer/hoch/radial (> schwelle m), bis maxN
+   *  Gruppen. Schreibt grp[0..nb) und liefert die Anzahl. WARUM gierig statt Cluster-Verfahren: ≤ 10 Drohnen, fester
+   *  Rechenweg (Gleichlauf), keine Objekte; die Lücken-Schwellen sind dieselben Größen, die der Nutzer sieht. */
+  function teile(nb, schwelle, maxN) {
+    for (let a = 0; a < nb; a++) grp[a] = 0;
+    let ng = nb > 0 ? 1 : 0;
+    while (ng < maxN) {
+      let bestS = 1, bestG = -1, bestAchse = 0, bestWert = 0;
+      for (let g = 0; g < ng; g++) {
+        for (let achse = 0; achse < 3; achse++) {
+          const A = achse === 0 ? bQ : achse === 1 ? bH : bD;
+          let m = 0;
+          for (let a = 0; a < nb; a++) if (grp[a] === g) ord[m++] = a;
+          if (m < 2) continue;
+          for (let a = 1; a < m; a++) { const v = ord[a]; let c = a - 1; while (c >= 0 && A[ord[c]] > A[v]) { ord[c + 1] = ord[c]; c--; } ord[c + 1] = v; }
+          for (let a = 0; a + 1 < m; a++) {
+            const s = (A[ord[a + 1]] - A[ord[a]]) / schwelle;
+            if (s > bestS) { bestS = s; bestG = g; bestAchse = achse; bestWert = (A[ord[a + 1]] + A[ord[a]]) / 2; }
+          }
+        }
+      }
+      if (bestG < 0) break;
+      const A = bestAchse === 0 ? bQ : bestAchse === 1 ? bH : bD;
+      for (let a = 0; a < nb; a++) if (grp[a] === bestG && A[a] > bestWert) grp[a] = ng;
+      ng++;
+    }
+    return ng;
+  }
+
+  /** Sollwerte eines Kastens aus Gruppe g (Schwerpunkt der vorausgesagten Lagen, Größe aus der Streuung). */
+  function sollAusGruppe(s, g, nb) {
+    let sx = 0, sy = 0, sz = 0, sw = 0, sd = 0;
+    for (let a = 0; a < nb; a++) bK[a] = grp[a] === g ? bW[a] : 0;
+    for (let schritt = 0; schritt < 3; schritt++) {
+      sx = sy = sz = sw = sd = 0;
+      for (let a = 0; a < nb; a++) { const w = bK[a]; if (!w) continue; sx += w * bX[a]; sy += w * bY[a]; sz += w * bZ[a]; sw += w; }
+      if (schritt === 2) break;
+      const cx = sx / sw, cy = sy / sw, cz = sz / sw;
+      for (let a = 0; a < nb; a++) if (grp[a] === g) { const e = L(bX[a] - cx, bY[a] - cy, bZ[a] - cz) / F.kern; bK[a] = bW[a] * Math.exp(-e * e) + 1e-9 * bW[a]; }
+    }
+    for (let a = 0; a < nb; a++) sd += bK[a] * bD[a];
+    const l = L(sx, sy, sz) || 1;
+    // WARUM Nick ≤ 1,2 rad (69°): nahe am Zenit dreht die Gier-Achse eines Turms, der neben BATTERIE_MITTE steht, beliebig
+    // schnell (Messung R9: Kasten bei 81° Nick → Befehle bis 150°/s Gier)
+    s.sollGier = Math.atan2(sx, sz); s.sollNick = Math.min(Math.asin(klemme(sy / l, -1, 1)), F.nickMax);
+    const mD = sd / sw;
+    s.sollAbstand = klemme(mD - F.vorne, F.abstand[0], F.abstand[1]);
+    let vg = 0, vn = 0, vr = 0;
+    for (let a = 0; a < nb; a++) {
+      if (!bK[a]) continue;
+      const dg = winkelDiff(bG[a], s.sollGier) * Math.cos(bN[a]) * bD[a], dn = (bN[a] - s.sollNick) * bD[a], dr = bD[a] - mD;
+      vg += bK[a] * dg * dg; vn += bK[a] * dn * dn; vr += bK[a] * dr * dr;
+    }
+    const A = s.sollAbstand, Q = F.quer, T = F.tiefe;
+    // WARUM Deckel in rad zusätzlich: Muster-Tempo 4·halb/Periode + Nachführen muss unter dem Richttempo bleiben
+    s.sollBreite = Math.min(klemme(Math.sqrt(vg / sw) + Q[0], Q[1], Q[2]), F.gierHalbMax * A);
+    s.sollHoehe = Math.min(klemme(Math.sqrt(vn / sw) + Q[0], Q[1], Q[2]), F.nickHalbMax * A);
+    s.sollTiefe = klemme(Math.sqrt(vr / sw) + T[0], T[1], T[2]);
+    let gw = 0; for (let a = 0; a < nb; a++) if (grp[a] === g) gw += bW[a];
+    s.gewicht = gw;
+  }
+
+  /** Kasten b übernimmt den Zustand von Kasten a (neuer Kasten entsteht aus dem alten → kein Sprung). */
+  function kopiereKasten(b, a) {
+    b.gier = a.gier; b.nick = a.nick; b.abstand = a.abstand; b.breite = a.breite; b.hoehe = a.hoehe; b.tiefeHalb = a.tiefeHalb;
+    b.sollGier = a.sollGier; b.sollNick = a.sollNick; b.sollAbstand = a.sollAbstand;
+    b.sollBreite = a.breite; b.sollHoehe = a.hoehe; b.sollTiefe = a.tiefeHalb; b.gewicht = 0;
+  }
+  /** Abstand (m) zwischen der Mitte von Kasten s und der Soll-Mitte von Gruppe g (über die vorher berechneten gm*). */
+  function kastenZuGruppe(s, g) {
+    const c = Math.cos(s.nick), x = Math.sin(s.gier) * c * s.abstand, y = Math.sin(s.nick) * s.abstand, z = Math.cos(s.gier) * c * s.abstand;
+    return L(x - gmX[g], y - gmY[g], z - gmZ[g]);
+  }
+
   function folgeSchirme(dt, ziele, v0) {
     // 1) Bedrohung: vorausgesagte Lage (pos + vel · Flugzeit), Gewicht 1 + Angriff + 0,5·Annäherung
     let nb = 0;
     for (let j = 0; j < ziele.length && j < MAXZ; j++) {
       const z = ziele[j];
-      if (!z.aktiv || nahSlot[j]) continue; // Eindringlinge bekommen Direktbeschuss, keine Wand
+      if (!z.aktiv || nahSlot[j]) continue; // Eindringlinge bekommen Direktbeschuss, keinen Kasten
       const d0 = L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z), tf = d0 / v0;
       const qx = z.pos.x + z.vel.x * tf - M.x, qy = z.pos.y + z.vel.y * tf - M.y, qz = z.pos.z + z.vel.z * tf - M.z, d = L(qx, qy, qz) || 1;
       const an = -((z.pos.x - M.x) * z.vel.x + (z.pos.y - M.y) * z.vel.y + (z.pos.z - M.z) * z.vel.z) / (d0 || 1) / K.tempoBezug;
+      bX[nb] = qx; bY[nb] = qy; bZ[nb] = qz;
       bG[nb] = Math.atan2(qx, qz); bN[nb] = Math.asin(klemme(qy / d, -1, 1)); bD[nb] = d;
+      bQ[nb] = bG[nb] * Math.cos(bN[nb]) * d; bH[nb] = bN[nb] * d; // Bogenlängen für die Lücken
       bW[nb] = 1 + (z.angriff ? 1 : 0) + 0.5 * klemme(an, 0, 1);
       nb++;
     }
-    const S0 = schirmVorrat[0], S1 = schirmVorrat[1];
     if (!schirmeBereit) {
       // Start: Standard-Sektor, damit die erste Bewegung weich aus der Mitte kommt
-      for (const s of schirmVorrat) { s.gier = s.sollGier = STANDARD_SEKTOR.gierMitte; s.nick = s.sollNick = (STANDARD_SEKTOR.nickMin + STANDARD_SEKTOR.nickMax) / 2; s.abstand = s.sollAbstand = 800; }
+      for (const s of schirmVorrat) {
+        s.gier = s.sollGier = STANDARD_SEKTOR.gierMitte; s.nick = s.sollNick = (STANDARD_SEKTOR.nickMin + STANDARD_SEKTOR.nickMax) / 2;
+        s.abstand = s.sollAbstand = 800; s.breite = s.sollBreite = 150; s.hoehe = s.sollHoehe = 80; s.tiefeHalb = s.sollTiefe = 100;
+      }
       schirmeBereit = true;
     }
     seitUmgruppiert += dt;
     if (nb > 0) {
-      // 2) nach Gier sortieren (Einfügen, ≤ 64), größte Lücke suchen
-      for (let a = 0; a < nb; a++) ord[a] = a;
-      for (let a = 1; a < nb; a++) { const v = ord[a]; let c = a - 1; while (c >= 0 && bG[ord[c]] > bG[v]) { ord[c + 1] = ord[c]; c--; } ord[c + 1] = v; }
-      let teil = -1, lueckeMax = 0;
-      for (let a = 0; a + 1 < nb; a++) { const g = bG[ord[a + 1]] - bG[ord[a]]; if (g > lueckeMax) { lueckeMax = g; teil = a; } }
-      const wunschGruppen = anzahlGruppen === 1 ? (lueckeMax > F.luecke[0] ? 2 : 1) : (lueckeMax < F.luecke[1] ? 1 : 2);
-      if (wunschGruppen !== anzahlGruppen && seitUmgruppiert >= F.umgruppieren) {
-        if (wunschGruppen === 2 && anzahlGruppen === 1) { // neuer Schirm entsteht aus dem alten (weicher Übergang)
-          S1.gier = S0.gier; S1.nick = S0.nick; S1.abstand = S0.abstand; S1.gierHalb = S0.gierHalb; S1.nickHalb = S0.nickHalb;
+      // 2) Anzahl der Kästen mit Hysterese: mehr erst über den hohen, weniger erst unter den tiefen Lücken; ≤ alle 2 s
+      const LG = F.luecke, maxK = Math.min(F.maxKaesten, Math.floor(n / F.minTuerme));
+      const nHoch = teile(nb, LG[0], maxK), nTief = teile(nb, LG[1], maxK);
+      const wunsch = nHoch > anzahlGruppen ? nHoch : nTief < anzahlGruppen ? Math.max(1, nTief) : anzahlGruppen;
+      if (wunsch !== anzahlGruppen && seitUmgruppiert >= F.umgruppieren) {
+        const alt = anzahlGruppen;
+        anzahlGruppen = wunsch; seitUmgruppiert = 0; statistik.gruppenWechsel++;
+        if (wunsch > alt) {
+          // neue Kästen entstehen aus dem alten, der der am schlechtesten bedienten Gruppe am nächsten ist
+          const ng = teile(nb, LG[1], wunsch);
+          gruppenMitten(ng, nb);
+          for (let j = alt; j < wunsch; j++) {
+            let schlechtG = 0, schlechtD = -1;
+            for (let g = 0; g < ng; g++) {
+              let dmin = Infinity;
+              for (let k = 0; k < j; k++) dmin = Math.min(dmin, kastenZuGruppe(schirmVorrat[k], g));
+              if (dmin > schlechtD) { schlechtD = dmin; schlechtG = g; }
+            }
+            let quelle = 0, qd = Infinity;
+            for (let k = 0; k < j; k++) { const d = kastenZuGruppe(schirmVorrat[k], schlechtG); if (d < qd) { qd = d; quelle = k; } }
+            kopiereKasten(schirmVorrat[j], schirmVorrat[quelle]);
+          }
         }
-        anzahlGruppen = wunschGruppen; seitUmgruppiert = 0; statistik.gruppenWechsel++;
       }
-      if (anzahlGruppen === 2 && (teil < 0 || nb < 2)) teil = -1;
-      // 3) Sollwerte je Gruppe (Gruppe 0 = kleinere Gier = −X-Seite)
-      let W0 = 0, W1 = 0;
-      for (let g = 0; g < anzahlGruppen; g++) {
-        const von = anzahlGruppen === 2 && teil >= 0 ? (g === 0 ? 0 : teil + 1) : 0;
-        const bis = anzahlGruppen === 2 && teil >= 0 ? (g === 0 ? teil + 1 : nb) : nb;
-        if (bis <= von) continue;
-        let sx = 0, sy = 0, sz = 0, sw = 0, sd = 0;
-        for (let a = von; a < bis; a++) {
-          const k = ord[a], w = bW[k], cn = Math.cos(bN[k]);
-          sx += w * Math.sin(bG[k]) * cn; sy += w * Math.sin(bN[k]); sz += w * Math.cos(bG[k]) * cn; sw += w; sd += w * bD[k];
-        }
-        const s = schirmVorrat[g], l = L(sx, sy, sz) || 1;
-        s.sollGier = Math.atan2(sx, sz); s.sollNick = Math.asin(klemme(sy / l, -1, 1));
-        s.sollAbstand = klemme(sd / sw - F.vorne, F.abstand[0], F.abstand[1]);
-        let vg = 0, vn = 0;
-        for (let a = von; a < bis; a++) { const k = ord[a], dg = winkelDiff(bG[k], s.sollGier), dn = bN[k] - s.sollNick; vg += bW[k] * dg * dg; vn += bW[k] * dn * dn; }
-        const zielGh = klemme(Math.sqrt(vg / sw) + F.gierRand, F.gierHalb[0], F.gierHalb[1]);
-        const zielNh = klemme(Math.sqrt(vn / sw) + F.nickRand, F.nickHalb[0], F.nickHalb[1]);
-        const a1 = 1 - Math.exp(-dt / 1.0);
-        s.gierHalb += (zielGh - s.gierHalb) * a1; s.nickHalb += (zielNh - s.nickHalb) * a1;
-        if (g === 0) W0 = sw; else W1 = sw;
+      // 3) Zuordnung mit Gedächtnis (ein k-Mittel-Schritt): jede Drohne zum Kasten mit der nächsten Soll-Mitte des
+      //    letzten Takts. WARUM nicht jeden Takt neu teilen: die Gruppen kippten zwischen Nachbarn, die Soll-Mitte sprang
+      //    und der Kasten hing im Mittel 125 m neben den Drohnen (Messung R9; die Soll-Mitte selbst lag 38 m daneben).
+      for (let k = 0; k < anzahlGruppen; k++) {
+        const q = schirmVorrat[k], c = Math.cos(q.sollNick);
+        gmX[k] = Math.sin(q.sollGier) * c * q.sollAbstand; gmY[k] = Math.sin(q.sollNick) * q.sollAbstand; gmZ[k] = Math.cos(q.sollGier) * c * q.sollAbstand;
+        kAnz[k] = 0;
       }
-      // 4) Türme verteilen (nur beim Umgruppieren bzw. alle 2 s): nach Gewicht, mind. 2 je Schirm, +X-Türme → +X-Schirm
-      if (seitUmgruppiert === 0 || takt % Math.round(F.umgruppieren * 60) === 0) {
-        let n0 = n;
-        if (anzahlGruppen === 2) n0 = klemme(Math.round(n * W0 / ((W0 + W1) || 1)), F.minTuerme, n - F.minTuerme);
-        for (let a = 0; a < n; a++) gruppeTurm[turmNachX[a]] = a < n0 ? 0 : 1;
+      for (let j = 0; j < nb; j++) {
+        let best = 0, bd = Infinity;
+        for (let k = 0; k < anzahlGruppen; k++) { const d = L(bX[j] - gmX[k], bY[j] - gmY[k], bZ[j] - gmZ[k]); if (d < bd) { bd = d; best = k; } }
+        grp[j] = best; bE[j] = bd; kAnz[best]++;
       }
+      // leerer Kasten holt sich die am schlechtesten bediente Drohne (größter Abstand, ihr Kasten behält mind. eine)
+      for (let k = 0; k < anzahlGruppen; k++) {
+        if (kAnz[k]) continue;
+        let w = -1, wd = -1;
+        for (let j = 0; j < nb; j++) if (kAnz[grp[j]] > 1 && bE[j] > wd) { wd = bE[j]; w = j; }
+        if (w >= 0) { kAnz[grp[w]]--; grp[w] = k; kAnz[k]++; }
+      }
+      for (let k = 0; k < anzahlGruppen; k++) {
+        if (kAnz[k]) sollAusGruppe(schirmVorrat[k], k, nb); else schirmVorrat[k].gewicht = 0; // ohne Drohne: Soll bleibt
+      }
+      // 4) Türme verteilen (beim Umgruppieren bzw. alle 2 s): je Kasten mind. 2, Rest nach Gewicht; Kästen nach Gier,
+      //    Türme nach x (−X-Türme → Kasten mit kleinerer Gier)
+      if (seitUmgruppiert === 0 || takt % Math.round(F.umgruppieren * 60) === 0) verteileTuerme();
     }
-    // 5) träge nachführen: Glättung τ, Drehtempo ≤ 12°/s, Abstand ≤ 150 m/s
-    const al = 1 - Math.exp(-dt / F.tau);
+    // 5) träge nachführen: Glättung τ, Drehtempo ≤ maxDreh, Abstand ≤ maxAbstandTempo, Größe τ 1 s
+    const al = 1 - Math.exp(-dt / F.tau), a1 = 1 - Math.exp(-dt / F.tauGroesse);
     lage.schirme.length = 0;
     for (let g = 0; g < anzahlGruppen; g++) {
       const s = schirmVorrat[g];
       let dg = winkelDiff(s.sollGier, s.gier) * al, dn = (s.sollNick - s.nick) * al;
-      const cn = Math.cos(s.nick), w = Math.sqrt(dg * dg * cn * cn + dn * dn), wmax = F.maxDreh * dt;
-      if (w > wmax) { dg *= wmax / w; dn *= wmax / w; }
+      // WARUM je Achse (Gier um die Hochachse, Nick) statt Großkreis: die Türme richten je Achse; bei hohem Nick ist
+      // die Gier-Rate = Großkreis / cos(Nick) — Messung R9: Befehle bis 181°/s Gier. Richtung bleibt (gemeinsamer Faktor).
+      const f = Math.max(Math.abs(dg) / (F.maxDreh * dt), Math.abs(dn) / (F.maxDrehNick * dt));
+      if (f > 1) { dg /= f; dn /= f; }
       s.gier = winkelDiff(s.gier + dg, 0); s.nick += dn;
       s.abstand += klemme((s.sollAbstand - s.abstand) * al, -F.maxAbstandTempo * dt, F.maxAbstandTempo * dt);
+      s.breite += (s.sollBreite - s.breite) * a1; s.hoehe += (s.sollHoehe - s.hoehe) * a1; s.tiefeHalb += (s.sollTiefe - s.tiefeHalb) * a1;
+      s.gierHalb = Math.min(s.breite / s.abstand, F.gierHalbMax); s.nickHalb = Math.min(s.hoehe / s.abstand, F.nickHalbMax);
       const c2 = Math.cos(s.nick);
       s.mitte.x = M.x + Math.sin(s.gier) * c2 * s.abstand; s.mitte.y = M.y + Math.sin(s.nick) * s.abstand; s.mitte.z = M.z + Math.cos(s.gier) * c2 * s.abstand;
       s.tuerme.length = 0;
       lage.schirme.push(s);
     }
-    if (anzahlGruppen === 1) for (let i = 0; i < n; i++) gruppeTurm[i] = 0;
-    for (let i = 0; i < n; i++) schirmVorrat[gruppeTurm[i]].tuerme.push(i);
+    for (let i = 0; i < n; i++) { if (gruppeTurm[i] >= anzahlGruppen) gruppeTurm[i] = anzahlGruppen - 1; schirmVorrat[gruppeTurm[i]].tuerme.push(i); }
+  }
+
+  /** Soll-Mitten (kartesisch, relativ zu M) der Gruppen 0..ng nach gmX/gmY/gmZ. */
+  function gruppenMitten(ng, nb) {
+    for (let g = 0; g < ng; g++) {
+      let sx = 0, sy = 0, sz = 0, sw = 0, sd = 0;
+      for (let a = 0; a < nb; a++) if (grp[a] === g) { const w = bW[a]; sx += w * bX[a]; sy += w * bY[a]; sz += w * bZ[a]; sw += w; sd += w * bD[a]; }
+      const l = L(sx, sy, sz) || 1, d = sd / (sw || 1);
+      gmX[g] = sx / l * d; gmY[g] = sy / l * d; gmZ[g] = sz / l * d;
+    }
+  }
+
+  function verteileTuerme() {
+    const nK = anzahlGruppen;
+    for (let k = 0; k < nK; k++) { kOrd[k] = k; kAnz[k] = nK > 1 ? F.minTuerme : n; }
+    if (nK > 1) {
+      let rest = n - nK * F.minTuerme, W = 0;
+      for (let k = 0; k < nK; k++) W += schirmVorrat[k].gewicht;
+      // Rest nach Gewicht (größter Anteil zuerst, gleich → kleinere Nummer), deterministisch
+      while (rest > 0) {
+        let best = 0, bestV = -Infinity;
+        for (let k = 0; k < nK; k++) { const v = (W > 0 ? schirmVorrat[k].gewicht / W * n : 1) - kAnz[k]; if (v > bestV) { bestV = v; best = k; } }
+        kAnz[best]++; rest--;
+      }
+      // Kästen nach Gier sortieren (Einfügen)
+      for (let a = 1; a < nK; a++) { const v = kOrd[a]; let c = a - 1; while (c >= 0 && schirmVorrat[kOrd[c]].gier > schirmVorrat[v].gier) { kOrd[c + 1] = kOrd[c]; c--; } kOrd[c + 1] = v; }
+    }
+    let a = 0;
+    for (let q = 0; q < nK; q++) for (let c = 0; c < kAnz[kOrd[q]]; c++) gruppeTurm[turmNachX[a++]] = kOrd[q];
   }
 
   function festerSchirm(dt, R, Sbefehl) {
     const s = schirmVorrat[0];
     if (!warFest) {
-      // Umschalten auf fest: die Wand bleibt, wo sie ist → größten aktuellen Schirm (meiste Türme) als Sektor merken
+      // Umschalten auf fest: die Wand bleibt, wo sie ist → größten aktuellen Kasten (meiste Türme) als Sektor merken
       if (schirmeBereit && lage.schirme.length) {
         let q = lage.schirme[0];
         for (let g = 1; g < lage.schirme.length; g++) if (lage.schirme[g].tuerme.length > q.tuerme.length) q = lage.schirme[g];
         fest.gierMitte = q.gier; fest.gierHalb = q.gierHalb; fest.nickMin = q.nick - q.nickHalb; fest.nickMax = q.nick + q.nickHalb;
-        if (q !== s) s.abstand = q.abstand;
-      } else if (!schirmeBereit) s.abstand = R; // Start im festen Modus: sofort auf dem befohlenen Abstand
+        if (q !== s) { s.abstand = q.abstand; s.tiefeHalb = q.tiefeHalb; }
+      } else if (!schirmeBereit) { s.abstand = R; s.tiefeHalb = 0; } // Start im festen Modus: sofort auf dem befohlenen Abstand
       warFest = true;
     }
     const S = Sbefehl ?? fest;
@@ -333,12 +474,15 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     s.gierHalb = S.gierHalb; s.nickHalb = (S.nickMax - S.nickMin) / 2;
     // WARUM gleiten: +/− und das Umschalten sollen die Wand nicht springen lassen (gleiches Tempo wie beim Folgen)
     s.sollAbstand = R; s.abstand += klemme(R - s.abstand, -F.maxAbstandTempo * dt, F.maxAbstandTempo * dt);
+    // Feste Wand = Kugelschale: die Tiefe des Kastens klingt weich ab (τ 1 s), statt im Umschalt-Takt zu springen
+    s.tiefeHalb += (0 - s.tiefeHalb) * (1 - Math.exp(-dt / F.tauGroesse));
+    s.breite = s.sollBreite = s.gierHalb * s.abstand; s.hoehe = s.sollHoehe = s.nickHalb * s.abstand; s.sollTiefe = s.tiefeHalb;
     const c = Math.cos(s.nick), A = s.abstand;
     s.mitte.x = M.x + Math.sin(s.gier) * c * A; s.mitte.y = M.y + Math.sin(s.nick) * A; s.mitte.z = M.z + Math.cos(s.gier) * c * A;
     s.tuerme.length = 0; for (let i = 0; i < n; i++) s.tuerme.push(i);
     lage.schirme.length = 0; lage.schirme.push(s);
-    // Schirm 0 bleibt gültig → beim Zurückschalten auf Folgen gleitet er von hier aus weiter (kein Rücksprung)
-    schirmeBereit = true; anzahlGruppen = 1;
+    // Kasten 0 bleibt gültig → beim Zurückschalten auf Folgen gleitet er von hier aus weiter (kein Rücksprung)
+    schirmeBereit = true; anzahlGruppen = 1; gruppeTurm.fill(0);
   }
 
   function schritt(dt, befehl, ziele, turmZustand) {
@@ -361,8 +505,11 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           if (nahTurm[i] >= 0) { richteNah(i, ziele, m, v0, frei); continue; }
           // WARUM Phase nach fester Turmnummer (nicht Platz im Schirm): sonst springt das Muster, wenn ein Turm in die
           // Killzone wechselt oder zurückkommt (Messung R7: Befehls-Sprünge bis 5900°/s)
-          streiche(b, m, v0, i, n, s.gier, s.gierHalb, s.nick, s.nickHalb, s.abstand);
-          b.zielId = null; b.feuer = frei; b.toleranz = K.toleranzSperr; b.streuKugel = 0; // Wand: Muster sättigt schon
+          streiche(b, m, v0, i, s);
+          // Kasten: Feuer-Spielraum ≤ halbe kleinste Kastenseite (sonst fliegen die Granaten neben den Kasten);
+          // feste Wand: unverändert toleranzSperr
+          b.toleranz = folgen ? klemme(0.5 * Math.min(s.breite, s.hoehe) / s.abstand, 0.015, K.toleranzSperr) : K.toleranzSperr;
+          b.zielId = null; b.feuer = frei; b.streuKugel = 0; // Kasten/Wand: Muster sättigt schon
         }
       }
     } else {
