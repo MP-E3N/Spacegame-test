@@ -75,9 +75,9 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12, modell = 'r7') {
         const m = tm.muendung;
         let qx = b.punkt.x, qy = b.punkt.y, qz = b.punkt.z;
         const dp = L(qx - m.x, qy - m.y, qz - m.z);
-        // Streukugel (wie die Waffe, Entscheidung 2): Punkt gleichverteilt in der Kugel um `punkt`, Radius ≤ 0,05·d,
+        // Streukugel (wie die Waffe, Entscheidung 2): Punkt gleichverteilt in der Kugel um `punkt`, Radius ≤ Deckel·d (R9 0,10),
         // genau 3 Zufallszahlen (Gleichlauf); Zeitzünder auf diesen Punkt.
-        const R = Math.min(b.streuKugel ?? 0, 0.05 * dp);
+        const R = Math.min(b.streuKugel ?? 0, TURMKI.kugelDeckel * dp);
         let zuender = b.zuender;
         if (R > 0) {
           const cu = 2 * rnd() - 1, ph = 2 * Math.PI * rnd(), r = R * Math.cbrt(rnd()), su = Math.sqrt(1 - cu * cu);
@@ -140,12 +140,13 @@ const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Kugel < Zielfeuer-Radius =
     maxRech = Math.max(maxRech, L(gx - ziel.pos.x - ziel.vel.x * t, gy - ziel.pos.y - ziel.vel.y * t, gz - ziel.pos.z - ziel.vel.z * t));
     const tk = Math.round(t / DT) * DT; // Detonation auf dem nächsten ganzen Takt
     maxTakt = Math.max(maxTakt, L(m.x + dx / d * V0 * tk - ziel.pos.x - ziel.vel.x * tk, m.y + dy / d * V0 * tk - ziel.pos.y - ziel.vel.y * tk, m.z + dz / d * V0 * tk - ziel.pos.z - ziel.vel.z * tk));
-    if (b.streuKugel !== 20 || Math.abs(b.toleranz - Math.max(20 / d, 0.008)) > 1e-12) kugelZiel = false;
+    const K0 = TURMKI.streuKugel.ziel;
+    if (b.streuKugel !== K0 || Math.abs(b.toleranz - Math.max(Math.min(K0, TURMKI.kugelDeckel * d) / d, 0.008)) > 1e-12) kugelZiel = false;
   }
   zeile('A Vorhaltfehler rechnerisch (5 Bahnen × v0 620/1100, 1500 m, 150 m/s)', '< 1 m', f2(maxRech) + ' m', maxRech < 1);
   // WARUM ≤ 11 m: Zündung auf ganzen Takten verschiebt um ≤ DT/2 → (v0 + 150)·DT/2 = 10,4 m bei 1100 m/s
   zeile('A Vorhaltfehler, Zündung nur auf ganzen Takten', '≤ 11 m (Info)', f1(maxTakt) + ' m', maxTakt <= 11, false);
-  zeile('A Zielfeuer: streuKugel 20 m, toleranz = max(20, 8)/d', 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
+  zeile(`A Zielfeuer: streuKugel ${TURMKI.streuKugel.ziel} m, toleranz = min(Kugel, ${TURMKI.kugelDeckel}·d)/d`, 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
   // unlösbar: Ziel flieht schneller als die Granate (v0 620)
   const tuerme = ersatzTuerme(620), m = tuerme[1].muendung;
   const flieht = { id: 9, pos: { x: m.x, y: m.y + 500, z: m.z + 1400 }, vel: { x: 0, y: 0, z: 700 }, r: 6, aktiv: true, angriff: false };
@@ -232,8 +233,8 @@ function messeR7(k, dr, ki, bef, flak, befehl, m, z0) {
   }
   if (befehl.modus !== 'sperrfeuer' || befehl.folgen === false) return;
   // Folgen: Wandmitte ↔ Soll, Nachführtempo je Schirm-Platz
-  m.folgTakte++; if (lage.schirme.length === 2) m.zweiSchirme++;
-  for (let g = 0; g < 2; g++) {
+  m.folgTakte++; if (lage.schirme.length >= 2) m.zweiSchirme++;
+  for (let g = 0; g < 3; g++) {
     const s = lage.schirme[g];
     if (!s) { z0.vorSchirm[g] = null; continue; }
     const cw = (a, b) => [Math.sin(a) * Math.cos(b), Math.sin(b), Math.cos(a) * Math.cos(b)];
@@ -242,16 +243,22 @@ function messeR7(k, dr, ki, bef, flak, befehl, m, z0) {
     const p = z0.vorSchirm[g];
     if (p) {
       m.drehMax = Math.max(m.drehMax, Math.acos(Math.min(1, u[0] * p.u[0] + u[1] * p.u[1] + u[2] * p.u[2])) / DT);
+      // R9: je Achse (die KI begrenzt Gier und Nick einzeln, wie die Türme richten); nur ohne Umgruppieren im Takt
+      if (p.anz === lage.schirme.length) {
+        const dg = s.gier - p.gier; m.drehG = Math.max(m.drehG, Math.abs(dg - 2 * Math.PI * Math.round(dg / (2 * Math.PI))) / DT);
+        m.drehN = Math.max(m.drehN, Math.abs(s.nick - p.nick) / DT);
+      }
       m.abstandTempoMax = Math.max(m.abstandTempoMax, Math.abs(s.abstand - p.abstand) / DT);
     }
-    z0.vorSchirm[g] = { u, abstand: s.abstand };
+    z0.vorSchirm[g] = { u, abstand: s.abstand, gier: s.gier, nick: s.nick, anz: lage.schirme.length };
   }
-  // Liegen die Drohnen (außer Eindringlingen) im Sektor eines Schirms?
+  // Liegen die Drohnen (außer Eindringlingen) im Sektor eines Kastens (±0,1 rad) bzw. streng IM Kasten (R9, auch Tiefe)?
   for (const z of dr.ziele) {
     if (!z.aktiv || lage.eindringlinge.includes(z.id)) continue;
     const x = z.pos.x - M.x, y = z.pos.y - M.y, zz = z.pos.z - M.z, d = L(x, y, zz), g = Math.atan2(x, zz), nk = Math.asin(y / d);
     m.bedrohung++;
     if (lage.schirme.some((s) => Math.abs(g - s.gier) <= s.gierHalb + 0.1 && Math.abs(nk - s.nick) <= s.nickHalb + 0.1)) m.imSektor++;
+    if (lage.schirme.some((s) => Math.abs(g - s.gier) <= s.gierHalb && Math.abs(nk - s.nick) <= s.nickHalb && Math.abs(d - s.abstand) <= Math.max(s.tiefeHalb, 50))) m.imKasten++;
   }
   // Richttempo der Sperr-Rohre (Befehl), nur Rohre, die in beiden Takten Sperrfeuer schießen
   bef.forEach((b, i) => {
@@ -275,11 +282,11 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
     vsNah: [], winkel: [], drehMax: 0, abstandTempoMax: 0, imSektor: 0, bedrohung: 0, zweiSchirme: 0, folgTakte: 0,
     richtG: 0, richtN: 0, dMin: Infinity, dMax: 0, yMin: Infinity, zNeg: 0, schritte: 0, paarMin: Infinity, jeZielMax: 0,
     abschuesse: 0, neustartOk: 0, neustartFehler: 0, ersterAngriff: null, durchSchirm: 0, nan: 0, zeitDr: 0, zeitKi: 0, treffer: 0, schuesse: 0,
-    kugelFalsch: 0, detZiel: [], detNah: [] };
+    kugelFalsch: 0, detZiel: [], detNah: [], detSperr: [], imKasten: 0, kastenProben: 0, drehG: 0, drehN: 0 };
   const wartet = new Map(); // slot → { takt, id }
   const innen = new Array(DROHNEN.anzahl).fill(false);
   const vsMin = new Array(DROHNEN.anzahl).fill(Infinity), vsWar = new Array(DROHNEN.anzahl).fill(false);
-  const raus = new Map(), drinIds = new Set(), vorSchirm = [null, null], vorRohr = new Array(6).fill(null);
+  const raus = new Map(), drinIds = new Set(), vorSchirm = [null, null, null], vorRohr = new Array(6).fill(null);
   let h = 0x811c9dc5;
   const f64 = new Float64Array(1), u32 = new Uint32Array(f64.buffer);
   const misch = (x) => { f64[0] = x; h = Math.imul(h ^ u32[0], 16777619); h = Math.imul(h ^ u32[1], 16777619); };
@@ -301,15 +308,19 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
     if (!mitMessung) continue;
     messeR7(k, dr, ki, bef, flak, befehl, mess, { vsMin, vsWar, raus, drinIds, vorSchirm, vorRohr, tuerme });
     for (const a of erg.abschuesse) { mess.abschuesse++; const slot = dr.ziele.findIndex((z) => z.id === a.id); wartet.set(slot, { takt: k, id: a.id }); }
-    // R8: Streukugel-Regel je Befehl (Sperrfeuer/kein Ziel 0, Nahbereich min(12, 0,05·d), Zielfeuer 20) + toleranz
+    // R8/R9: Streukugel-Regel je Befehl (Sperrfeuer/kein Ziel 0, Nahbereich min(20, 0,06·d), Zielfeuer 60) + toleranz
+    // (Ziel: min(max(Kugel, 8), Deckel·d)/d ≥ 0,008; Sperrkasten: halbe kleinste Seite / Abstand, 0,015–toleranzSperr)
+    const SK = TURMKI.streuKugel, folgt = befehl.modus === 'sperrfeuer' && befehl.folgen !== false;
     bef.forEach((b, i) => {
       const mu = tuerme[i].muendung, d = L(b.punkt.x - mu.x, b.punkt.y - mu.y, b.punkt.z - mu.z);
       const nah = b.zielId !== null && ki.lage.eindringlinge.includes(b.zielId);
-      const soll = b.zielId === null ? 0 : nah ? Math.min(12, 0.05 * d) : 20;
-      const tol = b.zielId === null ? TURMKI.toleranzSperr : Math.max(Math.max(Math.min(soll, 0.05 * d), 8) / d, 0.008);
+      const soll = b.zielId === null ? 0 : nah ? Math.min(SK.nahMax, SK.nahAnteil * d) : SK.ziel;
+      const sc = ki.lage.schirme.find((q) => q.tuerme.includes(i));
+      const tolSperr = folgt && sc ? Math.min(Math.max(0.5 * Math.min(sc.breite, sc.hoehe) / sc.abstand, 0.015), TURMKI.toleranzSperr) : TURMKI.toleranzSperr;
+      const tol = b.zielId === null ? tolSperr : Math.max(Math.min(Math.max(soll, 8), TURMKI.kugelDeckel * d) / d, 0.008);
       if (!(Math.abs(b.streuKugel - soll) < 1e-6 && Math.abs(b.toleranz - tol) < 1e-9)) mess.kugelFalsch++;
     });
-    for (const dt of flak.ereignisse.detonationen) if (dt.ziel && Number.isFinite(dt.naechste)) (dt.nah ? mess.detNah : mess.detZiel).push(dt.naechste);
+    for (const dt of flak.ereignisse.detonationen) if (Number.isFinite(dt.naechste)) (!dt.ziel ? mess.detSperr : dt.nah ? mess.detNah : mess.detZiel).push(dt.naechste);
     const zaehl = new Map();
     for (const b of bef) if (b.zielId !== null) zaehl.set(b.zielId, (zaehl.get(b.zielId) ?? 0) + 1);
     // Killzone-Eindringlinge dürfen 3 Türme haben (R7), alle anderen höchstens 2
@@ -381,11 +392,17 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, Mittel)', '≤ 12°', f1(mittel / GRAD) + '°', mittel <= 12 * GRAD);
   zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, 90 %)', '≤ 30°', f1(p90 / GRAD) + '°', p90 <= 30 * GRAD, false);
   zeile('F Drohnen (außer Eindringlingen) im Schirm-Sektor', '≥ 50 % (Info)', f1(100 * m.imSektor / Math.max(1, m.bedrohung)) + ' %', m.imSektor >= 0.5 * m.bedrohung, false);
-  // WARUM ±1 %: die KI begrenzt den Winkelschritt in der Gier/Nick-Näherung, gemessen wird der echte Großkreiswinkel
-  zeile('F Nachführtempo der Schirmmitte (max)', '≤ 20°/s (±1 %)', f2(m.drehMax / GRAD) + '°/s', m.drehMax <= 20.2 * GRAD);
-  zeile('F Abstands-Nachführung (max)', '≤ 150 m/s', f1(m.abstandTempoMax) + ' m/s', m.abstandTempoMax <= 150 + 1e-6);
+  // R9: Nachführen je Achse begrenzt (Gier um die Hochachse, Nick), wie die Türme richten
+  const FG = TURMKI.folgen;
+  zeile('F Nachführtempo der Kastenmitte Gier / Nick (max)', `≤ ${f1(FG.maxDreh / GRAD)} / ${f1(FG.maxDrehNick / GRAD)}°/s`, `${f2(m.drehG / GRAD)} / ${f2(m.drehN / GRAD)}°/s`, m.drehG <= FG.maxDreh * 1.001 && m.drehN <= FG.maxDrehNick * 1.001);
+  zeile('F Nachführtempo Großkreis (max, Info)', 'Info', f2(m.drehMax / GRAD) + '°/s', true, false);
+  zeile('F Abstands-Nachführung (max)', `≤ ${FG.maxAbstandTempo} m/s`, f1(m.abstandTempoMax) + ' m/s', m.abstandTempoMax <= FG.maxAbstandTempo + 1e-6);
+  const ds = m.detSperr.slice().sort((a, b) => a - b);
+  // WARUM weich: Ersatz-Flak (Zünder exakt, Drohnen sterben) — die Labor-Messung mit unverwundbaren Drohnen ist maßgeblich
+  zeile('F Sperrfeuer: Detonation ↔ nächste Drohne (Median, Ersatz-Flak)', '≤ 100 m', `${f1(ds[ds.length >> 1] ?? NaN)} m (n = ${ds.length})`, ds.length > 0 && ds[ds.length >> 1] <= 100, false);
+  zeile('F Drohnen streng im Kasten (Gier, Nick, Tiefe)', 'Info', f1(100 * m.imKasten / Math.max(1, m.bedrohung)) + ' %', true, false);
   zeile('F Richttempo der Sperr-Rohre Gier / Nick (Befehl, max)', '< 60 / 50°/s', `${f1(m.richtG / GRAD)} / ${f1(m.richtN / GRAD)}°/s`, m.richtG < 60 * GRAD && m.richtN < 50 * GRAD);
-  zeile('F Anteil Zeit mit zwei Schirmen / Gruppenwechsel / Rohr wechselt Schirm', 'Info', `${f1(100 * m.zweiSchirme / m.folgTakte)} % / ${ki.statistik.gruppenWechsel} / ${m.schirmWechselRohr ?? 0}`, true, false);
+  zeile('F Anteil Zeit mit ≥ 2 Kästen / Gruppenwechsel / Rohr wechselt Kasten', 'Info', `${f1(100 * m.zweiSchirme / m.folgTakte)} % / ${ki.statistik.gruppenWechsel} / ${m.schirmWechselRohr ?? 0}`, true, false);
   const vs = dr.statistik.vorstoesse / 5, nah = m.vsNah.slice().sort((a, b) => a - b);
   zeile('F Vorstöße je Minute', '2–4,5', f1(vs), vs >= 2 && vs <= 4.5);
   zeile('F Vorstöße überlebt / im Vorstoß abgeschossen (Ersatz-Flak)', 'Info', `${nah.length} / ${m.vsAb ?? 0}`, true, false);
@@ -440,7 +457,7 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   const plan = new Map([[20 * 60, { folgen: false, seite: true }], [35 * 60, { folgen: true }],
     [50 * 60, { folgen: false, seite: false, abstand: 1200 }], [60 * 60, { folgen: true }], [62 * 60, { folgen: false, seite: true }]]);
   const richtung = (sc) => [Math.sin(sc.gier) * Math.cos(sc.nick), Math.sin(sc.nick), Math.cos(sc.gier) * Math.cos(sc.nick)];
-  const kopie = () => ki.lage.schirme.map((sc) => ({ u: richtung(sc), abstand: sc.abstand, tuerme: sc.tuerme.length }));
+  const kopie = () => ki.lage.schirme.map((sc) => ({ u: richtung(sc), abstand: sc.abstand, tuerme: sc.tuerme.length, x: sc.mitte.x, y: sc.mitte.y, z: sc.mitte.z }));
   let vor = null, sprungW = 0, sprungA = 0, normalW = 0, normalA = 0, schalter = 0;
   for (let k = 0; k < 70 * 60; k++) {
     const p = plan.get(k);
@@ -459,14 +476,16 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
       let w = 0, d = 0;
       for (const j of jetzt) {
         let bw = Infinity, bd = Infinity;
-        for (const v of vor) { const c = Math.acos(Math.min(1, j.u[0] * v.u[0] + j.u[1] * v.u[1] + j.u[2] * v.u[2])); if (c < bw) { bw = c; bd = Math.abs(j.abstand - v.abstand); } }
+        // WARUM über die 3D-Mitte (R9): Kästen können in gleicher Richtung hintereinander stehen (radiale Teilung)
+        let bm = Infinity;
+        for (const v of vor) { const e = L(j.x - v.x, j.y - v.y, j.z - v.z); if (e < bm) { bm = e; bw = Math.acos(Math.min(1, j.u[0] * v.u[0] + j.u[1] * v.u[1] + j.u[2] * v.u[2])); bd = Math.abs(j.abstand - v.abstand); } }
         w = Math.max(w, bw); d = Math.max(d, bd);
       }
       if (p || plan.has(k - 1)) { sprungW = Math.max(sprungW, w); sprungA = Math.max(sprungA, d); } else { normalW = Math.max(normalW, w); normalA = Math.max(normalA, d); }
     }
     vor = jetzt;
   }
-  const grenzeW = TURMKI.folgen.maxDreh * DT * 1.01, grenzeA = TURMKI.folgen.maxAbstandTempo * DT + 1e-6;
+  const grenzeW = Math.hypot(TURMKI.folgen.maxDreh, TURMKI.folgen.maxDrehNick) * DT * 1.01, grenzeA = TURMKI.folgen.maxAbstandTempo * DT + 1e-6;
   zeile(`H Umschalten Folgen ↔ fest (${schalter}×): Sprung der Mitte im Umschalt-Takt`, `≤ ${f2(grenzeW / GRAD)}°`, f2(sprungW / GRAD) + '°', sprungW <= grenzeW);
   zeile('H Umschalten: Sprung des Abstands im Umschalt-Takt', `≤ ${f2(grenzeA)} m`, f2(sprungA) + ' m', sprungA <= grenzeA);
   zeile('H Zum Vergleich: größter Schritt sonst (Mitte / Abstand)', 'Info', `${f2(normalW / GRAD)}° / ${f2(normalA)} m`, normalW <= grenzeW && normalA <= grenzeA, false);
