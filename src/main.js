@@ -35,6 +35,8 @@ waehleSchiff(0);
 
 const lagePos = new THREE.Vector3(), lageRot = new THREE.Quaternion(), vl = new THREE.Vector3();
 let zeit = 0, rest = 0, zuletzt = performance.now(), standbild = false;
+const offen = { stopp: false, daempfer: false }; // Einmal-Befehle, die noch kein Sim-Schritt verbraucht hat
+const schrittBefehl = {};                         // Vorlage, keine Neuanlage pro Schritt
 
 function darstellen(dt) {
   sim.lage(rest / SCHRITT, lagePos, lageRot);
@@ -55,15 +57,19 @@ function frame(jetzt) {
   if (e.schiff) { waehleSchiff((SCHIFFE.indexOf(modell) + 1) % SCHIFFE.length); zeigeMeldung('Schiff: ' + modell.kennung + ' ' + modell.name); }
   if (e.kamera) zeigeMeldung('Kamera: ' + KAMERA_NAMEN[kamera.naechsterModus()]);
   if ((e.maus.dx || e.maus.dy) && kamera.modus() !== 'frei') { kamera.setzeModus('frei'); zeigeMeldung('Kamera: ' + KAMERA_NAMEN.frei + ' (C = zurück)'); }
-  if (befehl.daempferUmschalten) zeigeMeldung(sim.z.daempfer ? 'Trägheitsdämpfer AUS — das Schiff treibt' : 'Trägheitsdämpfer EIN');
+  // Einmal-Befehle sammeln, bis ein Sim-Schritt sie verbraucht. WARUM: bei > 60 Hz gibt es Bilder ohne Schritt —
+  // vorher gingen T/X dort verloren, die Meldung kam trotzdem (Befund Flugsystem R4).
+  if (befehl.stopp) offen.stopp = true;
+  if (befehl.daempferUmschalten) offen.daempfer = !offen.daempfer; // zweimal im selben Takt hebt sich auf
 
   if (!standbild) {
     rest += dt; zeit += dt;
-    let erster = true;
     while (rest >= SCHRITT) {
-      // WARUM nur im ersten Schritt: Einmal-Befehle (Stopp, Dämpfer) sonst mehrfach pro Bild
-      sim.schritt(SCHRITT, erster ? befehl : { ...befehl, stopp: false, daempferUmschalten: false });
-      erster = false;
+      Object.assign(schrittBefehl, befehl);
+      schrittBefehl.stopp = offen.stopp; schrittBefehl.daempferUmschalten = offen.daempfer;
+      sim.schritt(SCHRITT, schrittBefehl);
+      if (offen.daempfer) zeigeMeldung(sim.z.daempfer ? 'Trägheitsdämpfer EIN' : 'Trägheitsdämpfer AUS — das Schiff treibt');
+      offen.stopp = false; offen.daempfer = false;
       rest -= SCHRITT;
     }
     darstellen(dt);

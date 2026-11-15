@@ -30,4 +30,8 @@ export function zeigeMeldung(text) {
 }
 export function hilfeUmschalten() { el.hilfe.classList.toggle('versteckt'); }
 export function zeigeSchiff(text) { const k = document.querySelector('#station .kopf'); if (k) k.textContent = 'STEUER · ' + text; }
-export function ladenFertig() { $('laden')?.remove(); }
+export function ladenFertig() {
+  $('laden')?.remove();
+  // Tastenhilfe nach 10 s einklappen (H holt sie zurück). WARUM: Spieltester R4 — deckt dauerhaft den Bildrand ab.
+  setTimeout(() => el.hilfe.classList.add('versteckt'), 10000);
+}
