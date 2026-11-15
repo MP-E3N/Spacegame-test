@@ -27,14 +27,18 @@ export const FLAK = {
   naheZuender: 12,            // m über dem Zielradius
   scharfStrecke: 60,          // m: WARUM: kein Annäherungszünder direkt vor dem Rohr
   // Zwei Granatsorten, gewählt nach dem Befehl, je eigener Hebel (Lehre R6: ein Hebel pro Modus):
-  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 22 / 30 m + Splitterwolke 30 m · 0,5 s · 120 HP/s (R8).
+  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 1,2 / 30 m + Splitterwolke 30 m · 0,5 s · 5 HP/s (R8-Balance).
   //   1 SPERRGRANATE (zielId null): Flächenschaden 14 / 25 m + Splitterwolke 45 m · 0,9 s · 500 HP/s.
   // WARUM Splitter jetzt auch im Zielfeuer: ohne Annäherungszünder liegt die Detonation im Mittel ~16 m neben dem Ziel.
   // WARUM Sperr-Splitter stärker als R7 (40 m / 0,7 s / 350): die Werte waren MIT Annäherungszünder gemessen; ohne ihn
   //        fiel der Schirm-Durchflug von 75 auf 21 HP. Mit 45 / 0,9 / 500 → 46 HP (tests/waffen.mjs 7); Labor misst nach.
   // Splitter: Schaden/s im Radius, linear mit dem Alter abnehmend, am Rand halb. Dauer in Schritten.
   sorte: [
-    { wirkRadius: 30, vollRadius: 4, schaden: 22, splitterRadius: 30, splitterDauer: 30, splitterDps: 120 },
+    // WARUM 1,2 HP / 5 HP/s statt 22 / 120 (Balance R8, KI): 6 Türme × 10 Schuss/s gegen 100-HP-Drohnen — mit 22/120
+    // fielen im 5-min-Labor 240 Drohnen im Zielfeuer (Ziel 20–60), Granaten auf schon tote Ziele trieben den
+    // Detonationsabstand auf 70 m. 1,2/5 → 41/71/76 Abschüsse (620/1000/1100), Abstand 38/27/26 m. Viele Granaten je
+    // Abschuss = „Flak sättigt die Luft“. Wirk- und Splitter-Radius bleiben (sichtbare Wolke um das Ziel).
+    { wirkRadius: 30, vollRadius: 4, schaden: 1.2, splitterRadius: 30, splitterDauer: 30, splitterDps: 5 },
     { wirkRadius: 25, vollRadius: 6, schaden: 14, splitterRadius: 45, splitterDauer: 54, splitterDps: 500 },
   ],
   poolSplitter: 96,
