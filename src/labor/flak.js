@@ -20,7 +20,7 @@ const V0_STUFEN = [
   { v: 1000, art: '40-mm-Flak' },
   { v: 1100, art: 'Nahbereichsabwehr' },
 ];
-const V0_START = 1000;
+const V0_START = 1100; // Runde 9, Nutzer: „standardmäßig die höchste Projektilgeschwindigkeit für die PDCs“
 
 const bild = erstelleRenderer(document.getElementById('leinwand'));
 bild.camera.near = 3; // WARUM: Kampfentfernung bis 2 km — near 1 gäbe zu grobe Tiefe (Lichtsetzer R6)
