@@ -6,3 +6,6 @@
 #station.labor .reihe { display: flex; justify-content: space-between; gap: 18px; line-height: 1.6; color: #c9a060; }
 #station.labor .reihe b { font-weight: normal; color: #f2c070; }
 #station.labor .reihe.klein { color: var(--bern-matt); border-top: 1px solid var(--linie); margin-top: 4px; padding-top: 4px; }
+#station.labor #nahbereich { min-height: 0; color: #ff5a3a; font-weight: bold; letter-spacing: 0.06em; }
+#station.labor #nahbereich.an { min-height: 1.4em; animation: nah-blink 0.6s steps(2, start) infinite; }
+@keyframes nah-blink { to { visibility: hidden; } }

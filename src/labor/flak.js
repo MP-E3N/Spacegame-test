@@ -24,7 +24,8 @@ erstellePruefstand(bild.scene);
 const grafik = erstelleFlakGrafik(bild.scene, bild.camera);
 const drohnenGrafik = erstelleDrohnenGrafik(bild.scene, 16);
 const labor = erstelleFlakLabor();
-const befehl = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800, sektor: { ...STANDARD_SEKTOR } };
+// folgen (Runde 7, Nutzerwunsch): Flak-Schirm zieht mit den Gegnern mit; +/− setzt einen festen Abstand (folgen aus), F schaltet um.
+const befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, sektor: { ...STANDARD_SEKTOR } };
 
 // ---------------- Kamera ----------------
 // batterie: steht hinter dem Prüfstand, Maus = umsehen, Rad = Zoom (Brennweite).
@@ -75,7 +76,7 @@ addEventListener('wheel', (e) => { if (e.target?.id === 'leinwand') maus.rad += 
 // ---------------- Anzeige ----------------
 const $ = (id) => document.getElementById(id);
 const el = { modus: $('modus'), feuer: $('feuer'), schirm: $('schirm'), granaten: $('granaten'), wolken: $('wolken'), schussrate: $('schussrate'),
-  treffer: $('treffer'), abschuesse: $('abschuesse'), bildzeit: $('bildzeit'), meldung: $('meldung'), hilfe: $('hilfe') };
+  treffer: $('treffer'), abschuesse: $('abschuesse'), nah: $('nahbereich'), spuren: $('spuren'), bildzeit: $('bildzeit'), meldung: $('meldung'), hilfe: $('hilfe') };
 const alt = {};
 const setze = (k, t) => { if (alt[k] !== t) { el[k].textContent = t; alt[k] = t; } };
 let meldungBis = 0;
@@ -91,7 +92,11 @@ function hud(dt) {
   setze('modus', befehl.modus === 'sperrfeuer' ? 'SPERRFEUER' : 'ZIELFEUER');
   setze('feuer', befehl.feuerFrei ? 'FEUER FREI' : 'FEUER HALT');
   el.feuer.classList.toggle('halt', !befehl.feuerFrei);
-  setze('schirm', befehl.modus === 'sperrfeuer' ? befehl.schirmAbstand + ' m' : 'Zünder nach Ziel');
+  setze('schirm', schirmText());
+  const nah = labor.ki.lage?.eindringlinge?.length ?? 0;
+  setze('nah', nah ? 'NAHBEREICH — ' + nah + (nah === 1 ? ' Eindringling' : ' Eindringlinge') : '');
+  el.nah.classList.toggle('an', nah > 0);
+  setze('spuren', String(grafik.zaehler.spuren));
   setze('granaten', String(zaehleGranaten()));
   setze('wolken', String(grafik.zaehler.wolken));
   setze('schussrate', String(Math.round(rate.wert)));
@@ -99,6 +104,16 @@ function hud(dt) {
   setze('abschuesse', String(labor.zaehler.abschuesse));
   setze('bildzeit', bildMittel.toFixed(1) + ' ms');
   if (meldungBis && performance.now() > meldungBis) { el.meldung.classList.remove('sichtbar'); meldungBis = 0; }
+}
+/** Schirm-Anzeige: im Folgen-Modus die Abstände der (bis zu 2) Schirme aus der KI, sonst der feste Wert. */
+function schirmText() {
+  if (befehl.modus !== 'sperrfeuer') return 'Zünder nach Ziel';
+  if (!befehl.folgen) return 'fest · ' + befehl.schirmAbstand + ' m';
+  const sch = labor.ki.lage?.schirme;
+  if (!sch?.length) return 'folgt · –';
+  let t = 'folgt · ';
+  for (let i = 0; i < sch.length; i++) t += (i ? ' / ' : '') + Math.round(sch[i].abstand / 10) * 10;
+  return t + ' m';
 }
 function zaehleGranaten() { return labor.flak.geschosse.anzahlAktiv; }
 
@@ -112,9 +127,13 @@ function bedienen() {
   const minus = einmal.has('Minus') || einmal.has('NumpadSubtract') || einmal.has('Slash');
   if (plus || minus) {
     // + = Schirm näher heran (Nutzersicht „enger ziehen“), − = weiter hinaus
-    befehl.schirmAbstand = Math.max(SCHIRM.min, Math.min(SCHIRM.max, befehl.schirmAbstand + (plus ? -SCHIRM.stufe : SCHIRM.stufe)));
-    meldung('Flak-Schirm auf ' + befehl.schirmAbstand + ' m');
+    // Beim ersten Druck aus dem Folgen-Modus: vom aktuellen Schirm der KI ausgehen (kein Sprung)
+    const start = befehl.folgen && labor.ki.lage?.schirme?.length ? Math.round(labor.ki.lage.schirme[0].abstand / 100) * 100 : befehl.schirmAbstand;
+    befehl.folgen = false;
+    befehl.schirmAbstand = Math.max(SCHIRM.min, Math.min(SCHIRM.max, start + (plus ? -SCHIRM.stufe : SCHIRM.stufe)));
+    meldung('Flak-Schirm fest auf ' + befehl.schirmAbstand + ' m (F = wieder folgen)');
   }
+  if (einmal.has('KeyF')) { befehl.folgen = !befehl.folgen; meldung(befehl.folgen ? 'Flak-Schirm folgt den Zielen' : 'Flak-Schirm fest auf ' + befehl.schirmAbstand + ' m'); }
   if (einmal.has('KeyN')) { labor.zuruecksetzen(); gelesen = 0; rate.schuesse = 0; meldung('Neue Drohnen'); }
   if (einmal.has('KeyP')) { pause = !pause; meldung(pause ? 'Pause' : 'Weiter'); }
   if (einmal.has('KeyC')) { kam.modus = kam.modus === 'batterie' ? 'uebersicht' : 'batterie'; meldung(kam.modus === 'batterie' ? 'Kamera: Prüfstand' : 'Kamera: Übersicht'); }
