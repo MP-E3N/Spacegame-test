@@ -5,10 +5,14 @@
 > `.claude/skills/schwarmfront-team/SKILL.md`). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
 
 ## Stand (2026-11-15, Runde 4 — Team + Bestandsaufnahme)
-Entwicklerteam eingerichtet (, 9 Rollen inkl. **Waffentechniker** und **KI-Beauftragter** auf
+Entwicklerteam eingerichtet (`.claude/team/TEAM.md`, 9 Rollen inkl. **Waffentechniker** und **KI-Beauftragter** auf
 Nutzerwunsch, Netz-Architekt ruht). Bestandsaufnahme aller Rollen + Testrunde 1 → Protokoll
- (Befunde, Konzepte Waffen v1 + Schwarm-KI v1, Schnittstelle, Reihenfolge).
-Keine Code-Änderung in Runde 4. **Offene Fragen an den Nutzer** stehen im Protokoll bzw. unten.
+`.claude/team/protokolle/2026-11-15-runde4.md` (Befunde, Konzepte Waffen v1 + Schwarm-KI v1, Schnittstelle, Reihenfolge).
+Keine Code-Änderung in Runde 4. Nächste Runde (Vorschlag): Fundament (Sim-Zufall, Welt, Einmal-Befehle-Fix, Turm neu
+gegliedert + Höhen aus `masse()`) → Waffen v1 mit Zieldrohne → Alien-Modell + Schwarm-KI v1.
+**Offene Fragen an den Nutzer:** Türme automatisch oder Spieler zielt · nur Flak oder auch schweres Geschütz ·
+Alien-Look (insektenhaft/giftgrün oder kristallin/violett) · Treffer schalten Teile aus oder nur Gesamt-HP ·
+Drift/Tempolimit ohne Dämpfer · Asteroiden abprallen oder Schaden · Ambos: Turm-/Nummernhöhe korrigieren erlaubt?
 
 ## Stand davor (Runde 3)
 Nutzerwunsch zum Bollwerk umgesetzt: **runde Tanks hinten entfernt** (statt dessen kantige, zweistufige Rückenpanzerung
