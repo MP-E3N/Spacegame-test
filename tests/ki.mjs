@@ -309,13 +309,14 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   const T = 5 * 60 * 60;
   const { mess: m, dr, ki } = lauf(T, true, FOLGEN);
   const w = m.winkel.slice().sort((a, b) => a - b), mittel = w.reduce((a, b) => a + b, 0) / w.length, p90 = w[Math.floor(w.length * 0.9)];
-  // WARUM ≤ 15° statt 8° (Frühwarnung): das vereinbarte Nachführtempo 12°/s ist die Bremse — Messung R7: 12,3° bei 12°/s,
-  // 8,4° bei 20°/s. Sichtbarer Maßstab ist „Drohnen im Schirm-Sektor“.
-  zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, Mittel)', '≤ 15°', f1(mittel / GRAD) + '°', mittel <= 15 * GRAD);
-  zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, 90 %)', '≤ 40°', f1(p90 / GRAD) + '°', p90 <= 40 * GRAD, false);
+  // WARUM ≤ 12° statt 8° (Frühwarnung): das Nachführtempo ist die Bremse — Messung R7: 12,3° bei 12°/s,
+  // 8,4° bei 20°/s; mit überlebenden (gepanzerten) Vorstößen 10,0° — ≤ 10° hält nicht sicher. Sichtbarer Maßstab ist
+  // „Drohnen im Schirm-Sektor“.
+  zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, Mittel)', '≤ 12°', f1(mittel / GRAD) + '°', mittel <= 12 * GRAD);
+  zeile('F Wandmitte ↔ Bedrohungsschwerpunkt (Winkel, 90 %)', '≤ 30°', f1(p90 / GRAD) + '°', p90 <= 30 * GRAD, false);
   zeile('F Drohnen (außer Eindringlingen) im Schirm-Sektor', '≥ 50 % (Info)', f1(100 * m.imSektor / Math.max(1, m.bedrohung)) + ' %', m.imSektor >= 0.5 * m.bedrohung, false);
   // WARUM ±1 %: die KI begrenzt den Winkelschritt in der Gier/Nick-Näherung, gemessen wird der echte Großkreiswinkel
-  zeile('F Nachführtempo der Schirmmitte (max)', '≤ 12°/s (±1 %)', f2(m.drehMax / GRAD) + '°/s', m.drehMax <= 12.12 * GRAD);
+  zeile('F Nachführtempo der Schirmmitte (max)', '≤ 20°/s (±1 %)', f2(m.drehMax / GRAD) + '°/s', m.drehMax <= 20.2 * GRAD);
   zeile('F Abstands-Nachführung (max)', '≤ 150 m/s', f1(m.abstandTempoMax) + ' m/s', m.abstandTempoMax <= 150 + 1e-6);
   zeile('F Richttempo der Sperr-Rohre Gier / Nick (Befehl, max)', '< 60 / 50°/s', `${f1(m.richtG / GRAD)} / ${f1(m.richtN / GRAD)}°/s`, m.richtG < 60 * GRAD && m.richtN < 50 * GRAD);
   zeile('F Anteil Zeit mit zwei Schirmen / Gruppenwechsel / Rohr wechselt Schirm', 'Info', `${f1(100 * m.zweiSchirme / m.folgTakte)} % / ${ki.statistik.gruppenWechsel} / ${m.schirmWechselRohr ?? 0}`, true, false);

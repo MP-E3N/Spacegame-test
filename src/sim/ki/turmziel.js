@@ -40,7 +40,9 @@ export const TURMKI = {
     vorne: 120,                 // m: Schirm so weit VOR dem (vorausgesagten) Schwerpunkt
     abstand: [450, 2000],
     tau: 1.5,                   // s: Glättung der Schirmmitte und des Abstands
-    maxDreh: 12 * Math.PI / 180, // rad/s: Nachführtempo der Mitte
+    // WARUM 20 statt 12°/s (R7, Projektleitung): 12°/s ließ die Wand im Mittel 12,3° hinter der Bedrohung, 20°/s 8,4°;
+    // Richttempo bleibt eingehalten (Muster ≤ 20°/s + Nachführen 20°/s < 60°/s Gier, Nick 17 + 20 < 50°/s).
+    maxDreh: 20 * Math.PI / 180, // rad/s: Nachführtempo der Mitte
     maxAbstandTempo: 150,       // m/s
     gierHalb: [0.12, 0.35], gierRand: 0.08, nickHalb: [0.08, 0.2], nickRand: 0.05,
     luecke: [0.6, 0.45],        // rad: größte Gier-Lücke > 0,6 → zwei Gruppen, < 0,45 → wieder eine (Hysterese)

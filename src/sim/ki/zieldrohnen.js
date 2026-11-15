@@ -34,6 +34,10 @@ export const DROHNEN = {
     // WARUM globaler Takt 16–24 s statt nur „je Drohne alle 25–45 s“: mit 6 Teilnehmern wären das ~7/min;
     // gewünscht sind ~3/min. Die 25–45 s gelten als Pause je Drohne zwischen zwei eigenen Vorstößen.
     takt: [16, 24], pause: [25, 45], gleichzeitig: 2,
+    // WARUM gepanzert: mit vollem Schaden starben im 5-min-Labor 15 von 15 Vorstößen bei ~360 m → der Nutzer sah nie
+    // den Rückzug (Killzone aus, Leuchtspur aus). Schadensfaktor, solange vorstoss gilt (Hin- und Rückflug). Echte Flak,
+    // 5 min: 0,3 → 0 von 14 überlebt; Rohschaden je Vorstoß 1200–3600 (Median 2100); 0,05 → 79 %; 0,065 → 7 von 14 (50 %).
+    panzer: 0.065,
     weichMin: 230, hoeheWeich: 110,   // im Vorstoß: weiche Grenzen tiefer, harte Klammer bleibt 200 m / 80 m
   },
   atmen: { mitte: 1200, hub: 300, periode: 60 }, // Kreis-/Schlangen-Mitte pendelt 900 ↔ 1500 m
@@ -98,9 +102,10 @@ export function erstelleZieldrohnen({ startwert = 101 } = {}) {
 
   function ausweichen(i) {
     const z = ziele[i], s = intern[i];
-    // WARUM nicht im Vorstoß-Hinflug: unter Sperrfeuer weicht sie sonst ständig aus und kommt nie näher als ~350 m
+    // WARUM nicht im ganzen Vorstoß: im Hinflug kam sie sonst nie näher als ~350 m, im Rückzug hakte sie in der Killzone
+    // immer wieder (Messung R7: Nahbereich 43 % der Zeit statt ~15 %)
     // (Messung R7) — der Vorstoß ist ein entschlossener Durchbruch, damit die Killzone wirklich getestet wird.
-    if (s.weichPause > 0 || !z.aktiv || s.vs === 1) return;
+    if (s.weichPause > 0 || !z.aktiv || s.vs !== 0) return;
     // Haken: Flugrichtung um 60–90° um die Hochachse drehen, leicht steigen/sinken
     const w = (Math.PI / 3 + rnd() * Math.PI / 6) * (rnd() < 0.5 ? -1 : 1);
     const c = Math.cos(w), sn = Math.sin(w);
@@ -130,6 +135,8 @@ export function erstelleZieldrohnen({ startwert = 101 } = {}) {
     s.vp.x = M.x + Math.sin(gp) * h; s.vp.y = y; s.vp.z = M.z + Math.cos(gp) * h;
     const gr = Math.max(-0.9, Math.min(0.9, gp + seite * 0.4)), dr = V.rueckzug[0] + rnd() * (V.rueckzug[1] - V.rueckzug[0]);
     s.rp.x = M.x + Math.sin(gr) * dr; s.rp.y = 300 + rnd() * 300; s.rp.z = M.z + Math.cos(gr) * dr;
+    // WARUM volle HP zu Beginn: Kreiser/Schlangen sind vorher oft schon angeschossen (Messung R7: Tod nach 41 Schaden)
+    z.hp = z.hpMax;
     s.vs = 1; z.vorstoss = true; statistik.vorstoesse++;
   }
 
@@ -198,7 +205,7 @@ export function erstelleZieldrohnen({ startwert = 101 } = {}) {
         for (let i = 0; i < ziele.length; i++) {
           const z = ziele[i];
           if (!z.aktiv || z.id !== t.zielId) continue;
-          z.hp -= t.schaden;
+          z.hp -= t.schaden * (intern[i].vs ? D.vorstoss.panzer : 1);
           if (z.hp <= 0) {
             // WARUM −dt: die Bewegungsschleife zählt diesen Takt gleich mit → Neustart genau 240 Takte (4 s) später
             z.hp = 0; z.aktiv = false; z.angriff = false; intern[i].tot = -dt;
