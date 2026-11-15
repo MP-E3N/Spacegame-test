@@ -538,7 +538,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
     const dz = z.detZiel.slice().sort((a, b) => a - b);
     teile.push(`${v0}: Z ${z.abschuesse} / S ${f.abschuesse} / Vorstoß überlebt ${f.vsNah.length}/${f.vsNah.length + (f.vsAb ?? 0)} / Med ${f1(dz[dz.length >> 1] ?? NaN)} m`);
   }
-  zeile('J 5 min je v0: Abschüsse Zielfeuer / Sperrfeuer, Vorstöße überlebt (Ersatz-Flak, Panzer R7)', 'Info', teile.join(' · '), true, false);
+  zeile('J 5 min je v0: Abschüsse Zielfeuer / Sperrfeuer, Vorstöße überlebt (Ersatz-Flak: nur Verhalten, KEINE Balance — die misst das Labor mit der echten Flak, Protokoll R8)', 'Info', teile.join(' · '), true, false);
 }
 
 // ---------- D) Gleichlauf ----------

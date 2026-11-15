@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`, Stand gepusht).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 8 nur lokal committet).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -33,9 +33,21 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   (4) **Vorstöße**: alle ~20 s fliegt eine Drohne bis ~250 m heran und zieht sich auf 1600–1900 m zurück (gepanzert im
   Vorstoß → ~50 % überleben); Kreiser „atmen“ 900 ↔ 1500 m. Labor 5 min: 61 Abschüsse, 7/14 Vorstöße überlebt,
   Nahbereich 30 % der Zeit. Protokoll `…/2026-11-15-runde7.md`.
-- **Nutzer-Urteil zu Runde 7 offen.** Stellschrauben: weniger Leuchtspur → Vorstoß-Takt 25–35 s (`DROHNEN.vorstoss.takt`);
-  Wand-Dichte → `FLAK.zuenderStreuSperr`, Wolkengröße in `flakgrafik.js`. Offen (Kann): Turmteile 30 Draw-Calls, Schirm
-  1200 m sehr tödlich, volle HP beim Vorstoß-Start sichtbar.
+- Nutzer zu R7: „schon besser, aber …“ → **Runde 8 (umgesetzt, lokal committet, nicht gepusht):**
+  (1) **Streukugel + Flächenschaden:** kein Annäherungszünder mehr (`FLAK.annaeherung = false`), jede Zielgranate fliegt
+  auf einen eigenen Punkt in einer unsichtbaren Kugel um den Vorhaltepunkt (Zielfeuer 20 m, Nahbereich min(12, 0,05·d),
+  `befehle[i].streuKugel`, KI entscheidet), Zeitzünder dorthin; Schaden nur als Fläche an allen Drohnen im Radius.
+  Zielfeuer: Detonationen im Median 27 m von der nächsten Drohne. (2) **Mündungsgeschwindigkeit umschaltbar**
+  (Taste V / Knöpfe): 620 „Film“ · 820 schwere Flak · **1000 40-mm-Flak (Standard)** · 1100 Nahbereichsabwehr — reale
+  Flak 760–1150 m/s, im All ohne Abbremsen; gilt für neue Granaten (`befehl.v0` → `turm.v0`). (3) **Bedienfeld** rechts
+  oben, dauerhaft, klickbar, aktive Schalter hervorgehoben (H blendet aus). (4) Leuchtspur 0,35 m / 25 m. (5) Mündungsrauch
+  nur jeder 3. Schuss, klein und kurz. Labor 5 min bei 1000 m/s: Sperrfeuer 58 Abschüsse / 8 von 14 Vorstößen überlebt,
+  Zielfeuer 71 / 3 von 14 (620: 41, 1100: 76). Protokoll `…/2026-11-15-runde8.md`.
+- **Nutzer-Urteil zu Runde 8 offen.** Offene Fragen an ihn: Detonationswolken ziehen lange braune Rauchfahnen (war
+  „zu rauchig“ auch so gemeint?); Station unten links verdeckt in der Prüfstand-Kamera die linken Türme.
+  Stellschrauben: Zielgranate in `FLAK` (Sorten-Tabelle, `schaden: 1.2` HP!) + Splitter, Sperr-Splitter 45 m / 0,9 s / 500 HP/s,
+  Vorstoß-Panzer `DROHNEN.vorstoss.panzer` 0,25, Kugel in `TURMKI`. Offen (Kann): Schadensskala vor der Übernahme ins
+  Spiel neu ordnen (Drohnen-HP ×10), Panzer je Betriebsart, Messung mit mehreren Startwerten, Turmteile 30 Draw-Calls.
 - **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
@@ -96,6 +108,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 8** (Nutzer-Rückmeldung zu R7, mit Team): Streukugel + Flächenschaden statt Annäherungszünder, v0-Stufen
+  620–1100 umschaltbar, Bedienfeld mit Tastenknöpfen, kleinere Leuchtspur, weniger Mündungsrauch. Lokal committet.
 - **Runde 7** (Nutzer-Rückmeldung Flak-Labor, mit Team): große Wolken, Schirm folgt, Leuchtspur nur im Nahbereich,
   Vorstöße. Gepusht 75b6470.
 - **Runde 6** (Flak-Labor, mit Team): Demo-Seite `flak.html` mit Sperr- und Zielfeuer, Zieldrohnen, Splitterwolke,

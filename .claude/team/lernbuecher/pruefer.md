@@ -12,3 +12,6 @@
   Ein Modul, das eine Ereignisliste leert, muss NACH dem lesenden Modul laufen.
 - 2026-11-15 Runde 7 — Bei Betriebsart-Schaltern BEIDE Richtungen prüfen (übernimmt der Wechsel Richtung UND Abstand?);
   ein Sprung ist im Test unsichtbar, solange der Test den Schalter nie mitten im Lauf umlegt.
+- 2026-11-15 Runde 8 — Bei Umschaltern prüfen, ob zuruecksetzen() den umgeschalteten Wert mit zurücksetzt (sonst gibt es
+  nur Gleichlauf, solange der Aufrufer ihn jeden Takt neu setzt). Mindestmaße (toleranzMin) gegen Deckel (0,05·d) bei
+  kleinem d gegenrechnen. Beide Befunde in derselben Runde behoben.

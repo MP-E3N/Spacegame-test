@@ -123,7 +123,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
-      t.leuchtZaehler = 0;
+      t.leuchtZaehler = 0; t.v0 = FLAK.v0; // Umschalter mit zurücksetzen (Befund Prüfer R8)
       t.gier = t.vorGier = t.sollGier = t.lafette.gier[0];
       t.nick = t.vorNick = t.sollNick = 0.2;
       t.imBereich = t.ausgerichtet = t.gesperrt = false; t.bereit = true;

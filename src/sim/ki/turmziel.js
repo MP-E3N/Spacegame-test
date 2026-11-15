@@ -72,8 +72,10 @@ export const TURMKI = {
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const dreieck = (u) => 1 - 4 * Math.abs(u - Math.floor(u) - 0.5); // −1 … 1 … −1, Periode 1
 const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
-/** Feuer-Spielraum (rad) zur Streukugel in Entfernung d: max(min(Kugel, 0,05·d), 8 m) / d, mindestens 0,008 rad. */
-const kugelToleranz = (kugel, d) => Math.max(Math.max(Math.min(kugel, TURMKI.kugelDeckel * d), TURMKI.toleranzMin) / d, TURMKI.toleranzRadMin);
+/** Feuer-Spielraum (rad) zur Streukugel in Entfernung d: min(max(Kugel, 8 m), 0,05·d) / d, mindestens 0,008 rad.
+ *  WARUM auch das 8-m-Mindestmaß unter dem Deckel: sonst feuert der Turm unter 160 m weiter neben den Punkt, als die
+ *  Kugel der Waffe reicht (Befund Prüfer R8: bei 60 m 7,6° statt höchstens 2,9°). */
+const kugelToleranz = (kugel, d) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), TURMKI.kugelDeckel * d) / d, TURMKI.toleranzRadMin);
 const ZWEI_PI = 2 * Math.PI;
 const winkelDiff = (a, b) => { const d = a - b; return d - ZWEI_PI * Math.floor((d + Math.PI) / ZWEI_PI); }; // → [−π, π)
 

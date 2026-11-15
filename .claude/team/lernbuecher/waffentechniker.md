@@ -21,3 +21,8 @@
 - 2026-11-15 Runde 7 (Testrunde) — Weiße Glut vor der Batterie-Kamera: Blitz 4 m in 30 m ≈ 136 px bei HDR 14 → Bloom.
   Änderung: Glühen je Art in px gedeckelt (Blitz 18, Kern 300), unter 80 m gedämpft, Mündungsrauch ohne Glut. Lehre: jeder
   Effekt braucht eine Nahgrenze; Größe in Bildschirm-Pixeln denken. Wattewurst → Größe 0,6–1,3 + Zünder ±8 % (Sperr).
+- 2026-11-15 Runde 8 — Beobachtung: Ohne Annäherungszünder fiel der Schirm-Durchflug von 75 auf 21 HP. Ursache: Die
+  Sperr-Werte waren mit Annäherungszünder gemessen, der war der eigentliche Treffer. Änderung: Streukugel je Granate,
+  Zündort mit Bruchteil des letzten Schritts, v0 je Turm, Sperr-Splitter 45 m / 0,9 s / 500 HP/s. Messung: Kugel-Median
+  15,92 m (Soll 15,9), R = 0 → 0,8 m bei jeder v0-Stufe, Durchflug 46 HP. Lehre: Abgeschaltete Mechaniken auf ihren
+  Balance-Anteil prüfen. Ganze Schritte reichen für den Zähler, für den Ort nicht. Umschaltwerte in zuruecksetzen() mitnehmen.

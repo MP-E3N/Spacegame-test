@@ -21,3 +21,7 @@
 - 2026-11-15 Runde 7 — Verhaltens-Wünsche des Nutzers („nähern UND entfernen“) als Messgröße in den Auftrag schreiben,
   sonst merkt es erst die Labor-Messung (0 Überlebende). Testhilfe spiel.bilder muss auch Tasten verarbeiten (bedienen()),
   sonst sind Tastentests im verdeckten Pane wirkungslos. Alle Aufrufe per SendMessage an bestehende Agenten: billig und schnell.
+- 2026-11-15 Runde 8 — Frühwarnung fand den Kern selbst: der „Direkttreffer“ war der Annäherungszünder, nicht der
+  Schaden. Erst das Zusammenspiel im Labor zeigte die Balance (Zielfeuer 240 Abschüsse) → ein Experte als Besitzer der
+  ganzen Balance-Schleife mit eng begrenzter Freigabe (nur Zahlen der Zielgranate) war schnell und sauber. Hilfen, die sich
+  selbst ausblenden (setTimeout), findet der Nutzer nicht → Bedienung dauerhaft sichtbar und klickbar.

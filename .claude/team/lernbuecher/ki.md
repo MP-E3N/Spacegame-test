@@ -18,3 +18,7 @@
   (Panzer 0,065 → 50 %); Verweildauer in der Killzone ist Geometrie (Tangente 250 m ≈ 5 s), nicht Tempo.
 - 2026-11-15 Runde 7 Prüfer-Befund — Moduswechsel fest ↔ Folgen setzte auf Vorgaben zurück. Lehre: jeden Moduswechsel mit
   Umschalt-Test messen (Sprung im Umschalt-Takt ≤ normaler Schritt).
+- 2026-11-15 Runde 8 — Streukugel 20 m, Detonationen trotzdem Median 70 m von der nächsten Drohne: kam von Granaten auf
+  schon abgeschossene Ziele, nicht vom Ausweichen (mit unverwundbaren Drohnen 19 m). Lehre: Abstand mit unverwundbaren
+  Drohnen messen; Rohschaden je Vorstoß ebenfalls ohne Tod messen (sonst bei 100/Panzer gedeckelt). Ersatz-Flak mit
+  exaktem Vorhalt ist zu tödlich für Balance-Aussagen. Mindestmaße (8 m) unter denselben Deckel wie die Waffe (0,05·d) legen.
