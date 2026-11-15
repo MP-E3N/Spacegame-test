@@ -1,0 +1,8 @@
+/* ZWECK: Zusatz-Stil der Flak-Labor-Seite (baut auf style.css auf). */
+#station.labor { min-width: 230px; font-size: 12px; }
+#station.labor .gross-text { font-size: 22px; color: #f2c070; letter-spacing: 0.08em; margin-bottom: 4px; }
+#station.labor #feuer { color: #e06040; margin-bottom: 6px; }
+#station.labor #feuer.halt { color: var(--bern-matt); }
+#station.labor .reihe { display: flex; justify-content: space-between; gap: 18px; line-height: 1.6; color: #c9a060; }
+#station.labor .reihe b { font-weight: normal; color: #f2c070; }
+#station.labor .reihe.klein { color: var(--bern-matt); border-top: 1px solid var(--linie); margin-top: 4px; padding-top: 4px; }

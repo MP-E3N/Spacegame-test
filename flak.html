@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schwarmfront · Flak-Labor</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="/src/labor/labor.css" />
+</head>
+<body>
+  <canvas id="leinwand"></canvas>
+  <div id="hud">
+    <div id="station" class="labor">
+      <div class="kopf">FLAK-LABOR · PRÜFSTAND 1</div>
+      <div id="modus" class="gross-text">SPERRFEUER</div>
+      <div id="feuer">FEUER FREI</div>
+      <div class="reihe"><span>Schirm</span><b id="schirm">800 m</b></div>
+      <div class="reihe"><span>Granaten in der Luft</span><b id="granaten">0</b></div>
+      <div class="reihe"><span>Wolken</span><b id="wolken">0</b></div>
+      <div class="reihe"><span>Schuss / s</span><b id="schussrate">0</b></div>
+      <div class="reihe"><span>Treffer</span><b id="treffer">0</b></div>
+      <div class="reihe"><span>Abschüsse</span><b id="abschuesse">0</b></div>
+      <div class="reihe klein"><span>Bildzeit</span><b id="bildzeit">–</b></div>
+    </div>
+    <div id="hilfe">
+      <b>Leertaste</b> Feuer frei / Feuer halt &nbsp; <b>1</b> Sperrfeuer &nbsp; <b>2</b> Zielfeuer<br>
+      <b>+</b>/<b>−</b> Flak-Schirm näher / weiter (Sperrfeuer) &nbsp; <b>N</b> neue Drohnen &nbsp; <b>P</b> Pause<br>
+      <b>Maus ziehen</b> umsehen &nbsp; <b>Rad</b> Zoom &nbsp; <b>C</b> Kamera Prüfstand / Himmel &nbsp; <b>H</b> Hilfe ein/aus
+    </div>
+    <div id="meldung"></div>
+  </div>
+  <div id="laden">Baue Prüfstand …</div>
+  <script type="module" src="/src/labor/flak.js"></script>
+</body>
+</html>
