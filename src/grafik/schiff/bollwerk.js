@@ -6,53 +6,40 @@
 // VERLAUF: Runde 2 hatte runde Tanks hinten und Hangars an Auslegern → Nutzer (Runde 3): Tanks weg, Hangars an die Hülle.
 // BEWUSST ANDERS als das Vorbild: kein Ring aus acht Triebwerken, kein runder Keilkopf, keine offenen Seitendecks,
 //         eigene Proportionen, Rippen am Hals, Hangars ohne Ausleger, eigener Name und eigene Beschriftung.
+// DATEN: Querschnitte, Türme, Kugeln in src/sim/schiffe/bollwerk.js (Runde 5) — hier nur Aufbau und Details.
 // LIEFERT: erstelleBollwerk(scene) → { name, kennung, laenge, gruppe, tuerme, darstellen(pos, rot, z, zeit, dt) }
 import * as THREE from 'three';
 import { zufall } from '../zufall.js';
-import { loft, masse, nur, kiste, rohrY, rohrZ, aufbauten, materialien, leereEimer, fuegeZusammen, turm, duese,
+import { lofte, masse, nur, kiste, rohrY, rohrZ, aufbauten, turmSperren, materialien, leereEimer, fuegeZusammen, turm, duese,
   schriftMaterial, ausstattung, LICHT } from './bauteile.js';
+import { BOLLWERK, TEILE, POD_X, POD_Y } from '../../sim/schiffe/bollwerk.js';
 
-const KOPF = [
-  { z: 28, w: 15, h: 11.5 }, { z: 40, w: 18.5, h: 13.5, y: 0.5 }, { z: 88, w: 18, h: 12.5 },
-  { z: 108, w: 14, h: 9.5, y: -1.5 }, { z: 122, w: 7.5, h: 5.5, y: -3.5 }, { z: 128, w: 3.5, h: 2.6, y: -4.5 },
-];
-const PANZER1 = [{ z: 42, w: 12, h: 1.6, y: 14.2 }, { z: 92, w: 10.5, h: 1.6, y: 12.8 }, { z: 110, w: 7, h: 1.2, y: 9.4 }];
-const PANZER2 = [{ z: 50, w: 7, h: 1.2, y: 16.2 }, { z: 82, w: 6, h: 1.2, y: 15.4 }];
-const WANGE = (x) => [{ z: 46, w: 1.4, h: 7, x, y: -1 }, { z: 96, w: 1.4, h: 6, x, y: -1.5 }];
-const SPORN = [{ z: 70, w: 5, h: 1.6, y: -12 }, { z: 112, w: 3.5, h: 1.4, y: -9.5 }, { z: 132, w: 1.2, h: 0.8, y: -5.5 }];
-const HALS = [{ z: -44, w: 10.5, h: 9.5 }, { z: 30, w: 10.5, h: 9.5 }];
-const KOMMANDO = [{ z: -22, w: 6, h: 2.5, y: 11.5 }, { z: -14, w: 7, h: 4, y: 12.5 }, { z: 4, w: 6.5, h: 3.8, y: 12.5 }, { z: 10, w: 4.5, h: 2.5, y: 11.5 }];
-const HECK = [{ z: -118, w: 21, h: 15 }, { z: -62, w: 21, h: 15 }, { z: -50, w: 16, h: 12 }, { z: -40, w: 10.5, h: 9.5 }];
-// Hangar-Mitte: Hals-Halbbreite 10,5 + Hangar-Halbbreite 8 − 0,5 m Einbettung → liegt direkt an der Hülle
-const POD_X = 18, POD_Y = -3;
-const HECKPANZER = [{ z: -114, w: 15, h: 1.6, y: 16.2 }, { z: -66, w: 13, h: 1.6, y: 16.2 }, { z: -54, w: 8, h: 1.1, y: 13.4 }];
-const HECKPANZER2 = [{ z: -108, w: 8, h: 1.1, y: 18.6 }, { z: -78, w: 7, h: 1.1, y: 18.6 }];
-// Hangar läuft hinten in die Verjüngung des Heckblocks hinein (z −60), vorn bis unter den Kopf (z 26)
-const DECK = (x) => [{ z: -60, w: 6.5, h: 5, x, y: POD_Y }, { z: -52, w: 8, h: 6, x, y: POD_Y }, { z: 16, w: 8, h: 6, x, y: POD_Y }, { z: 26, w: 6.5, h: 5, x, y: POD_Y }];
+const T = TEILE;
 
 export function erstelleBollwerk(scene) {
   const rnd = zufall(6262);
   const mats = materialien();
   const eimer = leereEimer();
+  const ts = turmSperren(BOLLWERK.tuerme), sperre = { sperreOben: ts.oben, sperreUnten: ts.unten };
 
   // ---------- Kopf ----------
-  eimer.rumpf.push(loft(KOPF, 0.32), loft(PANZER1, 0.5), loft(PANZER2, 0.5));
-  eimer.dunkel.push(loft(SPORN, 0.4));
-  for (const s of [1, -1]) {
-    eimer.dunkel.push(loft(WANGE(s * 19.2), 0.5));
+  eimer.rumpf.push(lofte(T.kopf), lofte(T.panzer1), lofte(T.panzer2));
+  eimer.dunkel.push(lofte(T.sporn));
+  for (const [i, s] of [1, -1].entries()) {
+    eimer.dunkel.push(lofte(T.wange[i]));
     // Luken-Reihe über der Wange
     for (let z = 50; z < 92; z += 6) eimer.schacht.push(kiste(0.3, 1.6, 3.2, s * 18.15, 7.2, z));
     // schwere Stufen-Platten an den Bugflanken
     eimer.dunkel.push(kiste(1.2, 5, 10, s * 15.4, 0, 110), kiste(1.2, 3.4, 7, s * 12.6, -1.5, 118));
   }
-  aufbauten(rnd, KOPF, 30, 118, eimer, { dichte: 1.0, fase: 0.32, skala: 1.3 });
-  aufbauten(rnd, PANZER1, 44, 108, eimer, { seiten: false, unten: false, dichte: 0.8, fase: 0.5, skala: 1.2 });
+  aufbauten(rnd, T.kopf.ab, 30, 118, eimer, { dichte: 1.0, fase: T.kopf.fase, skala: 1.3, ...sperre });
+  aufbauten(rnd, T.panzer1.ab, 44, 108, eimer, { seiten: false, unten: false, dichte: 0.8, fase: T.panzer1.fase, skala: 1.2, ...sperre });
 
   // ---------- Hals mit Rippen und Kommandoblock ----------
-  eimer.dunkel.push(loft(HALS, 0.3));
-  for (let z = -40; z <= 26; z += 8) eimer.rumpf.push(loft([{ z: z - 0.8, w: 11.4, h: 10.4 }, { z: z + 0.8, w: 11.4, h: 10.4 }], 0.3));
-  eimer.rumpf.push(loft(KOMMANDO, 0.35));
-  aufbauten(rnd, KOMMANDO, -20, 8, eimer, { unten: false, dichte: 1.4, fase: 0.35 });
+  eimer.dunkel.push(lofte(T.hals));
+  for (const r of T.rippen) eimer.rumpf.push(lofte(r));
+  eimer.rumpf.push(lofte(T.kommando));
+  aufbauten(rnd, T.kommando.ab, -20, 8, eimer, { unten: false, dichte: 1.4, fase: T.kommando.fase, ...sperre });
   for (const s of [1, -1]) {
     for (const [y, r] of [[4.5, 0.7], [6.6, 0.5]]) eimer.metall.push(rohrZ(r, 72, s * (11.4 + r), y, -7)); // über den Hangars
   }
@@ -63,9 +50,9 @@ export function erstelleBollwerk(scene) {
     nur(new THREE.SphereGeometry(1.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(-4, 16.3, -16)));
 
   // ---------- Heckblock, Rückenpanzer, Triebwerke ----------
-  eimer.rumpf.push(loft(HECK, 0.3), loft(HECKPANZER, 0.5));
-  eimer.dunkel.push(loft(HECKPANZER2, 0.5));
-  aufbauten(rnd, HECKPANZER, -112, -58, eimer, { seiten: false, unten: false, dichte: 0.9, fase: 0.5, skala: 1.2 });
+  eimer.rumpf.push(lofte(T.heck), lofte(T.heckpanzer));
+  eimer.dunkel.push(lofte(T.heckpanzer2));
+  aufbauten(rnd, T.heckpanzer.ab, -112, -58, eimer, { seiten: false, unten: false, dichte: 0.9, fase: T.heckpanzer.fase, skala: 1.2, ...sperre });
   for (const s of [1, -1]) {
     // Lüftergitter und Panzerkanten an den Heckflanken
     for (let z = -110; z < -72; z += 9) eimer.schacht.push(kiste(0.3, 3.2, 6, s * 21.05, 8, z));
@@ -74,16 +61,16 @@ export function erstelleBollwerk(scene) {
     for (let z = -110; z < -70; z += 1.6) eimer.dunkel.push(kiste(0.22, 2.6, 0.22 + 0, s * 9, -16.2, z), kiste(10, 0.25, 0.25, s * 9, -15.4, z));
     eimer.dunkel.push(kiste(14, 3, 1.2, s * 9, -16.4, -111), kiste(14, 3, 1.2, s * 9, -16.4, -69));
   }
-  aufbauten(rnd, HECK, -116, -52, eimer, { oben: false, unten: false, dichte: 1.2, fase: 0.3, skala: 1.4 });
+  aufbauten(rnd, T.heck.ab, -116, -52, eimer, { oben: false, unten: false, dichte: 1.2, fase: T.heck.fase, skala: 1.4 });
   const duesen = [];
   for (const y of [6.8, -6.8]) for (const x of [13, 0, -13]) duesen.push(duese(eimer, x, y, -118, 5.4, { seg: 8, gehaeuse: 1.18, gehaeuseLaenge: 6 }));
   eimer.dunkel.push(kiste(40, 1.2, 4, 0, 0, -119.5), kiste(1.2, 28, 4, 6.5, 0, -119.5), kiste(1.2, 28, 4, -6.5, 0, -119.5)); // Düsenrahmen
 
   // ---------- Startdecks ----------
-  for (const s of [1, -1]) {
-    const x = s * POD_X;
-    eimer.rumpf.push(loft(DECK(x), 0.3));
-    aufbauten(rnd, DECK(x), -50, 14, eimer, { unten: false, dichte: 0.9, fase: 0.3, skala: 1.2 });
+  for (const [i, s] of [1, -1].entries()) {
+    const x = s * POD_X, deck = T.deck[i];
+    eimer.rumpf.push(lofte(deck));
+    aufbauten(rnd, deck.ab, -50, 14, eimer, { unten: false, dichte: 0.9, fase: deck.fase, skala: 1.2 });
     // Nahtleiste zwischen Hangar und Hülle (verdeckt die Kante, wirkt verschweißt)
     eimer.dunkel.push(kiste(2.2, 1.2, 74, s * (POD_X - 7.2), POD_Y + 6.3, -16));
     for (let z = -48; z <= 14; z += 8) eimer.dunkel.push(kiste(2.6, 1.6, 1.4, s * (POD_X - 7.2), POD_Y + 6.6, z));
@@ -101,11 +88,8 @@ export function erstelleBollwerk(scene) {
   const gruppe = new THREE.Group();
   gruppe.name = 'bollwerk';
   fuegeZusammen(eimer, mats, gruppe, 'bollwerk');
-  const tuerme = [
-    turm(gruppe, mats, 7, 15.2, 62, false, 1.3), turm(gruppe, mats, -7, 15.2, 62, false, 1.3), turm(gruppe, mats, 0, 13.1, 98, false, 1.3),
-    turm(gruppe, mats, 0, 9.5, 22, false, 1.1), turm(gruppe, mats, 0, 19.7, -92, false, 1.3),
-    turm(gruppe, mats, 0, -13, 52, true, 1.3), turm(gruppe, mats, 0, -9.5, -10, true, 1.1),
-  ];
+  // Türme aus den Sim-Daten (Index = id); Runde 5: Hals z 22 auf 6-m-Sockel, Flak-Paar z 62 bei x ±9 (vorher Clips)
+  const tuerme = BOLLWERK.tuerme.map((t) => turm(gruppe, mats, t));
 
   // ---------- Beschriftung ----------
   const name = schriftMaterial('BOLLWERK', 'BT-12  SCHLACHTTRÄGER');
@@ -122,7 +106,7 @@ export function erstelleBollwerk(scene) {
   const arbeit = [];
   for (let i = 0; i < 70; i++) {
     const teil = rnd();
-    const [ab, z0, z1] = teil < 0.4 ? [KOPF, 32, 112] : teil < 0.7 ? [HALS, -40, 28] : [HECK, -114, -54];
+    const [ab, z0, z1] = teil < 0.4 ? [T.kopf.ab, 32, 112] : teil < 0.7 ? [T.hals.ab, -40, 28] : [T.heck.ab, -114, -54];
     const z = z0 + rnd() * (z1 - z0), m = masse(ab, z), s = rnd() < 0.5 ? 1 : -1;
     if (m) arbeit.push([s * (m.w + 0.1), m.y + (rnd() * 2 - 1) * m.h * 0.55, z]);
   }
@@ -144,5 +128,5 @@ export function erstelleBollwerk(scene) {
   });
 
   scene.add(gruppe);
-  return { name: 'BOLLWERK', kennung: 'BT-12', laenge: 255, gruppe, tuerme, darstellen };
+  return { name: BOLLWERK.name, kennung: BOLLWERK.kennung, laenge: BOLLWERK.laenge, gruppe, tuerme, darstellen };
 }

@@ -1,11 +1,11 @@
 // ZWECK: Ein lockeres Asteroidenfeld vor dem Startpunkt — Bezugspunkte für Fahrt und Kurven, später Deckung im Kampf.
 // LIEFERT: erstelleAsteroiden(scene) → { aktualisiere(zeit) }
-// REGEL: reine Deko (noch keine Kollision). Wenige Formen, viele Exemplare → InstancedMesh je Form.
+// REGEL: Lage/Größe kommen aus src/sim/feld.js (Kollision rechnet die Sim); hier nur Formen und Darstellung.
+//        Wenige Formen, viele Exemplare → InstancedMesh je Form.
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { zufall, fbm3 } from './zufall.js';
-
-const FORMEN = 6;
+import { fbm3 } from './zufall.js';
+import { erstelleFeld, FORMEN } from '../sim/feld.js';
 
 function form(start) {
   let g = new THREE.IcosahedronGeometry(1, 5);
@@ -33,26 +33,10 @@ function form(start) {
 }
 
 export function erstelleAsteroiden(scene) {
-  const rnd = zufall(2024);
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0 });
-  const liste = []; // { form, pos, skala, achse, tempo }
-  const v = new THREE.Vector3();
-  // große Brocken
-  for (let i = 0; i < 90; i++) {
-    do v.set((rnd() - 0.5) * 7000, (rnd() - 0.5) * 1800, 300 + rnd() * 7000); while (v.length() < 450);
-    const gross = rnd() < 0.08;
-    const s = gross ? 120 + rnd() * 220 : 8 + Math.pow(rnd(), 2) * 70;
-    liste.push({ form: i % FORMEN, pos: v.clone(), skala: new THREE.Vector3(s * (0.8 + rnd() * 0.5), s * (0.6 + rnd() * 0.4), s * (0.8 + rnd() * 0.5)),
-      achse: new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize(), tempo: (rnd() - 0.5) * 0.06, start: rnd() * 6 });
-  }
-  // Kleinzeug nahe am Startpunkt (Parallaxe beim Losfahren)
-  for (let i = 0; i < 90; i++) {
-    v.set((rnd() - 0.5) * 2000, (rnd() - 0.5) * 700, (rnd() - 0.2) * 2400);
-    if (v.length() < 200) continue;
-    const s = 0.8 + Math.pow(rnd(), 2) * 6;
-    liste.push({ form: i % FORMEN, pos: v.clone(), skala: new THREE.Vector3(s, s * (0.6 + rnd() * 0.4), s * (0.7 + rnd() * 0.5)),
-      achse: new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize(), tempo: (rnd() - 0.5) * 0.4, start: rnd() * 6 });
-  }
+  // Lage, Größe, Drehung aus der Simulation (Runde 5: Kollision) — gleiche Werte wie der frühere Erzeuger hier
+  const liste = erstelleFeld().map((a) => ({ form: a.form, pos: new THREE.Vector3(a.x, a.y, a.z),
+    skala: new THREE.Vector3(...a.skala), achse: new THREE.Vector3(...a.achse), tempo: a.tempo, start: a.start }));
   const netze = [];
   for (let f = 0; f < FORMEN; f++) {
     const eigene = liste.filter((a) => a.form === f);
