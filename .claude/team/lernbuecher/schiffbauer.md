@@ -12,3 +12,6 @@
   (Bollwerk z 22, z 62), Nummer „07“ schwebt 0,5 m. Ursache: Höhen von Hand, nicht aus masse(); Schussfeld nie bedacht.
   Änderung: vorgeschlagen (Höhe = masse(ab, z).y + h; Turm in Sockel/Drehkranz/Wiege/Mündung). Lehre: Anbauteile immer
   vom Querschnitt ableiten; bei Türmen zuerst Schussfeld prüfen.
+- 2026-11-15 Runde 5 — Fußpunkt = höchste Oberkante über der Standfläche + Schürze, Daten in der Sim. Messung: Spalt
+  0,000 m (Strahltest), Feld bitgleich, Rumpfnetze bitgleich. Lehre: Anbauteile aus dem Querschnitt ableiten und gegen
+  die echte Geometrie testen; Kugeln lieber zu groß als zu klein. Kisten unter Türmen überspringen, Zufallsfolge halten.

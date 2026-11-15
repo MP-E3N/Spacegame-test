@@ -4,7 +4,22 @@
 > `docs/IDEE.md` (Spielidee des Nutzers), `.claude/team/TEAM.md` (Team + **Testrunden-Regel**; jede Runde nach
 > `.claude/skills/schwarmfront-team/SKILL.md`). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
 
-## Stand (2026-11-15, Runde 4 — Team + Bestandsaufnahme)
+## Stand (2026-11-15, Runde 5 — Fundament, mit Team)
+Protokoll: `.claude/team/protokolle/2026-11-15-runde5.md`. Nicht gepusht (Push nur auf Wunsch).
+- **Simulation hat jetzt alle Daten:** `src/sim/welt.js` (Schiff → Kollision, feste Reihenfolge), `src/sim/schiffe/*`
+  (Rumpf-Querschnitte, 11 Türme mit Typ flak/schwer, Mündungen, Grenzen; 16/12 Kollisionskugeln), `src/sim/feld.js`
+  (180 Asteroiden), `src/sim/kollision.js`, `src/sim/zufall.js`. Grafik liest daraus, nie umgekehrt.
+- **Fluggefühl (Nutzerentscheide R4):** Drift nach Kurven deutlich kürzer (Bollwerk 3 s, Ambos 1,8 s), Tempolimit auch ohne
+  Dämpfer (90 / 127,5 m/s), **Ambos jetzt schneller und wendiger** (85 m/s, 18 °/s), Asteroiden: **abprallen + Rumpfschaden**,
+  bei 0 % **Wrack** (treibt, N = Neustart). HUD zeigt „RUMPF %“, Meldung bei Kollision.
+- **Türme** gegliedert (Sockel, Drehkranz, Wiege, Rohre, Mündungen) und bündig; Halsturm auf hohem Sockel (schießt über
+  Bug und Kommandoblock), Flak-Paar vorn verkleinert. Ambos: Türme + „07“ bündig, **„07“ zusätzlich 3 m zur Mitte**
+  verschoben (hing sonst über der Kante) — Nutzer informiert.
+- Tasten T/X gehen nicht mehr verloren; Tastenhilfe klappt nach 10 s ein (H). `npm test` = flug + schiffe, alles grün.
+- **Nicht geprüft:** echtes Fluggefühl im sichtbaren Fenster, Sichtbilder der Türme (Pane verdeckt; Bündigkeit per Strahltest).
+- **Nächste Runde (Vorschlag):** Runde 6 Waffen v1 (Flak + schwer, automatisch, Zieldrohne) — Waffentechniker + KI (Turm-Zielsuche).
+
+## Stand davor (Runde 4 — Team + Bestandsaufnahme)
 Entwicklerteam eingerichtet (`.claude/team/TEAM.md`, 9 Rollen inkl. **Waffentechniker** und **KI-Beauftragter** auf
 Nutzerwunsch, Netz-Architekt ruht). Bestandsaufnahme aller Rollen + Testrunde 1 → Protokoll
 `.claude/team/protokolle/2026-11-15-runde4.md` (Befunde, Konzepte Waffen v1 + Schwarm-KI v1, Schnittstelle, Reihenfolge).

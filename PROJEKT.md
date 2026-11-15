@@ -28,7 +28,10 @@ npm test           # Messflüge ohne Browser
 | `src/main.js` | Start, Hauptschleife (feste Sim 60 Hz + interpolierte Darstellung), `window.spiel` |
 | `src/eingabe.js` | Tastatur/Maus → `befehl` (Form wie `sim.schritt` erwartet) |
 | `src/hud.js` | Anzeige der Steuer-Station |
-| `src/sim/werte.js`, `src/sim/schiff.js` | Flugwerte, Flugmodell (rein, testbar) |
+| `src/sim/welt.js` | Sim-Welt: fester Schritt Schiff → Kollision (später Drohnen, Türme, Geschosse) |
+| `src/sim/werte.js`, `src/sim/schiff.js` | Flug-/Kollisionswerte je Schiff, Flugmodell mit HP/Wrack (rein, testbar) |
+| `src/sim/schiffe/*` | Schiffsdaten: Rumpf-Querschnitte, `masse/oberkante`, Türme (Typ, Mündungen, Grenzen), Kollisionskugeln |
+| `src/sim/feld.js`, `src/sim/kollision.js`, `src/sim/zufall.js` | Asteroidenfeld (Daten), Kugel-Kollision, Zufall mit Startwert |
 | `src/grafik/renderer.js` | Renderer, Sonne + Schatten, Spiegel-Umgebung, Bloom, AgX |
 | `src/grafik/weltraum.js` | Nebel/Milchstraße, Sterne, Sonne, Gasriese (folgen der Kamera) |
 | `src/grafik/staub.js`, `asteroiden.js` | Raumstaub-Striche, Asteroidenfeld |
@@ -36,11 +39,15 @@ npm test           # Messflüge ohne Browser
 | `src/grafik/schiff/ambos.js` | Fregatte „FK-07 Ambos“ (gesichertes erstes Design) |
 | `src/grafik/schiff/bauteile.js`, `texturen.js` | gemeinsame Bausteine + Effekte, Rumpf-Texturen |
 | `src/grafik/kamera.js` | Außenkamera |
-| `tests/flug.mjs` | Messflüge: Fahrt, Bremsen, Drehraten, Drift, Treiben, Gleichlauf |
+| `tests/flug.mjs`, `tests/schiffe.mjs` | Messflüge je Schiff + Kollision + Gleichlauf · Turm-Spaltmaß, Feld, Import-Regel |
 
 ## Schnittstellen
-- `erstelleSchiffSim()` → `{ z, schritt(dt, befehl), zuruecksetzen(), lage(alpha, pos, rot) }`
-  `befehl = { hebel, stopp, gieren, nicken, rollen, quer, hoch, nachbrenner, daempferUmschalten }`
-- `erstelleBollwerk(scene)` / `erstelleAmbos(scene)` → `{ name, kennung, laenge, gruppe, tuerme, darstellen(pos, rot, z, zeit, dt) }`
+- `erstelleSimWelt(typ)` → `{ schiff, feld, typ, daten, werte, waehle(typ), schritt(dt, befehl) → kollision, zuruecksetzen() }`
+- `erstelleSchiffSim(werte)` → `{ z, werte, schritt(dt, befehl), zuruecksetzen(), setzeWerte(w), lage(alpha, pos, rot) }`
+  `befehl = { hebel, stopp, gieren, nicken, rollen, quer, hoch, nachbrenner, daempferUmschalten }`; `z.hp`, `z.zerstoert`
+- `kollidiere(z, kugeln, feld, werte)` → `{ treffer, schaden, kontakte[{punkt, normale, tempo, feld, kugel}] }` (wiederverwendet)
+- `SCHIFFSDATEN.<typ>.tuerme[i]` = `{ id, x, y, z, oben, typ: 'flak'|'schwer', s, sockel, zapfen, muendungen, gier:[mitte, halbweite], nick:[min,max] }`
+  — Winkel im Turm-Rahmen (siehe `src/sim/schiffe/turm.js`)
+- `erstelleBollwerk(scene)` / `erstelleAmbos(scene)` → `{ name, kennung, laenge, gruppe, tuerme[{gruppe, drehkranz, wiege, rohre, muendungen}], darstellen(pos, rot, z, zeit, dt) }`
 - Debug: `spiel.ansicht(name)` (heck, seite, bug, oben, unten, weit) friert ein, `spiel.standbildWeg()`,
-  `spiel.takt(n, befehl)`, `spiel.bildzeit(n)`, `spiel.befehlErsatz = {hebel: 1, …}`.
+  `spiel.takt(n, befehl)` (rechnet die ganze Sim-Welt), `spiel.bildzeit(n)`, `spiel.befehlErsatz = {hebel: 1, …}`, `spiel.welt`.
