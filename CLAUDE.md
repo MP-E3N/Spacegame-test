@@ -1,7 +1,8 @@
 # Schwarmfront — Arbeitsregeln für KI-Agenten
 
 Überblick: `PROJEKT.md` · Stand: `HANDOFF.md` · Idee: `docs/IDEE.md` · Entscheidungen: `docs/ENTSCHEIDUNGEN.md`.
-**Zu Beginn jeder Sitzung `HANDOFF.md` lesen, am Ende aktualisieren.**
+**Zu Beginn jeder Sitzung `HANDOFF.md` lesen, am Ende aktualisieren.** Seit Runde 4 arbeitet ein **Entwicklerteam**
+(`.claude/team/TEAM.md`); jede Runde läuft nach `.claude/skills/schwarmfront-team/SKILL.md`.
 
 ## Technik
 - JavaScript (ES-Module), Vite. Bibliothek nur `three` (Zusätze aus `three/addons/…` erlaubt). Neue Bibliothek nur mit

@@ -1,9 +1,16 @@
 # HANDOFF — Schwarmfront
 
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau),
-> `docs/IDEE.md` (Spielidee des Nutzers). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
+> `docs/IDEE.md` (Spielidee des Nutzers), `.claude/team/TEAM.md` (Team + **Testrunden-Regel**; jede Runde nach
+> `.claude/skills/schwarmfront-team/SKILL.md`). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
 
-## Stand (2026-11-15, Runde 3)
+## Stand (2026-11-15, Runde 4 — Team + Bestandsaufnahme)
+Entwicklerteam eingerichtet (, 9 Rollen inkl. **Waffentechniker** und **KI-Beauftragter** auf
+Nutzerwunsch, Netz-Architekt ruht). Bestandsaufnahme aller Rollen + Testrunde 1 → Protokoll
+ (Befunde, Konzepte Waffen v1 + Schwarm-KI v1, Schnittstelle, Reihenfolge).
+Keine Code-Änderung in Runde 4. **Offene Fragen an den Nutzer** stehen im Protokoll bzw. unten.
+
+## Stand davor (Runde 3)
 Nutzerwunsch zum Bollwerk umgesetzt: **runde Tanks hinten entfernt** (statt dessen kantige, zweistufige Rückenpanzerung
 mit Turm obendrauf, Lüftergitter an den Heckflanken) und **Hangars direkt an der Hülle** (keine Ausleger mehr; Hangar-
 Rümpfe liegen am Hals an, laufen hinten in die Heck-Verjüngung, Nahtleiste oben). Wirkt jetzt wie ein geschlossener Rumpf.
@@ -35,7 +42,6 @@ Erster Prototyp aus dem Wunsch „fang an wie bei der Demo: Raum darstellen, Rau
 ## Offen / nicht geprüft
 - **Echtes Fluggefühl nur vom Nutzer beurteilbar** (verdecktes App-Fenster drosselt die Bildrate; geprüft wurden
   Standbilder + Messflüge).
-- Beim Schiffswechsel (V) ändert sich kurz die Lichtanzahl (Punktlicht im ausgeblendeten Schiff) → evtl. ein kleiner Ruckler.
 - Bollwerk: Kopf wirkt in der Draufsicht etwas kurz; Feinschliff nach Nutzer-Urteil.
 - Asteroiden: Kollision fehlt (Schiff fliegt durch).
 
