@@ -265,7 +265,7 @@ function messeR7(k, dr, ki, bef, flak, befehl, m, z0) {
     const sch = lage.schirme.findIndex((sc) => sc.tuerme.includes(i)); // Wechsel des Schirms = gewollter Sprung
     const mu = z0.tuerme[i].muendung, dx = b.punkt.x - mu.x, dy = b.punkt.y - mu.y, dz = b.punkt.z - mu.z;
     const g = Math.atan2(dx, dz), nk = Math.asin(dy / L(dx, dy, dz)), p = z0.vorRohr[i];
-    if (p && b.zielId === null && p.sperr && p.sch === sch) { m.richtG = Math.max(m.richtG, Math.abs(g - p.g - 2 * Math.PI * Math.round((g - p.g) / (2 * Math.PI))) / DT); /* WARUM umbrechen: Kasten hinter der Batterie (Gier ±180°) */ m.richtN = Math.max(m.richtN, Math.abs(nk - p.n) / DT); }
+    /* R9 (Befund Prüfer): Kastenwechsel eines Rohrs wird MIT gemessen (Übergang statt Sprung) */ if (p && b.zielId === null && p.sperr) { m.richtG = Math.max(m.richtG, Math.abs(g - p.g - 2 * Math.PI * Math.round((g - p.g) / (2 * Math.PI))) / DT); /* WARUM umbrechen: Kasten hinter der Batterie (Gier ±180°) */ m.richtN = Math.max(m.richtN, Math.abs(nk - p.n) / DT); }
     z0.vorRohr[i] = { g, n: nk, sperr: b.zielId === null, sch };
     if (p && p.sch !== sch) m.schirmWechselRohr = (m.schirmWechselRohr ?? 0) + 1;
   });
