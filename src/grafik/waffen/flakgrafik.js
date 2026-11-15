@@ -13,13 +13,15 @@ import { zufall } from '../zufall.js';
 import { uPixel, spurMaterial, gluehMaterial, rauchMaterial } from './shader.js';
 
 const MAX_SPUR = 256, MAX_GLUEH = 128, MAX_RAUCH = 384;
-const SPUR_LAENGE = 45;        // m
+const SPUR_LAENGE = 25;        // m (R8, Nutzer: „kleiner“) — WARUM nicht kürzer: unter ~1 Schrittweg (17 m bei 1000 m/s) wird die Spur zur Perlenkette
 // Nahe der Kamera (Runde 7, Bildprüfer: weiße Glut vor der Batterie-Kamera): Glühen unter NAH_VOLL m gedämpft,
 // Bildschirmradius gedeckelt (Blitz klein, Kern groß). Kamera steht im Prüfstand-Blick ~30 m vom nächsten Turm.
 const NAH_MIN = 15, NAH_VOLL = 80, BLITZ_PX = 18, KERN_PX = 300;
 const WOLKE_R = 42, WOLKE_DECKKRAFT = 0.7; // Quad-Radius m (dichter Kern ~28 m), Deckkraft — Runde 7 (Nutzer: „größer“)
 const SIM_DT = 1 / 60;
 const RUECK = 0.7, RUECK_ZEIT = 0.17; // m, s
+// Mündung (R8, Nutzer: „zu rauchig“): Blitz kleiner/kürzer, Rauch nur jeder 3. Schuss, klein, kurz und durchscheinend
+const BLITZ_M = 2.5, BLITZ_S = 0.05, MRAUCH_JEDER = 3, MRAUCH_M = 2.5, MRAUCH_S = 0.3, MRAUCH_DECKKRAFT = 0.3;
 const ZWEI_PI = Math.PI * 2;
 const umbruch = (w) => w - ZWEI_PI * Math.floor((w + Math.PI) / ZWEI_PI);
 
@@ -69,7 +71,8 @@ export function erstelleFlakGrafik(scene, camera) {
     groesse: new Float32Array(MAX_GLUEH), kraft: new Float32Array(MAX_GLUEH), art: new Uint8Array(MAX_GLUEH), zeiger: 0 };
   const W = { pos: new Float32Array(MAX_RAUCH * 3), vel: new Float32Array(MAX_RAUCH * 3), alter: new Float32Array(MAX_RAUCH).fill(99),
     dauer: new Float32Array(MAX_RAUCH).fill(1), r0: new Float32Array(MAX_RAUCH), rMax: new Float32Array(MAX_RAUCH),
-    saat: new Float32Array(MAX_RAUCH), glut: new Float32Array(MAX_RAUCH), zeiger: 0 };
+    saat: new Float32Array(MAX_RAUCH), glut: new Float32Array(MAX_RAUCH), deckkraft: new Float32Array(MAX_RAUCH), zeiger: 0 };
+  const mRauchZaehler = new Uint8Array(LAFETTEN.length); // je Turm: nur jeder MRAUCH_JEDER-te Schuss raucht
   const zaehler = { spuren: 0, gluehen: 0, wolken: 0 };
 
   // WARUM Ring statt Suche: ist der Vorrat voll, wird die älteste Wolke ersetzt (fällt im dichten Schirm nicht auf)
@@ -78,11 +81,11 @@ export function erstelleFlakGrafik(scene, camera) {
     G.pos[i * 3] = x; G.pos[i * 3 + 1] = y; G.pos[i * 3 + 2] = z;
     G.alter[i] = 0; G.dauer[i] = dauer; G.groesse[i] = groesse; G.kraft[i] = kraft; G.art[i] = art;
   }
-  function neueWolke(x, y, z, r0, rMax, dauer, vx = 0, vy = 0, vz = 0, glut = 1) {
+  function neueWolke(x, y, z, r0, rMax, dauer, vx = 0, vy = 0, vz = 0, glut = 1, deckkraft = WOLKE_DECKKRAFT) {
     const i = W.zeiger; W.zeiger = (i + 1) % MAX_RAUCH;
     W.pos[i * 3] = x; W.pos[i * 3 + 1] = y; W.pos[i * 3 + 2] = z;
     W.vel[i * 3] = vx + (rnd() - 0.5) * 3; W.vel[i * 3 + 1] = vy + (rnd() - 0.5) * 3; W.vel[i * 3 + 2] = vz + (rnd() - 0.5) * 3;
-    W.alter[i] = 0; W.dauer[i] = dauer; W.r0[i] = r0; W.saat[i] = rnd(); W.glut[i] = glut;
+    W.alter[i] = 0; W.dauer[i] = dauer; W.r0[i] = r0; W.saat[i] = rnd(); W.glut[i] = glut; W.deckkraft[i] = deckkraft;
     // WARUM breite Größenstreuung 0,6–1,3: gleich große Wolken verschmelzen zu einer glatten „Wattewurst“
     W.rMax[i] = rMax * (0.6 + rnd() * 0.7);
   }
@@ -91,10 +94,14 @@ export function erstelleFlakGrafik(scene, camera) {
   function nachSchritt(flak) {
     const e = flak.ereignisse;
     for (const s of e.schuesse) {
-      neuesGluehen(s.pos.x + s.richtung.x * 1.2, s.pos.y + s.richtung.y * 1.2, s.pos.z + s.richtung.z * 1.2, 4, 0.07, 1, 0);
-      // Mündungsrauch: kleiner Puff, treibt etwas mit dem Rohr — WARUM: ohne Leuchtspur soll man trotzdem sehen, dass geschossen wird
-      neueWolke(s.pos.x + s.richtung.x * 3, s.pos.y + s.richtung.y * 3, s.pos.z + s.richtung.z * 3, 1.5, 5, 0.6,
-        s.richtung.x * 8, s.richtung.y * 8, s.richtung.z * 8, 0); // ohne Innenglut: grauer Puff, nicht hell
+      neuesGluehen(s.pos.x + s.richtung.x * 1.2, s.pos.y + s.richtung.y * 1.2, s.pos.z + s.richtung.z * 1.2, BLITZ_M, BLITZ_S, 1, 0);
+      // Mündungsrauch: kleiner Puff, treibt etwas mit dem Rohr — WARUM: ohne Leuchtspur soll man trotzdem sehen, dass
+      // geschossen wird. WARUM nur jeder 3. Schuss: bei 10 Schuss/s standen sonst ~6 Puffs je Turm übereinander (Wurst).
+      if (++mRauchZaehler[s.turmId] >= MRAUCH_JEDER) {
+        mRauchZaehler[s.turmId] = 0;
+        neueWolke(s.pos.x + s.richtung.x * 2, s.pos.y + s.richtung.y * 2, s.pos.z + s.richtung.z * 2, 0.8, MRAUCH_M, MRAUCH_S,
+          s.richtung.x * 6, s.richtung.y * 6, s.richtung.z * 6, 0, MRAUCH_DECKKRAFT); // ohne Innenglut: grauer Hauch
+      }
       rueck[s.turmId * 2 + s.rohr] = 0;
     }
     for (const d of e.detonationen) {
@@ -203,7 +210,7 @@ export function erstelleFlakGrafik(scene, camera) {
       RP[n * 3] = W.pos[i * 3]; RP[n * 3 + 1] = W.pos[i * 3 + 1]; RP[n * 3 + 2] = W.pos[i * 3 + 2];
       // Radius: schnell auf rMax (0,4 s), danach langsam weiter
       RR[n] = W.r0[i] + (W.rMax[i] - W.r0[i]) * (1 - Math.exp(-a / 0.13)) + a * 1.5;
-      RA[n] = Math.min(1, a / 0.05) * WOLKE_DECKKRAFT * (1 - u) ** 1.4;
+      RA[n] = Math.min(1, a / 0.05) * W.deckkraft[i] * (1 - u) ** 1.4;
       RG[n] = Math.max(0, 1 - a / 0.4) * W.glut[i];
       RS[n] = W.saat[i];
     }

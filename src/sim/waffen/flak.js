@@ -1,31 +1,43 @@
 // ZWECK: Flak-Simulation der Prüfstand-Batterie: Türme richten (Grenzen, Richtgeschwindigkeit), Zwillingsrohre im
-//        Wechsel feuern, Streuung mit festem Startwert, Geschoss-Pool, Zeit- und Annäherungszünder, Detonationsschaden.
+//        Wechsel feuern, Streuung mit festem Startwert, Streukugel je Granate (Runde 8), Geschoss-Pool, Zeitzünder
+//        (Annäherungszünder abschaltbar), Flächenschaden + Splitterwolke an ALLEN Zielen im Wirkradius.
 // LIEFERT: FLAK (Zahlen) · erstelleFlak({ startwert, lafetten }) → { tuerme, geschosse, splitter, ereignisse, schritt(dt, befehle, ziele),
 //          zuruecksetzen(), pruefsumme() } — Felder siehe Protokoll Runde 6, Entscheidung 3.
 // REGEL: fester Schritt 1/60 s, kein Math.random (zufall je Turm), keine neuen Objekte im Schritt (Pools, Ereignis-Vorrat).
 //        Winkel wie turm.js: gier 0 = Rohr nach Welt +Z, gier > 0 zu +X; nick > 0 = nach oben (Turm-Rahmen = Welt-Rahmen).
-//        Die HP zieht das Drohnen-Modul ab — hier entstehen nur Ereignisse.
+//        Die HP zieht das Drohnen-Modul ab — hier entstehen nur Ereignisse. Neue Granaten fliegen mit turm.v0
+//        (Seite/Labor schalten um), fliegende behalten ihr Tempo.
+//        befehle[i].streuKugel (m, fehlt/0 = aus): jede Granate fliegt auf einen eigenen Punkt, gleichverteilt in der
+//        Kugel um befehl.punkt, Zeitzünder auf genau diesen Punkt (Runde 8, Nutzer: „Luft sättigen statt treffen“).
 import { zufall } from '../zufall.js';
 import { LAFETTEN } from './lafetten.js';
 
 export const FLAK = {
-  v0: 620,                    // m/s, konstant, keine Schwerkraft
+  v0: 1000,                   // m/s Standard (R8: 40-mm-Klasse); je Turm über turm.v0 umschaltbar, keine Schwerkraft
   reichweite: 2500,           // m
   schussAbstand: 6,           // Schritte zwischen zwei Schüssen eines Zwillings (10 Schuss/s je Turm)
-  streuung: 0.5 * Math.PI / 180, // rad, größte Abweichung je Achse (Dreiecksverteilung)
-  zuenderMin: 0.1, zuenderMax: 4.0, // s (0,1 s ≈ 62 m: Nahbereich, Runde 7)
-  zuenderStreu: 0.04,         // ±4 % Zielgranaten
+  streuung: 0.25 * Math.PI / 180, // rad, größte Abweichung je Achse (Dreiecksverteilung); seit R8 streut v. a. die Streukugel
+  zuenderMinStrecke: 60, zuenderMax: 4.0, // m bzw. s — WARUM Strecke: bei 1100 m/s wären 0,1 s schon 110 m
+  zuenderStreu: 0.04,         // ±4 % Zielgranaten ohne Streukugel
+  zuenderStreuKugel: 0.01,    // ±1 % mit Streukugel (die Kugel liefert die Tiefe, Entscheidung R8/2)
   zuenderStreuSperr: 0.08,    // ±8 % Sperrgranaten → Schirm ~120 m tief bei 800 m: einzelne Wolken davor/dahinter (Runde 7)
+  streuKugelAnteil: 0.05,     // Kugelradius höchstens 0,05 · Entfernung — WARUM: nah läge die Granate sonst > 3° neben dem Rohr
+  // Annäherungszünder (R8 aus, Code bleibt): er war der eigentliche „Direkttreffer“ — zündete bei r + 12 m an jedem Ziel.
+  annaeherung: false,
   naheZuender: 12,            // m über dem Zielradius
-  scharfNach: 6,              // Schritte (~60 m): WARUM: kein Annäherungszünder direkt vor dem Rohr
-  // Zwei Granatsorten (Runde 6, Nachauftrag), gewählt nach dem Befehl:
-  //   ZIELGRANATE (befehl.zielId gesetzt, Zielfeuer): nur Sofortschaden, kein Nachwirken.
-  //   SPERRGRANATE (zielId null, Sperrfeuer): schwacher Sofortschaden + SPLITTERWOLKE, die ~0,7 s nachwirkt.
-  // WARUM: Ohne Nachwirken quert ein Angreifer die ~60 m tiefe Wand in ~0,4 s fast unbeschadet (Messung: 0 Abschüsse);
-  //        mit Splittern auch im Zielfeuer wurde das Zielfeuer zu tödlich (Prox-Detonation direkt am Ziel + Wolke).
-  wirkRadius: 25, vollRadius: 6, schadenZiel: 11, schadenSperr: 14,
-  // Splitter: Schaden/s im Radius, linear mit dem Alter abnehmend, am Rand halb (ganze Lebensdauer in der Mitte ≈ dps · dauer/60 / 2 ≈ 120 HP).
-  splitterRadius: 40, splitterDauer: 42, splitterDps: 350, poolSplitter: 96,
+  scharfStrecke: 60,          // m: WARUM: kein Annäherungszünder direkt vor dem Rohr
+  // Zwei Granatsorten, gewählt nach dem Befehl, je eigener Hebel (Lehre R6: ein Hebel pro Modus):
+  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 22 / 30 m + Splitterwolke 30 m · 0,5 s · 120 HP/s (R8).
+  //   1 SPERRGRANATE (zielId null): Flächenschaden 14 / 25 m + Splitterwolke 45 m · 0,9 s · 500 HP/s.
+  // WARUM Splitter jetzt auch im Zielfeuer: ohne Annäherungszünder liegt die Detonation im Mittel ~16 m neben dem Ziel.
+  // WARUM Sperr-Splitter stärker als R7 (40 m / 0,7 s / 350): die Werte waren MIT Annäherungszünder gemessen; ohne ihn
+  //        fiel der Schirm-Durchflug von 75 auf 21 HP. Mit 45 / 0,9 / 500 → 46 HP (tests/waffen.mjs 7); Labor misst nach.
+  // Splitter: Schaden/s im Radius, linear mit dem Alter abnehmend, am Rand halb. Dauer in Schritten.
+  sorte: [
+    { wirkRadius: 30, vollRadius: 4, schaden: 22, splitterRadius: 30, splitterDauer: 30, splitterDps: 120 },
+    { wirkRadius: 25, vollRadius: 6, schaden: 14, splitterRadius: 45, splitterDauer: 54, splitterDps: 500 },
+  ],
+  poolSplitter: 96,
   // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
   nachbarHuelle: 3.7, nachbarHoehe: 5.2,
   richtGeschw: [60 * Math.PI / 180, 50 * Math.PI / 180], // rad/s [gier, nick] (Nick 50°/s ab Runde 7)
@@ -62,10 +74,13 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     pos: new Float64Array(N * 3), vorPos: new Float64Array(N * 3), vel: new Float64Array(N * 3),
     alter: new Uint16Array(N),  // Schritte seit dem Abschuss (Grafik: Leuchtspur wächst aus der Mündung)
     rest: new Uint16Array(N),   // Schritte bis zum Zeitzünder
+    // Anteil des letzten Schritts bis zum Zünden (0..1]. WARUM: ganze Schritte wären bei 1000 m/s ±8 m ungenau;
+    // so bleibt der Zähler ganzzahlig (Gleichlauf) und der Detonationsort trotzdem genau.
+    bruch: new Float64Array(N),
   };
   const ereignisse = {
     schuesse: ereignisListe(FLAK.vorratEreignisse, () => ({ turmId: 0, rohr: 0, pos: v3(), richtung: v3() })),
-    detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.wirkRadius, art: 'zeit' })),
+    detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.sorte[1].wirkRadius, art: 'zeit' })),
     treffer: ereignisListe(FLAK.vorratEreignisse, () => ({ zielId: 0, schaden: 0, pos: v3() })),
   };
   const tuerme = lafetten.map((l) => ({
@@ -78,7 +93,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   }));
   let zeiger = 0, schrittNr = 0;
   const NS = FLAK.poolSplitter;
-  const splitter = { max: NS, anzahlAktiv: 0, pos: new Float64Array(NS * 3), rest: new Uint16Array(NS), zeiger: 0 };
+  const splitter = { max: NS, anzahlAktiv: 0, pos: new Float64Array(NS * 3), rest: new Uint16Array(NS), sorte: new Uint8Array(NS), zeiger: 0 };
   // Nachbar-Sperrzonen je Turm: { gier, halb, nickMin } aus der Lafetten-Tabelle (einmal berechnet)
   for (const t of tuerme) {
     t.sperrzonen = [];
@@ -127,22 +142,22 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
 
   // ---------- Detonation: Schaden mit Abfall auf alle aktiven Ziele ----------
   function detoniere(x, y, z, art, ziele, sperr) {
-    const schaden = sperr ? FLAK.schadenSperr : FLAK.schadenZiel;
+    const S = FLAK.sorte[sperr], W = S.wirkRadius, V = S.vollRadius;
     const d = ereignisse.detonationen.neu();
-    d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = FLAK.wirkRadius; d.art = art;
+    d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = W; d.art = art;
     for (let k = 0; k < ziele.length; k++) {
       const ziel = ziele[k];
       if (!ziel.aktiv) continue;
       const ab = Math.max(0, Math.hypot(ziel.pos.x - x, ziel.pos.y - y, ziel.pos.z - z) - ziel.r);
-      if (ab >= FLAK.wirkRadius) continue;
-      const f = ab <= FLAK.vollRadius ? 1 : (1 - (ab - FLAK.vollRadius) / (FLAK.wirkRadius - FLAK.vollRadius)) ** 2;
-      treffe(ziel, schaden * f);
+      if (ab >= W) continue;
+      const f = ab <= V ? 1 : (1 - (ab - V) / (W - V)) ** 2; // voll bis V, dann quadratisch auf 0 am Wirkradius
+      treffe(ziel, S.schaden * f);
     }
     // Splitterwolke: Ring fester Größe, ist er voll, wird die älteste ersetzt (deterministisch)
-    if (!sperr) return;
     const i = splitter.zeiger; splitter.zeiger = (i + 1) % NS;
     if (splitter.rest[i] === 0) splitter.anzahlAktiv++;
-    splitter.pos[i * 3] = x; splitter.pos[i * 3 + 1] = y; splitter.pos[i * 3 + 2] = z; splitter.rest[i] = FLAK.splitterDauer;
+    splitter.pos[i * 3] = x; splitter.pos[i * 3 + 1] = y; splitter.pos[i * 3 + 2] = z;
+    splitter.sorte[i] = sperr; splitter.rest[i] = S.splitterDauer;
   }
 
   /** Höchstens EIN Treffer-Ereignis je Ziel und Schritt (Schaden summiert). */
@@ -156,16 +171,16 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   /** Splitterwolken wirken nach: Schaden/s im Radius, linear mit dem Alter abnehmend. Vor den neuen Detonationen. */
   function splitterSchritt(dt, ziele) {
     if (!splitter.anzahlAktiv) return;
-    const R = FLAK.splitterRadius;
     for (let i = 0; i < NS; i++) {
       if (!splitter.rest[i]) continue;
-      const staerke = splitter.rest[i] / FLAK.splitterDauer; // 1 → 0
+      const S = FLAK.sorte[splitter.sorte[i]], R = S.splitterRadius;
+      const staerke = splitter.rest[i] / S.splitterDauer; // 1 → 0
       const sx = splitter.pos[i * 3], sy = splitter.pos[i * 3 + 1], sz = splitter.pos[i * 3 + 2];
       for (let k = 0; k < ziele.length; k++) {
         const ziel = ziele[k];
         if (!ziel.aktiv) continue;
         const ab = Math.hypot(ziel.pos.x - sx, ziel.pos.y - sy, ziel.pos.z - sz) - ziel.r;
-        if (ab < R) treffe(ziel, FLAK.splitterDps * staerke * dt * (1 - Math.max(0, ab) / R * 0.5));
+        if (ab < R) treffe(ziel, S.splitterDps * staerke * dt * (1 - Math.max(0, ab) / R * 0.5));
       }
       if (--splitter.rest[i] === 0) splitter.anzahlAktiv--;
     }
@@ -182,9 +197,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
       const dx = vel[j] * dt, dy = vel[j + 1] * dt, dz = vel[j + 2] * dt;
       pos[j] = x0 + dx; pos[j + 1] = y0 + dy; pos[j + 2] = z0 + dz;
       alter[i]++;
-      // Annäherungszünder: Strecke in RELATIVBEWEGUNG gegen Kugel r + 12 (WARUM: ~10 m/Schritt → Punkttest tunnelt)
+      // Annäherungszünder (nur mit FLAK.annaeherung): Strecke in RELATIVBEWEGUNG gegen Kugel r + 12
+      // (WARUM: ~17 m/Schritt → Punkttest tunnelt)
       let bestS = 2, bestZiel = -1;
-      if (alter[i] > FLAK.scharfNach) {
+      if (FLAK.annaeherung && alter[i] * dt * Math.hypot(vel[j], vel[j + 1], vel[j + 2]) > FLAK.scharfStrecke) {
         for (let k = 0; k < ziele.length; k++) {
           const zl = ziele[k];
           if (!zl.aktiv) continue;
@@ -205,7 +221,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
         detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sperr[i]);
       } else if (--rest[i] === 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
-        detoniere(pos[j], pos[j + 1], pos[j + 2], 'zeit', ziele, geschosse.sperr[i]);
+        const b = geschosse.bruch[i]; // genauer Zündort innerhalb des letzten Schritts
+        detoniere(x0 + dx * b, y0 + dy * b, z0 + dz * b, 'zeit', ziele, geschosse.sperr[i]);
       }
     }
   }
@@ -263,12 +280,27 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     if (i < 0) { geschosse.verworfen++; return; }
     const rohr = t.rohr; t.rohr ^= 1; t.abklingen = FLAK.schussAbstand; t.bereit = false; t.schuesse++;
     muendungWelt(t, rohr, tmp);
+    const v0 = t.v0;
+    // Streukugel (R8): Punkt gleichverteilt in der Kugel um p — genau 3 Zufallszahlen (Richtung + Kubikwurzel-Radius).
+    // WARUM Versatz als Winkeldifferenz auf die Rohrrichtung: der Turm richtet nur auf p (Richttempo), jede Granate
+    // bekommt ihren eigenen Punkt, der Richtfehler des Turms bleibt erhalten.
+    let kG = 0, kN = 0, zuender, zStreu;
+    const qx0 = p.x - tmp.x, qy0 = p.y - tmp.y, qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
+    const kugel = Math.min(b.streuKugel || 0, FLAK.streuKugelAnteil * dp);
+    if (kugel > 0) {
+      const cz = 2 * t.rnd() - 1, phi = ZWEI_PI * t.rnd(), r = kugel * Math.cbrt(t.rnd()), sz = Math.sqrt(1 - cz * cz);
+      const qx = qx0 + r * sz * Math.cos(phi), qy = qy0 + r * sz * Math.sin(phi), qz = qz0 + r * cz;
+      kG = umbruch(Math.atan2(qx, qz) - Math.atan2(qx0, qz0));
+      kN = Math.atan2(qy, Math.hypot(qx, qz)) - Math.atan2(qy0, Math.hypot(qx0, qz0));
+      zuender = Math.hypot(qx, qy, qz) / v0; zStreu = FLAK.zuenderStreuKugel;
+    } else {
+      zuender = b.zuender ?? entf / v0; zStreu = b.zielId == null ? FLAK.zuenderStreuSperr : FLAK.zuenderStreu;
+    }
     // Streuung: zwei Achsen, je Dreiecksverteilung (Summe zweier Zufallszahlen) → dichte Mitte, weicher Rand
-    const g = t.gier + (t.rnd() + t.rnd() - 1) * t.streuung / Math.max(0.2, Math.cos(t.nick));
-    const n = t.nick + (t.rnd() + t.rnd() - 1) * t.streuung;
+    const g = t.gier + kG + (t.rnd() + t.rnd() - 1) * t.streuung / Math.max(0.2, Math.cos(t.nick));
+    const n = t.nick + kN + (t.rnd() + t.rnd() - 1) * t.streuung;
     const cn = Math.cos(n), rx = Math.sin(g) * cn, ry = Math.sin(n), rz = Math.cos(g) * cn;
-    let zuender = b.zuender ?? entf / FLAK.v0;
-    zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMin, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * (b.zielId == null ? FLAK.zuenderStreuSperr : FLAK.zuenderStreu));
+    zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMinStrecke / v0, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * zStreu);
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
     geschosse.sperr[i] = b.zielId == null ? 1 : 0;
@@ -279,9 +311,11 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     geschosse.pos[j] = geschosse.vorPos[j] = tmp.x;
     geschosse.pos[j + 1] = geschosse.vorPos[j + 1] = tmp.y;
     geschosse.pos[j + 2] = geschosse.vorPos[j + 2] = tmp.z;
-    geschosse.vel[j] = rx * FLAK.v0; geschosse.vel[j + 1] = ry * FLAK.v0; geschosse.vel[j + 2] = rz * FLAK.v0;
+    geschosse.vel[j] = rx * v0; geschosse.vel[j + 1] = ry * v0; geschosse.vel[j + 2] = rz * v0;
     geschosse.alter[i] = 0;
-    geschosse.rest[i] = Math.max(1, Math.round(zuender / dt)); // WARUM ganze Schritte: Gleichlauf ohne Zeitrundung
+    // WARUM ganze Schritte + Bruch: Zähler ohne Zeitrundung (Gleichlauf), Zündort trotzdem auf den Meter genau
+    const schritte = zuender / dt, rest = Math.max(1, Math.ceil(schritte - 1e-9));
+    geschosse.rest[i] = rest; geschosse.bruch[i] = Math.min(1, Math.max(0, schritte - (rest - 1)));
     const s = ereignisse.schuesse.neu();
     s.turmId = t.id; s.rohr = rohr; s.pos.x = tmp.x; s.pos.y = tmp.y; s.pos.z = tmp.z;
     s.richtung.x = rx; s.richtung.y = ry; s.richtung.z = rz;

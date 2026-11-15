@@ -4,7 +4,9 @@
 //   in zwei Läufen gleich, anderer Startwert anders · 5) Rechenzeit ms/Schritt (volle Batterie, ~240 Geschosse, 10 Ziele)
 //   6) Nachbar-Sperre (flach über den Nachbarturm → gesperrt, kein Schuss) · 7) Splitterwolke: Durchflug durch einen
 //   Sperrfeuer-Schirm (800 m) · 8) höchstens ein Treffer-Ereignis je Ziel und Schritt
-//   9) Leuchtspur nur auf Befehl (ohne → 0, mit → alle) · 10) Mindest-Zeitzünder 0,1 s, Zünder wirkt bei 150 m (Runde 7).
+//   9) Leuchtspur nur auf Befehl (ohne → 0, mit → alle) · 10) Mindest-Zeitzünder 60 m, Zünder wirkt bei 150 m (Runde 7/8).
+//   Runde 8: 11) Streukugel gleichverteilt (Median 0,79 R) · 12) R = 0 → Detonation am Punkt bei jeder v0-Stufe
+//   13) Flächenschaden an zwei Drohnen, abfallend · 14) v0-Wechsel im Flug · 15) Zielfeuer mit Streukugel gegen Flieger.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
 import { erstelleFlak, FLAK } from '../src/sim/waffen/flak.js';
@@ -36,7 +38,7 @@ function abfang(m, ziel, v0) {
 
 function zielBefehle(flak, befehle, ziel, toleranz = 0.012) {
   flak.tuerme.forEach((t, i) => {
-    const b = befehle[i], tz = abfang(t.muendung, ziel, FLAK.v0);
+    const b = befehle[i], tz = abfang(t.muendung, ziel, t.v0);
     b.zielId = ziel.id; b.feuer = tz > 0; b.toleranz = toleranz; b.zuender = tz;
     const tt = tz > 0 ? tz : 0;
     b.punkt.x = ziel.pos.x + ziel.vel.x * tt; b.punkt.y = ziel.pos.y + ziel.vel.y * tt; b.punkt.z = ziel.pos.z + ziel.vel.z * tt;
@@ -108,11 +110,11 @@ function lauf(startwert) {
     for (const z of ziele) bewege(z);
     // Wechsel: erst Zielfeuer auf je ein Ziel, dann Sperrfeuer-Streichen auf einer Schale (wie die Turm-KI)
     if (i < 1800) flak.tuerme.forEach((t, k) => { const ziel = ziele[(k + (i >> 7)) % 10]; const b = befehle[k];
-      const tz = abfang(t.muendung, ziel, FLAK.v0); b.feuer = tz > 0; b.zuender = tz; b.toleranz = 0.015; const tt = Math.max(tz, 0);
+      const tz = abfang(t.muendung, ziel, t.v0); b.zielId = ziel.id; b.streuKugel = 20; b.feuer = tz > 0; b.zuender = tz; b.toleranz = 0.015; const tt = Math.max(tz, 0);
       b.punkt.x = ziel.pos.x + ziel.vel.x * tt; b.punkt.y = ziel.pos.y + ziel.vel.y * tt; b.punkt.z = ziel.pos.z + ziel.vel.z * tt; });
     else befehle.forEach((b, k) => { const w = i * DT * 1.6 + k * Math.PI / 3, g = 0.5 * Math.sin(w), n = 0.45 + 0.3 * Math.sin(2 * w);
       b.punkt.x = 800 * Math.sin(g) * Math.cos(n); b.punkt.y = 4 + 800 * Math.sin(n); b.punkt.z = 800 * Math.cos(g) * Math.cos(n);
-      b.feuer = true; b.toleranz = 0.06; b.zuender = 800 / FLAK.v0; });
+      b.zielId = null; b.streuKugel = 0; b.feuer = true; b.toleranz = 0.06; b.zuender = 800 / FLAK.v0; });
     flak.schritt(DT, befehle, ziele);
   }
   return { summe: flak.pruefsumme(), ms: (performance.now() - t0) / 3600, aktiv: flak.geschosse.anzahlAktiv };
@@ -153,7 +155,7 @@ zeile('Rechenzeit Sim-Schritt (6 Türme, 10 Ziele)', '≤ 0,3 ms', a.ms.toFixed(
       bewege(ziel);
       befehle.forEach((b, m) => { const w = i * DT * 1.6 + m * Math.PI / 3, g = 0.52 * Math.sin(w), n = 0.48 + 0.31 * Math.sin(2 * w + m);
         b.punkt.x = 800 * Math.sin(g) * Math.cos(n); b.punkt.y = 4 + 800 * Math.sin(n); b.punkt.z = 800 * Math.cos(g) * Math.cos(n);
-        b.zielId = null; b.feuer = true; b.toleranz = 0.06; b.zuender = 800 / FLAK.v0; });
+        b.zielId = null; b.streuKugel = 0; b.feuer = true; b.toleranz = 0.06; b.zuender = 800 / FLAK.v0; });
       flak.schritt(DT, befehle, [ziel]);
       for (const t of flak.ereignisse.treffer) schaden += t.schaden;
     }
@@ -203,9 +205,121 @@ function zuenderLauf(zuender) {
 }
 {
   const z150 = zuenderLauf(150 / FLAK.v0), zMin = zuenderLauf(0.02);
-  zeile('Zünder 150 m (0,24 s): Detonationsabstand', '150 ± 15 m', `${z150.min.toFixed(0)}–${z150.max.toFixed(0)} m (${z150.n})`, z150.n > 0 && z150.min > 135 && z150.max < 165);
-  zeile('Mindest-Zeitzünder (0,02 → 0,1 s)', '≈ 62 m', `${zMin.min.toFixed(0)}–${zMin.max.toFixed(0)} m`, zMin.n > 0 && zMin.min > 50 && zMin.max < 75);
+  zeile('Zünder 150 m (0,15 s): Detonationsabstand', '150 ± 15 m', `${z150.min.toFixed(0)}–${z150.max.toFixed(0)} m (${z150.n})`, z150.n > 0 && z150.min > 135 && z150.max < 165);
+  zeile('Mindest-Zeitzünder (0,02 s → 60 m Strecke)', '≈ 60 m', `${zMin.min.toFixed(0)}–${zMin.max.toFixed(0)} m`, zMin.n > 0 && zMin.min > 50 && zMin.max < 75);
   zeile('Nick-Richttempo', '50°/s', (FLAK.richtGeschw[1] * 180 / Math.PI).toFixed(0) + '°/s', Math.abs(FLAK.richtGeschw[1] * 180 / Math.PI - 50) < 1e-9);
+}
+
+// ---------- Runde 8: Hilfen ----------
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
+/** Ein Turm (Nr. 1) richtet auf einen festen Punkt in Entfernung d (Nick 0,5), danach feuert er `schritte` lang.
+ *  rein = true: Turmstreuung und Zünderstreuung aus (misst nur Kugel/Zünder). Liefert Detonationen + Treffer je Schritt. */
+function punktLauf({ d = 1000, streuKugel = 0, v0 = FLAK.v0, schritte = 600, rein = true, ziele = [], einSchuss = false, startwert = 11 }) {
+  const alt = { k: FLAK.zuenderStreuKugel, z: FLAK.zuenderStreu };
+  if (rein) { FLAK.zuenderStreuKugel = 0; FLAK.zuenderStreu = 0; }
+  try {
+    const flak = erstelleFlak({ startwert });
+    const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1], b = befehle[1];
+    t.v0 = v0; if (rein) t.streuung = 0;
+    const p = { x: l.x, y: l.y + l.zapfen.y + d * Math.sin(0.5), z: l.z + d * Math.cos(0.5) };
+    b.punkt = p; b.toleranz = 0.002; b.zielId = 99; b.streuKugel = streuKugel;
+    for (let i = 0; i < 120; i++) flak.schritt(DT, befehle, ziele);
+    b.zuender = Math.hypot(p.x - t.muendung.x, p.y - t.muendung.y, p.z - t.muendung.z) / v0;
+    b.feuer = true;
+    const ab = [], treffer = [];
+    let schuesse = 0;
+    for (let i = 0; i < schritte; i++) {
+      flak.schritt(DT, befehle, ziele);
+      schuesse += flak.ereignisse.schuesse.length;
+      if (einSchuss && schuesse > 0) b.feuer = false;
+      for (const e of flak.ereignisse.detonationen) ab.push(Math.hypot(e.pos.x - p.x, e.pos.y - p.y, e.pos.z - p.z));
+      treffer.push(flak.ereignisse.treffer.map((e) => ({ id: e.zielId, s: e.schaden, det: flak.ereignisse.detonationen.length })));
+    }
+    return { ab, treffer, schuesse, p, flak };
+  } finally { FLAK.zuenderStreuKugel = alt.k; FLAK.zuenderStreu = alt.z; }
+}
+
+// ---------- 11) Streukugel gleichverteilt ----------
+{
+  const R = 20, rein = punktLauf({ streuKugel: R, schritte: 12200 });
+  const m = median(rein.ab), mx = Math.max(...rein.ab), soll = R * Math.cbrt(0.5);
+  zeile(`Streukugel R ${R} m (1000 m, rein): Median Abstand`, `${soll.toFixed(1)} ± 5 % (0,79 R)`, `${m.toFixed(2)} m (${rein.ab.length} Det.)`,
+    rein.ab.length >= 2000 && Math.abs(m - soll) <= 0.05 * soll);
+  zeile(`Streukugel R ${R} m: größter Abstand`, `≤ ${R + 3} m`, mx.toFixed(2) + ' m', mx <= R + 3);
+  const echt = punktLauf({ streuKugel: R, schritte: 3000, rein: false });
+  zeile('Streukugel mit Turm-/Zünderstreuung: Median / max', 'Info', `${median(echt.ab).toFixed(1)} / ${Math.max(...echt.ab).toFixed(1)} m`, true, false);
+  const nah = punktLauf({ d: 200, streuKugel: R, schritte: 1200 });
+  zeile('Streukugel bei 200 m: Deckel 0,05 · d = 10 m (+ 0,8 m Rohrversatz)', '≤ 11 m', Math.max(...nah.ab).toFixed(2) + ' m', nah.ab.length > 0 && Math.max(...nah.ab) <= 11);
+}
+
+// ---------- 12) R = 0: Detonation am Punkt bei jeder v0-Stufe ----------
+{
+  const werte = [];
+  let ok = true;
+  for (const v0 of [620, 820, 1000, 1100]) {
+    const r = punktLauf({ d: 800, v0, schritte: 300 });
+    const mx = r.ab.length ? Math.max(...r.ab) : Infinity;
+    werte.push(`${v0}: ${mx.toFixed(2)}`); ok = ok && r.ab.length > 0 && mx < 3;
+  }
+  zeile('R = 0, 800 m: größter Abstand Detonation ↔ Punkt je v0', '< 3 m', werte.join(' · ') + ' m', ok);
+}
+
+// ---------- 13) Flächenschaden an zwei Drohnen, abfallend ----------
+{
+  const l = LAFETTEN[1], d = 600, px = l.x, py = l.y + l.zapfen.y + d * Math.sin(0.5), pz = l.z + d * Math.cos(0.5);
+  const nah = neuesZiel(1, px + 8, py, pz, 0, 0, 0), fern = neuesZiel(2, px, py + 20, pz, 0, 0, 0); // Hülle 2 m bzw. 14 m entfernt
+  const r = punktLauf({ d, schritte: 120, ziele: [nah, fern], einSchuss: true });
+  const detSchritt = r.treffer.find((tr) => tr.length && tr[0].det > 0) ?? [];
+  const sofort = (id) => detSchritt.find((e) => e.id === id)?.s ?? 0;
+  const summe = (id) => r.treffer.flat().filter((e) => e.id === id).reduce((a, e) => a + e.s, 0);
+  const S = FLAK.sorte[0], sollFern = S.schaden * (1 - (14 - S.vollRadius) / (S.wirkRadius - S.vollRadius)) ** 2;
+  zeile('Ein Schuss, zwei Drohnen: Sofortschaden nah (2 m) / fern (14 m)', `${S.schaden} / ${sollFern.toFixed(1)}`,
+    `${sofort(1).toFixed(1)} / ${sofort(2).toFixed(1)} (${r.schuesse} Schuss, ${r.ab.length} Det.)`,
+    r.schuesse === 1 && r.ab.length === 1 && Math.abs(sofort(1) - S.schaden) < 0.01 && Math.abs(sofort(2) - sollFern) < 1); // WARUM ±1: Rohr 0,8 m neben der Turmachse
+  zeile('… mit Splitterwolke gesamt nah / fern', 'beide > 0, nah > fern', `${summe(1).toFixed(1)} / ${summe(2).toFixed(1)}`, summe(2) > 0 && summe(1) > summe(2));
+}
+
+// ---------- 14) v0-Wechsel im Flug ----------
+{
+  const flak = erstelleFlak({ startwert: 14 });
+  const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1], b = befehle[1];
+  b.punkt = { x: l.x, y: l.y + l.zapfen.y + 2000 * Math.sin(0.5), z: l.z + 2000 * Math.cos(0.5) }; b.toleranz = 0.02; b.zuender = 3.5;
+  t.v0 = 620;
+  for (let i = 0; i < 120; i++) flak.schritt(DT, befehle, []);
+  b.feuer = true;
+  for (let i = 0; i < 60; i++) flak.schritt(DT, befehle, []);
+  t.v0 = 1100;
+  for (let i = 0; i < 30; i++) flak.schritt(DT, befehle, []);
+  const gs = flak.geschosse;
+  let alt = 0, neu = 0, falsch = 0;
+  for (let i = 0; i < gs.max; i++) {
+    if (!gs.aktiv[i]) continue;
+    const v = Math.hypot(gs.vel[i * 3], gs.vel[i * 3 + 1], gs.vel[i * 3 + 2]);
+    if (gs.alter[i] > 30) { alt++; if (Math.abs(v - 620) > 1e-6) falsch++; } else { neu++; if (Math.abs(v - 1100) > 1e-6) falsch++; }
+  }
+  zeile('v0-Wechsel 620 → 1100 im Flug: alte / neue Granaten', 'alte 620, neue 1100', `${alt} / ${neu}, ${falsch} falsch`, alt > 0 && neu > 0 && falsch === 0);
+}
+
+// ---------- 15) Zielfeuer mit Streukugel gegen einen Flieger (Info für Labor/KI) ----------
+{
+  const flak = erstelleFlak({ startwert: 15 });
+  const befehle = leererBefehl();
+  const ziel = neuesZiel(7, -750, 300, 800, 150, 0, 0);
+  const ab = [];
+  let schaden = 0, tot = -1;
+  for (let i = 0; i < 600; i++) {
+    bewege(ziel);
+    zielBefehle(flak, befehle, ziel);
+    for (const b of befehle) b.streuKugel = 20;
+    flak.schritt(DT, befehle, [ziel]);
+    for (const d of flak.ereignisse.detonationen) ab.push(Math.hypot(d.pos.x - ziel.pos.x, d.pos.y - ziel.pos.y, d.pos.z - ziel.pos.z));
+    for (const t of flak.ereignisse.treffer) schaden += t.schaden;
+    if (tot < 0 && schaden >= 100) tot = (i + 1) * DT;
+  }
+  const m = median(ab), unter4 = ab.filter((a) => a < 4).length / (ab.length || 1);
+  zeile('Zielfeuer R 20, 800 m: Median Detonation ↔ Drohne (Mitte)', '10–25 m', m.toFixed(1) + ' m', m >= 10 && m <= 25, false);
+  zeile('Zielfeuer R 20: Anteil Detonationen < 4 m', '< 5 %', (unter4 * 100).toFixed(1) + ' %', unter4 < 0.05, false);
+  zeile('Zielfeuer R 20: Zeit bis 100 HP (6 Türme, ohne Panzer)', 'Info', tot > 0 ? tot.toFixed(2) + ' s' : 'nie', true, false);
 }
 
 // ---------- Ausgabe ----------
