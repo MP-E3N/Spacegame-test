@@ -7,6 +7,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rumpfTexturen, beschriftung, KACHEL } from './texturen.js';
+import { masse } from '../../sim/schiffe/rumpf.js';
+import { TURM } from '../../sim/schiffe/turm.js';
+export { masse }; // WARUM Weitergabe: eine Rechnung für Grafik und Sim (Querschnitte liegen in src/sim/schiffe)
 
 // ---------------- Geometrie ----------------
 /** Achteck-Querschnitt (Rechteck mit Fasen), Punkte im Umlauf. */
@@ -47,18 +50,6 @@ export function loft(abschnitte, fase = 0.25) {
   return g;
 }
 
-/** Maße eines Lofts an Stelle z (linear zwischen den Querschnitten), sonst null. */
-export function masse(abschnitte, z) {
-  for (let i = 0; i < abschnitte.length - 1; i++) {
-    const a = abschnitte[i], b = abschnitte[i + 1];
-    if (z >= a.z && z <= b.z) {
-      const t = (z - a.z) / (b.z - a.z), l = (p, d = 0) => (a[p] ?? d) + ((b[p] ?? d) - (a[p] ?? d)) * t;
-      return { w: l('w'), h: l('h'), x: l('x'), y: l('y') };
-    }
-  }
-  return null;
-}
-
 /** Nur Position + Normale, nicht indiziert — WARUM: mergeGeometries verlangt gleiche Attribute; UVs kommen danach. */
 export function nur(g) {
   if (g.index) g = g.toNonIndexed();
@@ -91,8 +82,16 @@ export const rohrZ = (r, l, x, y, z, seg = 10) => nur(new THREE.CylinderGeometry
 export const rohrX = (r, l, x, y, z, seg = 10) => nur(new THREE.CylinderGeometry(r, r, l, seg).rotateZ(Math.PI / 2).translate(x, y, z));
 export const rohrY = (r, l, x, y, z, seg = 10) => nur(new THREE.CylinderGeometry(r, r, l, seg).translate(x, y, z));
 
-/** Aufbauten (Kisten, Lüfterblöcke) auf Ober-, Unter- und Seitenflächen eines Lofts. */
-export function aufbauten(rnd, ab, z0, z1, eimer, { oben = true, unten = true, seiten = true, dichte = 1, fase = 0.25, skala = 1 } = {}) {
+/** Liegt eine Kiste (Breite bw, Tiefe bd bei x, z) auf einer gesperrten Kreisfläche [[x, z, r]]? */
+const gesperrt = (liste, x, z, bw, bd) => liste.some(([sx, sz, r]) => Math.hypot(x - sx, z - sz) < r + Math.max(bw, bd) / 2);
+
+/**
+ * Aufbauten (Kisten, Lüfterblöcke) auf Ober-, Unter- und Seitenflächen eines Lofts.
+ * sperreOben/sperreUnten: [[x, z, r]] — dort keine Kisten (Turm-Standflächen, Abziehbilder).
+ * WARUM die Zufallszahlen trotzdem gezogen werden: sonst verschieben sich alle übrigen Kisten (Design bleibt gleich).
+ */
+export function aufbauten(rnd, ab, z0, z1, eimer, { oben = true, unten = true, seiten = true, dichte = 1, fase = 0.25, skala = 1,
+  sperreOben = [], sperreUnten = [] } = {}) {
   for (let z = z0; z < z1; z += (1.5 + rnd() * 3.5) * skala / dichte) {
     const m = masse(ab, z); if (!m) continue;
     const c = Math.min(m.w, m.h) * fase;
@@ -101,17 +100,28 @@ export function aufbauten(rnd, ab, z0, z1, eimer, { oben = true, unten = true, s
     const ziel = rnd() < 0.55 ? eimer.dunkel : eimer.rumpf;
     if (wohin < 0.4 && oben) {
       const x = m.x + (rnd() * 2 - 1) * Math.max(0, m.w - c - bw / 2);
-      ziel.push(kiste(bw, bh, bd, x, m.y + m.h + bh / 2 - 0.08, z));
-      if (rnd() < 0.25) eimer.dunkel.push(kiste(bw * 0.6, bh * 0.6, bd * 0.5, x, m.y + m.h + bh + bh * 0.3 - 0.08, z));
+      const frei = !gesperrt(sperreOben, x, z, bw, bd);
+      if (frei) ziel.push(kiste(bw, bh, bd, x, m.y + m.h + bh / 2 - 0.08, z));
+      if (rnd() < 0.25 && frei) eimer.dunkel.push(kiste(bw * 0.6, bh * 0.6, bd * 0.5, x, m.y + m.h + bh + bh * 0.3 - 0.08, z));
     } else if (wohin < 0.8 && seiten) {
       const s = rnd() < 0.5 ? 1 : -1, y = m.y + (rnd() * 2 - 1) * Math.max(0, m.h - c - bw / 2);
       ziel.push(kiste(bh, bw, bd, m.x + s * (m.w + bh / 2 - 0.08), y, z));
     } else if (unten) {
       const x = m.x + (rnd() * 2 - 1) * Math.max(0, m.w - c - bw / 2);
-      ziel.push(kiste(bw, bh, bd, x, m.y - m.h - bh / 2 + 0.08, z));
+      if (!gesperrt(sperreUnten, x, z, bw, bd)) ziel.push(kiste(bw, bh, bd, x, m.y - m.h - bh / 2 + 0.08, z));
     }
   }
 }
+
+/** Sperrflächen der Türme für aufbauten(): { oben: [[x, z, r]], unten: [...] }. */
+export function turmSperren(tuerme) {
+  const o = [], u = [];
+  for (const t of tuerme) (t.oben ? o : u).push([t.x, t.z, TURM.fussR * t.s + 0.3]);
+  return { oben: o, unten: u };
+}
+
+/** Loft aus einem Sim-Teil { ab, fase }. */
+export const lofte = (teil) => loft(teil.ab, teil.fase);
 
 // ---------------- Materialien ----------------
 let texturen = null; // WARUM gemeinsam: beide Schiffe nutzen dieselben Canvas-Texturen (einmal erzeugen)
@@ -139,23 +149,44 @@ export function fuegeZusammen(eimer, mats, gruppe, praefix = 'schiff') {
   }
 }
 
-/** Geschützturm als eigene Gruppe (die Waffen-Station dreht ihn später). s = Größe. */
-export function turm(gruppe, mats, x, y, z, unten, s = 1) {
-  const t = new THREE.Group();
-  const teile = {
-    dunkel: [nur(new THREE.CylinderGeometry(2.4 * s, 2.7 * s, 1.2 * s, 20).translate(0, 0.6 * s, 0))],
-    rumpf: [kiste(4 * s, 1.8 * s, 4.6 * s, 0, 2.0 * s, 0.3 * s), kiste(3 * s, 0.6 * s, 2 * s, 0, 3.1 * s, -0.6 * s)],
-    metall: [rohrZ(0.28 * s, 7 * s, 0.8 * s, 2.1 * s, 5.6 * s, 8), rohrZ(0.28 * s, 7 * s, -0.8 * s, 2.1 * s, 5.6 * s, 8),
-      rohrZ(0.45 * s, 1.2 * s, 0.8 * s, 2.1 * s, 2.9 * s, 8), rohrZ(0.45 * s, 1.2 * s, -0.8 * s, 2.1 * s, 2.9 * s, 8)],
-  };
-  for (const [name, liste] of Object.entries(teile)) {
-    const m = new THREE.Mesh(boxUv(mergeGeometries(liste)), mats[name]);
-    m.castShadow = true; m.receiveShadow = true; t.add(m);
+const netz = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; m.name = name; return m; };
+
+/**
+ * Geschützturm aus einem Sim-Datensatz t (src/sim/schiffe/turm.js). Gliederung:
+ *   gruppe (Fußpunkt, unten: rotation.z = π) → Sockel (fest: Schürze, Säule, Lagerring)
+ *     → drehkranz (rotation.y = gier, auf Sockelhöhe) → wiege (Ursprung im Zapfen, rotation.x = −nick)
+ *       → rohre (je ein Mesh, position.z verschiebbar für Rückstoß) · muendungen (Object3D an den Rohrspitzen)
+ * @returns { gruppe, drehkranz, wiege, rohre: [Mesh], muendungen: [Object3D] }
+ */
+export function turm(gruppe, mats, t) {
+  const s = t.s, P = TURM, h = t.sockel;
+  const g = new THREE.Group(); g.name = 'turm' + t.id;
+  // Sockel (fest). WARUM Schürze: auf schrägem Rumpf bleibt unter dem Lagerring sonst ein Spalt (Spaltmaß-Test).
+  const fest = [nur(new THREE.CylinderGeometry(P.ringR * s, P.fussR * s, P.ringH * s, 20).translate(0, h + P.ringH * s / 2, 0))];
+  const unterteil = h + t.schuerze;
+  if (unterteil > 0.01) fest.push(nur(new THREE.CylinderGeometry((h > 0 ? 2.2 : P.fussR) * s, P.fussR * s, unterteil, h > 0 ? 8 : 20)
+    .translate(0, (h - t.schuerze) / 2, 0)));
+  g.add(netz(boxUv(mergeGeometries(fest)), mats.dunkel, 'sockel'));
+
+  const drehkranz = new THREE.Group(); drehkranz.name = 'drehkranz'; drehkranz.position.y = h; g.add(drehkranz);
+  drehkranz.add(netz(boxUv(mergeGeometries([kiste(4 * s, 1.8 * s, 4.6 * s, 0, 2.0 * s, 0.3 * s), kiste(3 * s, 0.6 * s, 2 * s, 0, 3.1 * s, -0.6 * s)])),
+    mats.rumpf, 'kranz'));
+
+  const wiege = new THREE.Group(); wiege.name = 'wiege'; wiege.position.set(0, t.zapfen.y - h, t.zapfen.z); drehkranz.add(wiege);
+  const mantel = [], rohre = [], muendungen = [];
+  for (const m of t.muendungen) {
+    mantel.push(rohrZ(P.mantelR * s, P.mantelL * s, m.x, 0, P.mantelZ * s, 8));
+    const r = netz(boxUv(rohrZ(P.rohrR * s, P.rohrL * s, m.x, 0, P.rohrZ * s, 8)), mats.metall, 'rohr' + rohre.length);
+    wiege.add(r); rohre.push(r);
+    const o = new THREE.Object3D(); o.name = 'muendung' + muendungen.length; o.position.set(m.x, m.y, m.z);
+    wiege.add(o); muendungen.push(o);
   }
-  t.position.set(x, y, z);
-  if (unten) t.rotation.z = Math.PI;
-  gruppe.add(t);
-  return t;
+  wiege.add(netz(boxUv(mergeGeometries(mantel)), mats.metall, 'wiege'));
+
+  g.position.set(t.x, t.y, t.z);
+  if (!t.oben) g.rotation.z = Math.PI;
+  gruppe.add(g);
+  return { gruppe: g, drehkranz, wiege, rohre, muendungen };
 }
 
 /** Triebwerksdüse (Glocke) mit Gehäuse und Stellzylindern; seg = 8 → achteckig. Liefert die Düsenbeschreibung. */

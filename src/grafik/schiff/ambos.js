@@ -2,36 +2,29 @@
 //        Gepanzerter Rumpf, Bugpanzer, zwei Seitenrümpfe mit Triebwerken, Kommandoblock ohne Fenster.
 // LIEFERT: erstelleAmbos(scene) → { name, kennung, laenge, gruppe, tuerme, darstellen(pos, rot, z, zeit, dt) }
 // REGEL: Form NICHT ohne Rückfrage ändern (Nutzer-Wunsch: Design bewahren). Bausteine in bauteile.js.
+// DATEN: Querschnitte, Türme, Kugeln in src/sim/schiffe/ambos.js (Runde 5: Türme und „07“ bündig, vorher schwebend).
 import * as THREE from 'three';
 import { zufall } from '../zufall.js';
-import { loft, masse, nur, kiste, rohrX, rohrY, rohrZ, aufbauten, materialien, leereEimer, fuegeZusammen, turm, duese,
+import { lofte, masse, nur, kiste, rohrX, rohrY, rohrZ, aufbauten, turmSperren, materialien, leereEimer, fuegeZusammen, turm, duese,
   schriftMaterial, ausstattung, LICHT } from './bauteile.js';
+import { AMBOS, TEILE, POD_X } from '../../sim/schiffe/ambos.js';
+import { oberkante } from '../../sim/schiffe/rumpf.js';
 
-const RUECKGRAT = [
-  { z: -66, w: 8, h: 7.5 }, { z: -58, w: 10.5, h: 9 }, { z: -20, w: 11, h: 9.5 }, { z: 25, w: 11, h: 9 },
-  { z: 48, w: 9, h: 7, y: -0.5 }, { z: 72, w: 6, h: 4.5, y: -1 }, { z: 84, w: 3.8, h: 2.6, y: -1.4 },
-];
-const BUGPANZER = [
-  { z: 6, w: 11, h: 1.2, y: 9.6 }, { z: 18, w: 15, h: 2.2, y: 9.9 }, { z: 52, w: 14, h: 2.4, y: 8.4 },
-  { z: 74, w: 9, h: 1.8, y: 5.4 }, { z: 86, w: 5, h: 1.1, y: 3.4 },
-];
-const KIEL = [{ z: -40, w: 5, h: 1, y: -9.6 }, { z: 0, w: 7, h: 1.4, y: -9.6 }, { z: 40, w: 7.5, h: 1.6, y: -8.2 }, { z: 70, w: 4.5, h: 1.1, y: -5.6 }];
-const SEITENRUMPF = (x) => [
-  { z: -64, w: 4.5, h: 5, x, y: -1 }, { z: -56, w: 5.5, h: 6, x, y: -1 }, { z: 4, w: 5.5, h: 6, x, y: -1 },
-  { z: 18, w: 4.6, h: 4.6, x, y: -1 }, { z: 26, w: 2.8, h: 3, x, y: -1.2 },
-];
-const KOMMANDO = [{ z: -36, w: 6, h: 2.5, y: 11.2 }, { z: -28, w: 7, h: 3.4, y: 12 }, { z: -9, w: 6, h: 3.2, y: 12 }, { z: -2, w: 4, h: 2, y: 11.4 }];
-const POD_X = 21;
+// Querschnitte aus den Sim-Daten (unverändert, nur umgezogen) — kurze Namen wie bisher
+const T = TEILE, RUECKGRAT = T.rueckgrat.ab, BUGPANZER = T.bugpanzer.ab, KOMMANDO = T.kommando.ab;
+// WARUM eigene Sperrfläche: die Nummer „07“ liegt bündig auf dem Rücken; Kisten würden sie verdecken (Lernbuch R1–3)
+const NUMMER = { x: -1, z: -57, textX: 6.6 }; // textX = Mitte der Ziffern (Abziehbild ist um π gedreht)
 
 export function erstelleAmbos(scene) {
   const rnd = zufall(1977);
   const mats = materialien();
   const eimer = leereEimer();
+  const ts = turmSperren(AMBOS.tuerme), sperre = { sperreOben: [...ts.oben, [NUMMER.textX, NUMMER.z, 2.5]], sperreUnten: ts.unten };
 
-  eimer.rumpf.push(loft(RUECKGRAT), loft(BUGPANZER, 0.4), loft(KOMMANDO, 0.35));
-  eimer.dunkel.push(loft(KIEL, 0.4));
-  for (const s of [1, -1]) {
-    eimer.rumpf.push(loft(SEITENRUMPF(s * POD_X)));
+  eimer.rumpf.push(lofte(T.rueckgrat), lofte(T.bugpanzer), lofte(T.kommando));
+  eimer.dunkel.push(lofte(T.kiel));
+  for (const [i, s] of [1, -1].entries()) {
+    eimer.rumpf.push(lofte(T.seitenrumpf[i]));
     for (const z of [-46, -22, 0]) {
       eimer.dunkel.push(kiste(6.5, 3, 7, s * 13.8, -1, z));
       eimer.metall.push(rohrX(0.45, 7, s * 13.8, 1.1, z - 2.6), rohrX(0.45, 7, s * 13.8, 1.1, z + 2.6), rohrX(0.3, 7, s * 13.8, -2.9, z));
@@ -43,11 +36,11 @@ export function erstelleAmbos(scene) {
       for (let z = -16; z <= 22; z += 3.8) eimer.dunkel.push(kiste(r * 2.4, r * 2.6, 0.4, s * (11 + r * 0.6), y, z));
     }
     eimer.dunkel.push(kiste(0.5, 6, 14, s * 11.1, -1.5, -40));
-    aufbauten(rnd, SEITENRUMPF(s * POD_X), -60, 16, eimer, { dichte: 0.8 });
+    aufbauten(rnd, T.seitenrumpf[i].ab, -60, 16, eimer, { dichte: 0.8, fase: T.seitenrumpf[i].fase });
   }
-  aufbauten(rnd, RUECKGRAT, -60, 80, eimer, { dichte: 1.3 });
-  aufbauten(rnd, BUGPANZER, 8, 82, eimer, { unten: false, seiten: false, dichte: 0.9, fase: 0.4 });
-  aufbauten(rnd, KOMMANDO, -34, -3, eimer, { unten: false, dichte: 1.5, fase: 0.35 });
+  aufbauten(rnd, RUECKGRAT, -60, 80, eimer, { dichte: 1.3, fase: T.rueckgrat.fase, ...sperre });
+  aufbauten(rnd, BUGPANZER, 8, 82, eimer, { unten: false, seiten: false, dichte: 0.9, fase: T.bugpanzer.fase, ...sperre });
+  aufbauten(rnd, KOMMANDO, -34, -3, eimer, { unten: false, dichte: 1.5, fase: T.kommando.fase, ...sperre });
 
   eimer.metall.push(rohrY(0.35, 9, 0, 19.5, -20), rohrY(0.2, 6, 2.5, 18, -26), rohrY(0.2, 4, -2.5, 17, -14));
   eimer.dunkel.push(kiste(5, 0.4, 0.4, 0, 22, -20), kiste(0.4, 0.4, 3, 0, 20.5, -20), kiste(3.5, 2, 3.5, 0, 16, -30));
@@ -59,7 +52,7 @@ export function erstelleAmbos(scene) {
   const gruppe = new THREE.Group();
   gruppe.name = 'ambos';
   fuegeZusammen(eimer, mats, gruppe, 'ambos');
-  const tuerme = [turm(gruppe, mats, 0, 9.4, -48, false), turm(gruppe, mats, 0, 12.1, 34, false), turm(gruppe, mats, 0, -10.5, -24, true), turm(gruppe, mats, 0, -9.7, 28, true)];
+  const tuerme = AMBOS.tuerme.map((t) => turm(gruppe, mats, t)); // Index = id; Höhen aus dem Rumpf (Runde 5)
 
   // Beschriftung: Name vorn an der Rumpfseite (vor den Seitenrümpfen), folgt der Verjüngung
   const neigung = Math.atan2(RUECKGRAT[3].w - RUECKGRAT[4].w, RUECKGRAT[4].z - RUECKGRAT[3].z);
@@ -71,7 +64,10 @@ export function erstelleAmbos(scene) {
     p.receiveShadow = true; gruppe.add(p);
   }
   const nummer = new THREE.Mesh(new THREE.PlaneGeometry(18, 3), schriftMaterial('07'));
-  nummer.rotation.x = -Math.PI / 2; nummer.rotation.z = Math.PI; nummer.position.set(2, 9.53, -57);
+  // Runde 5: bündig (+4 cm) statt 0,5 m darüber; x von 2 auf −1, damit die Ziffern auf der flachen Rückenfläche liegen
+  // (bei x 2 lagen sie über der Fase bis über die Rumpfkante hinaus)
+  const nummerY = Math.max(...[-1, 0, 1].map((dz) => oberkante(T.rueckgrat, NUMMER.z + dz, NUMMER.textX))) + 0.04;
+  nummer.rotation.x = -Math.PI / 2; nummer.rotation.z = Math.PI; nummer.position.set(NUMMER.x, nummerY, NUMMER.z);
   nummer.receiveShadow = true; gruppe.add(nummer);
 
   const arbeit = [];
@@ -97,5 +93,5 @@ export function erstelleAmbos(scene) {
   });
 
   scene.add(gruppe);
-  return { name: 'AMBOS', kennung: 'FK-07', laenge: 150, gruppe, tuerme, darstellen };
+  return { name: AMBOS.name, kennung: AMBOS.kennung, laenge: AMBOS.laenge, gruppe, tuerme, darstellen };
 }
