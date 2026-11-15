@@ -5,7 +5,7 @@
 > `.claude/skills/schwarmfront-team/SKILL.md`). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180.
 
 ## Stand (2026-11-15, Runde 5 — Fundament, mit Team)
-Protokoll: `.claude/team/protokolle/2026-11-15-runde5.md`. Nicht gepusht (Push nur auf Wunsch).
+Protokoll: `.claude/team/protokolle/2026-11-15-runde5.md`. Gepusht (90a4f83).
 - **Simulation hat jetzt alle Daten:** `src/sim/welt.js` (Schiff → Kollision, feste Reihenfolge), `src/sim/schiffe/*`
   (Rumpf-Querschnitte, 11 Türme mit Typ flak/schwer, Mündungen, Grenzen; 16/12 Kollisionskugeln), `src/sim/feld.js`
   (180 Asteroiden), `src/sim/kollision.js`, `src/sim/zufall.js`. Grafik liest daraus, nie umgekehrt.
