@@ -1,6 +1,6 @@
 // ZWECK: Sim-Welt des Flak-Labors (Runde 6): Zieldrohnen + Turm-KI + Flak auf dem Prüfstand, fester Schritt.
 // LIEFERT: erstelleFlakLabor() → { drohnen, ki, flak, zaehler, abschuesse, schritt(dt, befehl), zuruecksetzen(), pruefsumme() }
-//          befehl = { modus: 'sperrfeuer'|'zielfeuer', feuerFrei, schirmAbstand, sektor? }
+//          befehl = { modus: 'sperrfeuer'|'zielfeuer', feuerFrei, folgen, schirmAbstand, v0?, sektor? }
 // REGEL: Schrittfolge Drohnen → Turm-KI → Waffen (Protokoll R6, Entscheidung 3). Treffer aus Schritt n wirken zu Beginn
 //        von Schritt n+1 — WARUM: so liest jedes Modul nur fertige Ergebnisse, die Reihenfolge ist eindeutig (Gleichlauf).
 //        Kein DOM, kein Math.random (CLAUDE.md Regel 1).
@@ -28,6 +28,8 @@ export function erstelleFlakLabor() {
       ziel.x = a.pos.x; ziel.y = a.pos.y; ziel.z = a.pos.z;
       zaehler.abschuesse++;
     }
+    // Mündungsgeschwindigkeit (Runde 8, umschaltbar): gilt für neue Granaten; die KI liest turm.v0 für den Vorhalt.
+    if (befehl?.v0) for (const t of flak.tuerme) t.v0 = befehl.v0;
     // 2) Turm-KI entscheidet, 3) Waffen führen aus
     const befehle = ki.schritt(dt, befehl, drohnen.ziele, flak.tuerme);
     flak.schritt(dt, befehle, drohnen.ziele);

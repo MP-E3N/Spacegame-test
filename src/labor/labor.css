@@ -9,3 +9,30 @@
 #station.labor #nahbereich { min-height: 0; color: #ff5a3a; font-weight: bold; letter-spacing: 0.06em; }
 #station.labor #nahbereich.an { min-height: 1.4em; animation: nah-blink 0.6s steps(2, start) infinite; }
 @keyframes nah-blink { to { visibility: hidden; } }
+
+/* Bedienfeld (Runde 8, Nutzer: „erklären, welche Taste was macht“): bleibt stehen, Knöpfe klickbar, Zustand sichtbar. */
+#bedienung, #bedienung-auf { position: absolute; left: 18px; top: 16px; pointer-events: auto; background: var(--grund);
+  border: 1px solid var(--linie); color: #c9a060; font: inherit; font-size: 12px; }
+#bedienung { padding: 8px 10px 10px; width: 250px; }
+#bedienung .kopf { font-size: 11px; letter-spacing: 0.15em; color: var(--bern-matt); border-bottom: 1px solid var(--linie);
+  padding-bottom: 5px; margin-bottom: 6px; }
+#bedienung .kopf .leise { letter-spacing: 0; text-transform: none; }
+#bedienung .gruppe { margin-bottom: 6px; }
+#bedienung .titel { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bern-matt); margin-bottom: 2px; }
+
+#bedienung button, #bedienung-auf { display: block; width: 100%; text-align: left; cursor: pointer; background: transparent;
+  border: 1px solid transparent; color: inherit; font: inherit; padding: 2px 4px; margin: 1px 0; }
+#bedienung button:hover, #bedienung-auf:hover { border-color: var(--linie); color: #f2c070; }
+#bedienung button.an { background: rgba(242, 192, 112, 0.14); border-color: rgba(242, 192, 112, 0.45); color: #f2c070; }
+#bedienung b, #bedienung-auf b { display: inline-block; min-width: 16px; text-align: center; font-weight: normal; color: #f2c070;
+  border: 1px solid var(--linie); padding: 0 4px; margin-right: 6px; }
+
+#bedienung .text { padding: 2px 4px; color: var(--bern-matt); }
+#bedienung .text b { margin-right: 2px; }
+#bedienung .stufen button { display: flex; gap: 6px; }
+#bedienung .stufen button .zahl { min-width: 62px; color: #f2c070; }
+#bedienung .stufen button .art { color: var(--bern-matt); }
+#bedienung .stufen button.an .art { color: #c9a060; }
+#bedienung button.zu { margin-top: 4px; border-top: 1px solid var(--linie); color: var(--bern-matt); }
+#bedienung-auf { width: auto; padding: 4px 8px; }
+#bedienung.versteckt, #bedienung-auf.versteckt { display: none; }

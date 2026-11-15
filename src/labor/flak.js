@@ -13,6 +13,14 @@ import { erstelleDrohnenGrafik } from './drohnen.js';
 
 const SCHRITT = 1 / 60;
 const SCHIRM = { min: 400, max: 2000, stufe: 100 };
+// Mündungsgeschwindigkeit zum Umschalten (Runde 8, Bewertung im Protokoll): reale Flak 760–1150 m/s, im All ohne Abbremsen.
+const V0_STUFEN = [
+  { v: 620, art: 'Film (bisher)' },
+  { v: 820, art: 'schwere Flak' },
+  { v: 1000, art: '40-mm-Flak' },
+  { v: 1100, art: 'Nahbereichsabwehr' },
+];
+const V0_START = 1000;
 
 const bild = erstelleRenderer(document.getElementById('leinwand'));
 bild.camera.near = 3; // WARUM: Kampfentfernung bis 2 km — near 1 gäbe zu grobe Tiefe (Lichtsetzer R6)
@@ -25,7 +33,8 @@ const grafik = erstelleFlakGrafik(bild.scene, bild.camera);
 const drohnenGrafik = erstelleDrohnenGrafik(bild.scene, 16);
 const labor = erstelleFlakLabor();
 // folgen (Runde 7, Nutzerwunsch): Flak-Schirm zieht mit den Gegnern mit; +/− setzt einen festen Abstand (folgen aus), F schaltet um.
-const befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, sektor: { ...STANDARD_SEKTOR } };
+// v0 (Runde 8): gilt für neu abgefeuerte Granaten; die KI rechnet den Vorhalt mit dem v0 der Türme.
+const befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, v0: V0_START, sektor: { ...STANDARD_SEKTOR } };
 
 // ---------------- Kamera ----------------
 // batterie: steht hinter dem Prüfstand, Maus = umsehen, Rad = Zoom (Brennweite).
@@ -71,12 +80,39 @@ addEventListener('pointerup', () => { ziehen = false; document.body.classList.re
 addEventListener('pointercancel', () => { ziehen = false; document.body.classList.remove('zieht'); });
 addEventListener('blur', () => { ziehen = false; });
 addEventListener('pointermove', (e) => { if (ziehen) { maus.dx += e.movementX; maus.dy += e.movementY; } });
+// Knöpfe des Bedienfelds: data-taste = derselbe Code wie die Taste → ein Weg für Taste und Klick (bedienen()).
+// WARUM blur: sonst würde die Leertaste den zuletzt geklickten Knopf noch einmal auslösen.
+document.getElementById('hud').addEventListener('click', (e) => {
+  const k = e.target.closest?.('[data-taste]');
+  if (k) { einmal.add(k.dataset.taste); k.blur(); }
+});
 addEventListener('wheel', (e) => { if (e.target?.id === 'leinwand') maus.rad += Math.sign(e.deltaY); }, { passive: true });
 
 // ---------------- Anzeige ----------------
 const $ = (id) => document.getElementById(id);
 const el = { modus: $('modus'), feuer: $('feuer'), schirm: $('schirm'), granaten: $('granaten'), wolken: $('wolken'), schussrate: $('schussrate'),
-  treffer: $('treffer'), abschuesse: $('abschuesse'), nah: $('nahbereich'), spuren: $('spuren'), bildzeit: $('bildzeit'), meldung: $('meldung'), hilfe: $('hilfe') };
+  treffer: $('treffer'), abschuesse: $('abschuesse'), nah: $('nahbereich'), spuren: $('spuren'), bildzeit: $('bildzeit'), meldung: $('meldung'), bedienung: $('bedienung'), bedienungAuf: $('bedienung-auf'),
+  kFeuer: $('k-feuer'), kSperr: $('k-sperr'), kZiel: $('k-ziel'), kFolgen: $('k-folgen'), kPause: $('k-pause'), kKamera: $('k-kamera'), kV0: $('k-v0') };
+// Stufen-Knöpfe der Mündungsgeschwindigkeit
+const v0Knoepfe = V0_STUFEN.map((s) => {
+  const k = document.createElement('button');
+  k.dataset.taste = 'V0:' + s.v;
+  k.innerHTML = '<span class="zahl">' + s.v + ' m/s</span><span class="art">' + s.art + '</span>';
+  el.kV0.appendChild(k);
+  return k;
+});
+/** Knopf-Zustände (an/aus) und Beschriftungen nachziehen. */
+function knoepfe() {
+  el.kFeuer.classList.toggle('an', befehl.feuerFrei);
+  el.kFeuer.lastChild.textContent = befehl.feuerFrei ? 'Feuer frei' : 'Feuer halt';
+  el.kSperr.classList.toggle('an', befehl.modus === 'sperrfeuer');
+  el.kZiel.classList.toggle('an', befehl.modus === 'zielfeuer');
+  el.kFolgen.classList.toggle('an', befehl.folgen);
+  el.kFolgen.lastChild.textContent = befehl.folgen ? 'folgt den Zielen' : 'fest (F = wieder folgen)';
+  el.kPause.classList.toggle('an', pause);
+  el.kKamera.lastChild.textContent = kam.modus === 'batterie' ? 'Kamera Prüfstand (→ Übersicht)' : 'Kamera Übersicht (→ Prüfstand)';
+  V0_STUFEN.forEach((s, i) => v0Knoepfe[i].classList.toggle('an', s.v === befehl.v0));
+}
 const alt = {};
 const setze = (k, t) => { if (alt[k] !== t) { el[k].textContent = t; alt[k] = t; } };
 let meldungBis = 0;
@@ -89,6 +125,7 @@ function hud(dt) {
   bildMittel += (dt * 1000 - bildMittel) * 0.05;
   if ((hudUhr += dt) < 0.2) return;
   hudUhr = 0;
+  knoepfe();
   setze('modus', befehl.modus === 'sperrfeuer' ? 'SPERRFEUER' : 'ZIELFEUER');
   setze('feuer', befehl.feuerFrei ? 'FEUER FREI' : 'FEUER HALT');
   el.feuer.classList.toggle('halt', !befehl.feuerFrei);
@@ -147,9 +184,20 @@ function bedienen() {
   if (einmal.has('KeyN')) { labor.zuruecksetzen(); gelesen = 0; rate.schuesse = 0; meldung('Neue Drohnen'); }
   if (einmal.has('KeyP')) { pause = !pause; meldung(pause ? 'Pause' : 'Weiter'); }
   if (einmal.has('KeyC')) { kam.modus = kam.modus === 'batterie' ? 'uebersicht' : 'batterie'; meldung(kam.modus === 'batterie' ? 'Kamera: Prüfstand' : 'Kamera: Übersicht'); }
-  if (einmal.has('KeyH')) el.hilfe.classList.toggle('versteckt');
+  if (einmal.has('KeyV')) {
+    const i = V0_STUFEN.findIndex((s) => s.v === befehl.v0);
+    setzeV0(V0_STUFEN[(i + 1) % V0_STUFEN.length]);
+  }
+  for (const s of V0_STUFEN) if (einmal.has('V0:' + s.v)) setzeV0(s);
+  if (einmal.has('KeyH')) { el.bedienung.classList.toggle('versteckt'); el.bedienungAuf.classList.toggle('versteckt'); }
+  if (einmal.size) hudUhr = 1; // Knöpfe sofort nachziehen
   einmal.clear();
 }
+function setzeV0(s) {
+  befehl.v0 = s.v;
+  meldung('Mündungsgeschwindigkeit ' + s.v + ' m/s — ' + s.art + ' (gilt für neue Granaten)');
+}
+
 
 function simSchritt() {
   labor.schritt(SCHRITT, befehl);
@@ -199,6 +247,8 @@ window.spiel = {
   },
   /** Kamera wählen: 'batterie' | 'uebersicht'. */
   kamera(name) { kam.modus = name; return name; },
+  /** Taste/Knopf auslösen wie vom Nutzer (Code wie KeyboardEvent.code oder 'V0:1000'); wirkt beim nächsten bilder()/Bild. */
+  taste(code) { einmal.add(code); return code; },
   pause(an = true) { pause = an; return pause; },
   /** Bildzeit messen: n Bilder direkt hintereinander zeichnen (Median/Max ms). */
   bildzeit(n = 60) {
@@ -210,5 +260,4 @@ window.spiel = {
 };
 
 document.getElementById('laden')?.remove();
-setTimeout(() => el.hilfe.classList.add('versteckt'), 12000);
 requestAnimationFrame(frame);

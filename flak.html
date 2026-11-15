@@ -24,11 +24,30 @@
       <div class="reihe"><span>Abschüsse</span><b id="abschuesse">0</b></div>
       <div class="reihe klein"><span>Bildzeit</span><b id="bildzeit">–</b></div>
     </div>
-    <div id="hilfe">
-      <b>Leertaste</b> Feuer frei / Feuer halt &nbsp; <b>1</b> Sperrfeuer &nbsp; <b>2</b> Zielfeuer<br>
-      <b>F</b> Schirm folgt den Zielen / fest &nbsp; <b>+</b>/<b>−</b> fester Schirm näher / weiter<br> <b>N</b> neue Drohnen &nbsp; <b>P</b> Pause<br>
-      <b>Maus ziehen</b> umsehen &nbsp; <b>Rad</b> Zoom &nbsp; <b>C</b> Kamera Prüfstand / Himmel &nbsp; <b>H</b> Hilfe ein/aus
+    <!-- Bedienfeld (Runde 8): bleibt stehen, jeder Knopf = eine Taste (data-taste = KeyboardEvent.code) -->
+    <div id="bedienung">
+      <div class="kopf">BEDIENUNG <span class="leise">— Taste oder Knopf</span></div>
+      <div class="gruppe"><span class="titel">Feuer</span>
+        <button data-taste="Space" id="k-feuer"><b>Leertaste</b>Feuer frei / halt</button></div>
+      <div class="gruppe"><span class="titel">Betriebsart</span>
+        <button data-taste="Digit1" id="k-sperr"><b>1</b>Sperrfeuer (Wolkenwand)</button>
+        <button data-taste="Digit2" id="k-ziel"><b>2</b>Zielfeuer (in die Streukugel)</button></div>
+      <div class="gruppe"><span class="titel">Flak-Schirm</span>
+        <button data-taste="KeyF" id="k-folgen"><b>F</b>folgt den Zielen</button>
+        <button data-taste="Equal"><b>+</b>fest, näher heran</button>
+        <button data-taste="Minus"><b>−</b>fest, weiter hinaus</button></div>
+      <div class="gruppe"><span class="titel">Mündungsgeschwindigkeit</span>
+        <div class="stufen" id="k-v0"></div>
+        <div class="text"><b>V</b>nächste Stufe</div></div>
+      <div class="gruppe"><span class="titel">Labor</span>
+        <button data-taste="KeyN"><b>N</b>neue Drohnen</button>
+        <button data-taste="KeyP" id="k-pause"><b>P</b>Pause</button></div>
+      <div class="gruppe"><span class="titel">Kamera</span>
+        <button data-taste="KeyC" id="k-kamera"><b>C</b>Prüfstand / Übersicht</button>
+        <div class="text"><b>Maus ziehen</b>umsehen · <b>Rad</b>Zoom</div></div>
+      <button data-taste="KeyH" class="zu"><b>H</b>Bedienung ausblenden</button>
     </div>
+    <button id="bedienung-auf" data-taste="KeyH" class="versteckt"><b>H</b>Bedienung zeigen</button>
     <div id="meldung"></div>
   </div>
   <div id="laden">Baue Prüfstand …</div>
