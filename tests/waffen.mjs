@@ -3,7 +3,8 @@
 //   Geradeausflieger (Ersatz-Befehl mit selbst gerechnetem Vorhalt) · 4) Gleichlauf: Prüfsumme nach 3600 Schritten
 //   in zwei Läufen gleich, anderer Startwert anders · 5) Rechenzeit ms/Schritt (volle Batterie, ~240 Geschosse, 10 Ziele)
 //   6) Nachbar-Sperre (flach über den Nachbarturm → gesperrt, kein Schuss) · 7) Splitterwolke: Durchflug durch einen
-//   Sperrfeuer-Schirm (800 m) · 8) höchstens ein Treffer-Ereignis je Ziel und Schritt.
+//   Sperrfeuer-Schirm (800 m) · 8) höchstens ein Treffer-Ereignis je Ziel und Schritt
+//   9) Leuchtspur nur auf Befehl (ohne → 0, mit → alle) · 10) Mindest-Zeitzünder 0,1 s, Zünder wirkt bei 150 m (Runde 7).
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
 import { erstelleFlak, FLAK } from '../src/sim/waffen/flak.js';
@@ -160,6 +161,51 @@ zeile('Rechenzeit Sim-Schritt (6 Türme, 10 Ziele)', '≤ 0,3 ms', a.ms.toFixed(
   }
   zeile('Durchflug Schirm 800 m: tödlich (≥ 100 HP)', 'Info (Ziel: guter Teil)', `${toedlich} / ${N}`, true, false);
   zeile('Durchflug Schirm 800 m: mittlerer Schaden', '≥ 30 HP (Wächter)', (summe / N).toFixed(0) + ' HP', summe / N >= 30);
+}
+
+// ---------- 9) Leuchtspur nur auf Befehl ----------
+function leuchtLauf(leuchtspur) {
+  const flak = erstelleFlak({ startwert: 9 });
+  const befehle = leererBefehl();
+  befehle.forEach((b) => { b.punkt = { x: 0, y: 500, z: 900 }; b.feuer = true; b.toleranz = 0.02; b.zuender = 1.6; if (leuchtspur != null) b.leuchtspur = leuchtspur; });
+  let schuesse = 0, leucht = 0;
+  for (let i = 0; i < 300; i++) {
+    flak.schritt(DT, befehle, []);
+    schuesse += flak.ereignisse.schuesse.length;
+    for (let k = 0; k < flak.geschosse.max; k++) if (flak.geschosse.aktiv[k] && flak.geschosse.alter[k] === 0 && flak.geschosse.leucht[k]) leucht++;
+  }
+  return { schuesse, leucht, aktiv: flak.geschosse.anzahlLeucht, pruef: flak.pruefsumme() };
+}
+{
+  const ohne = leuchtLauf(undefined), aus = leuchtLauf(false), an = leuchtLauf(true);
+  zeile('Leuchtspur ohne Befehl (Anteil 0)', '0 Spur-Granaten', `${ohne.leucht} von ${ohne.schuesse}`, ohne.schuesse > 0 && ohne.leucht === 0 && ohne.aktiv === 0);
+  zeile('Leuchtspur: leuchtspur = true', 'alle', `${an.leucht} von ${an.schuesse}`, an.schuesse > 0 && an.leucht === an.schuesse);
+  zeile('Leuchtspur ändert Bahn/Zufall nicht', 'gleiche Prüfsumme', `${ohne.pruef} / ${aus.pruef} / ${an.pruef}`, ohne.pruef === aus.pruef && aus.pruef === an.pruef);
+}
+
+// ---------- 10) Mindest-Zeitzünder, Zünder bei 150 m ----------
+function zuenderLauf(zuender) {
+  const flak = erstelleFlak({ startwert: 10 });
+  const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1];
+  const p = { x: l.x, y: l.y + l.zapfen.y + 1000 * Math.tan(0.5), z: l.z + 1000 };
+  befehle[1].punkt = p; befehle[1].toleranz = 0.02; befehle[1].zuender = zuender;
+  for (let i = 0; i < 120; i++) flak.schritt(DT, befehle, []);   // einrichten
+  befehle[1].feuer = true;
+  let min = Infinity, max = 0, n = 0;
+  for (let i = 0; i < 120; i++) {
+    flak.schritt(DT, befehle, []);
+    for (const d of flak.ereignisse.detonationen) {
+      const a = Math.hypot(d.pos.x - t.muendung.x, d.pos.y - t.muendung.y, d.pos.z - t.muendung.z);
+      min = Math.min(min, a); max = Math.max(max, a); n++;
+    }
+  }
+  return { min, max, n };
+}
+{
+  const z150 = zuenderLauf(150 / FLAK.v0), zMin = zuenderLauf(0.02);
+  zeile('Zünder 150 m (0,24 s): Detonationsabstand', '150 ± 15 m', `${z150.min.toFixed(0)}–${z150.max.toFixed(0)} m (${z150.n})`, z150.n > 0 && z150.min > 135 && z150.max < 165);
+  zeile('Mindest-Zeitzünder (0,02 → 0,1 s)', '≈ 62 m', `${zMin.min.toFixed(0)}–${zMin.max.toFixed(0)} m`, zMin.n > 0 && zMin.min > 50 && zMin.max < 75);
+  zeile('Nick-Richttempo', '50°/s', (FLAK.richtGeschw[1] * 180 / Math.PI).toFixed(0) + '°/s', Math.abs(FLAK.richtGeschw[1] * 180 / Math.PI - 50) < 1e-9);
 }
 
 // ---------- Ausgabe ----------
