@@ -18,16 +18,25 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   Schlangenlinien und Angriffsläufe, weichen Detonationen aus, kommen 4 s nach dem Abschuss neu.
 - **Sperrfeuer (1)**: Türme streichen einen Sektor ab, Zeitzünder → Wand aus Flak-Wolken in einstellbarer Entfernung
   (+/− 400–2000 m, Start 800), Splitterwolke wirkt 0,7 s nach. **Zielfeuer (2)**: KI wählt Ziele (≤ 2 Türme je Ziel), Vorhalt,
-  Zünder auf den Abfangpunkt. Leertaste Feuer frei/halt, N neue Drohnen, P Pause, C Kamera Prüfstand/Übersicht, Maus/Rad.
+  Zünder auf den Abfangpunkt. F Schirm folgt/fest, Leertaste Feuer frei/halt, N neue Drohnen, P Pause, C Kamera Prüfstand/Übersicht, Maus/Rad.
 - Sim (alle Gleichlauf-getestet): `src/sim/flaklabor.js` (Drohnen → Turm-KI → Waffen), `src/sim/waffen/{lafetten,flak}.js`,
   `src/sim/ki/{turmziel,zieldrohnen}.js`. Grafik: `src/grafik/waffen/{flakgrafik,shader}.js` (Leuchtspur, Mündungsblitz,
   Kern, Rauch mit Fake-Licht; 3 Draw-Calls). Seite: `flak.html`, `src/labor/*` (Prüfstand, Drohnen-Platzhalter, Kamera, HUD).
 - Messwerte: 60 Schuss/s; Abschüsse in 70 s: Sperrfeuer 600/800/1200 m → 1/7/15, Zielfeuer 21. CPU-Bildzeit ~1 ms.
 - Testhilfen (verdecktes Pane!): `spiel.bilder(n)` rechnet ganze Bilder, `spiel.kamera('batterie'|'uebersicht')`,
   `spiel.befehl`, `spiel.bildzeit(n)`, `spiel.takt(n)`.
-- **Vom Nutzer noch nicht angesehen.** Offen (Kann): Turmteile 30 Draw-Calls (zusammenfügen, bevor die Türme ins Spiel
-  kommen), Schirm 1200 m sehr tödlich (Drohnen kreisen dort), Prüfer-Kann-Punkte im Protokoll R6.
-- **Weg ins Spiel (Runde 7, nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
+- **Runde 7 (Nutzer-Rückmeldung zur Demo, umgesetzt):** (1) Wolken größer (42 m, Größe streut 0,6–1,3, Sperr-Zünder ±8 %
+  → lockere, ~120 m tiefe Wand); (2) **Schirm folgt den Drohnen** (Taste F an/aus, Standard an): 1–2 Schirme aus der
+  vorausgesagten Lage, 120 m vor der Bedrohung, Nachführen 20°/s; +/− = fester Abstand (Wand bleibt, wo sie ist);
+  (3) **Leuchtspur nur im Nahbereich** (Killzone < 500 m / aus > 600 m + 0,5 s): sonst 0 Spuren, mit Eindringling alle Türme
+  Spur, 2–3 nächste Türme Direktbeschuss; HUD blinkt „NAHBEREICH“; Mündungsblitz klein/orangerot, nahe der Kamera gedämpft;
+  (4) **Vorstöße**: alle ~20 s fliegt eine Drohne bis ~250 m heran und zieht sich auf 1600–1900 m zurück (gepanzert im
+  Vorstoß → ~50 % überleben); Kreiser „atmen“ 900 ↔ 1500 m. Labor 5 min: 61 Abschüsse, 7/14 Vorstöße überlebt,
+  Nahbereich 30 % der Zeit. Protokoll `…/2026-11-15-runde7.md`.
+- **Nutzer-Urteil zu Runde 7 offen.** Stellschrauben: weniger Leuchtspur → Vorstoß-Takt 25–35 s (`DROHNEN.vorstoss.takt`);
+  Wand-Dichte → `FLAK.zuenderStreuSperr`, Wolkengröße in `flakgrafik.js`. Offen (Kann): Turmteile 30 Draw-Calls, Schirm
+  1200 m sehr tödlich, volle HP beim Vorstoß-Start sichtbar.
+- **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
 ## Stand (2026-11-15, nach Runde 5)
@@ -87,6 +96,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 7** (Nutzer-Rückmeldung Flak-Labor, mit Team): große Wolken, Schirm folgt, Leuchtspur nur im Nahbereich,
+  Vorstöße. Lokal committet, nicht gepusht.
 - **Runde 6** (Flak-Labor, mit Team): Demo-Seite `flak.html` mit Sperr- und Zielfeuer, Zieldrohnen, Splitterwolke,
   Nachbar-Sperre. Protokoll `.claude/team/protokolle/2026-11-15-runde6.md`. Lokal committet, nicht gepusht.
 - **Runde 5** (Fundament, mit Team): Sim-Welt, Schiffsdaten/Türme/Feld in der Sim, Kollision + HP, Drift/Tempo, Ambos wendiger,

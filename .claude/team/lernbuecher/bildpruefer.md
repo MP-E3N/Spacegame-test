@@ -10,3 +10,5 @@
 - 2026-11-15 Runde 6 — Startkamera immer mit Vordergrund-Objekt prüfen, reiner Himmel wirkt maßstablos. Zielmarker
   (rotes Auge) per Pixelzählung prüfen (0 Treffer = nicht lesbar → Mindestgröße in Pixeln, jetzt 78 rote Px). Verdecktes Pane:
   Screenshot zeigt nur ein Viertel, rAF läuft nicht → spiel.bilder(n) nutzen, Canvas-Größe per JS gegenprüfen.
+- 2026-11-15 Runde 7 — Pixelstatistik nur im selben JS-Aufruf direkt nach spiel.bilder() lesen (sonst Puffer leer).
+  Heller Fleck: Ausschnitt-Helligkeit gegen Gesamtbild (112 vs 72 → nach Fix 59 vs 57). Spuren-Auslauf ~1,5 s ist kein Fehler.

@@ -3,7 +3,10 @@
 //        · sperrfeuer, folgen (Standard): 1–2 Schirme folgen der Bedrohung (vorausgesagte Lage der Drohnen, träge
 //          nachgeführt, schmaler Sektor); die Rohre streichen jeden Schirm im Dreieck-Lissajous-Muster ab, alle
 //          Zielpunkte auf einer Kugelschale um BATTERIE_MITTE (Radius = Schirmabstand des Schirms).
-//        · sperrfeuer, folgen === false: fester Sektor (befehl.sektor | STANDARD_SEKTOR) + befehl.schirmAbstand (R6).
+//        · sperrfeuer, folgen === false: fester Sektor + befehl.schirmAbstand. Der Sektor ist der beim Umschalten
+//          gemerkte (Mitte + Breite des größten Schirms, „Wand bleibt, wo sie ist“), ohne Schirm STANDARD_SEKTOR;
+//          befehl.sektor überschreibt ihn ausdrücklich. Abstand gleitet mit ≤ 150 m/s; Umschalten in beide
+//          Richtungen ohne Sprung (Befund Prüfer R7).
 //        · zielfeuer: Zielwahl mit Gewichten + Trägheit, höchstens 2 Türme je Ziel, Vorhalt aus der Abfang-Gleichung.
 //        · Killzone (beide Betriebsarten): Drohne < 500 m → Eindringling (aus erst > 600 m); die 2–3 nächsten Türme
 //          schießen Zielgranaten auf ihn; solange der Nahbereich aktiv ist (+0,5 s Nachlauf) → leuchtspur für ALLE Türme.
@@ -56,7 +59,8 @@ export const TURMKI = {
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const dreieck = (u) => 1 - 4 * Math.abs(u - Math.floor(u) - 0.5); // −1 … 1 … −1, Periode 1
 const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
-const winkelDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+const ZWEI_PI = 2 * Math.PI;
+const winkelDiff = (a, b) => { const d = a - b; return d - ZWEI_PI * Math.floor((d + Math.PI) / ZWEI_PI); }; // → [−π, π)
 
 /**
  * Abfang-Gleichung |r + v·t| = v0·t (Geschoss gerade, konstant v0, erbt nichts). Kleinste Lösung t > 0.
@@ -103,12 +107,14 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   // Arbeitsfelder Folgen
   const bG = new Float64Array(MAXZ), bN = new Float64Array(MAXZ), bD = new Float64Array(MAXZ), bW = new Float64Array(MAXZ);
   const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAFETTEN.map((l, i) => i).sort((a, b) => LAFETTEN[a].x - LAFETTEN[b].x || a - b);
-  let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit;
+  let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
+  const fest = { gierMitte: 0, gierHalb: 0, nickMin: 0, nickMax: 0 }; // gemerkter fester Sektor
 
   function zuruecksetzen() {
     const rnd = zufall(startwert);
     phase0 = rnd(); // gemeinsamer Phasenversatz des Musters (nur Optik, deterministisch)
-    takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false;
+    takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false; warFest = false;
+    Object.assign(fest, STANDARD_SEKTOR);
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
     statistik.maxJeZiel = 0; statistik.unloesbar = 0; statistik.alarmAn = 0; statistik.gruppenWechsel = 0;
@@ -292,20 +298,34 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     for (let i = 0; i < n; i++) schirmVorrat[gruppeTurm[i]].tuerme.push(i);
   }
 
-  function festerSchirm(R, S) {
+  function festerSchirm(dt, R, Sbefehl) {
     const s = schirmVorrat[0];
+    if (!warFest) {
+      // Umschalten auf fest: die Wand bleibt, wo sie ist → größten aktuellen Schirm (meiste Türme) als Sektor merken
+      if (schirmeBereit && lage.schirme.length) {
+        let q = lage.schirme[0];
+        for (let g = 1; g < lage.schirme.length; g++) if (lage.schirme[g].tuerme.length > q.tuerme.length) q = lage.schirme[g];
+        fest.gierMitte = q.gier; fest.gierHalb = q.gierHalb; fest.nickMin = q.nick - q.nickHalb; fest.nickMax = q.nick + q.nickHalb;
+        if (q !== s) s.abstand = q.abstand;
+      } else if (!schirmeBereit) s.abstand = R; // Start im festen Modus: sofort auf dem befohlenen Abstand
+      warFest = true;
+    }
+    const S = Sbefehl ?? fest;
     s.gier = s.sollGier = S.gierMitte; s.nick = s.sollNick = (S.nickMin + S.nickMax) / 2;
-    s.abstand = s.sollAbstand = R; s.gierHalb = S.gierHalb; s.nickHalb = (S.nickMax - S.nickMin) / 2;
-    const c = Math.cos(s.nick);
-    s.mitte.x = M.x + Math.sin(s.gier) * c * R; s.mitte.y = M.y + Math.sin(s.nick) * R; s.mitte.z = M.z + Math.cos(s.gier) * c * R;
+    s.gierHalb = S.gierHalb; s.nickHalb = (S.nickMax - S.nickMin) / 2;
+    // WARUM gleiten: +/− und das Umschalten sollen die Wand nicht springen lassen (gleiches Tempo wie beim Folgen)
+    s.sollAbstand = R; s.abstand += klemme(R - s.abstand, -F.maxAbstandTempo * dt, F.maxAbstandTempo * dt);
+    const c = Math.cos(s.nick), A = s.abstand;
+    s.mitte.x = M.x + Math.sin(s.gier) * c * A; s.mitte.y = M.y + Math.sin(s.nick) * A; s.mitte.z = M.z + Math.cos(s.gier) * c * A;
     s.tuerme.length = 0; for (let i = 0; i < n; i++) s.tuerme.push(i);
     lage.schirme.length = 0; lage.schirme.push(s);
-    schirmeBereit = false; anzahlGruppen = 1; // beim Zurückschalten auf Folgen weich aus dem Standard-Sektor
+    // Schirm 0 bleibt gültig → beim Zurückschalten auf Folgen gleitet er von hier aus weiter (kein Rücksprung)
+    schirmeBereit = true; anzahlGruppen = 1;
   }
 
   function schritt(dt, befehl, ziele, turmZustand) {
     const modus = befehl?.modus ?? 'sperrfeuer', frei = !!befehl?.feuerFrei;
-    const R = befehl?.schirmAbstand ?? 800, S = befehl?.sektor ?? STANDARD_SEKTOR, folgen = befehl?.folgen !== false;
+    const R = befehl?.schirmAbstand ?? 800, folgen = befehl?.folgen !== false, S = befehl?.sektor ?? fest;
     if (modus !== letzterModus) { zielSlot.fill(-1); halt.fill(0); letzterModus = modus; }
     const v0Std = turmZustand?.[0]?.v0 ?? K.v0;
 
@@ -314,7 +334,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const leucht = lage.nahbereich;
 
     if (modus === 'sperrfeuer') {
-      if (folgen) folgeSchirme(dt, ziele, v0Std); else festerSchirm(R, S);
+      if (folgen) { warFest = false; folgeSchirme(dt, ziele, v0Std); } else festerSchirm(dt, R, befehl?.sektor);
       for (let g = 0; g < lage.schirme.length; g++) {
         const s = lage.schirme[g], T = s.tuerme;
         for (let k = 0; k < T.length; k++) {

@@ -10,3 +10,5 @@
 - 2026-11-15 Runde 6 — Test „verbotene APIs“ immer auf ALLE Ordner unter src/sim richten (jetzt in tests/schiffe.mjs).
   Bei Zählern prüfen, was ein „Ereignis“ ist: Splitter-Ticks je Schritt sind keine Treffer (HUD zeigt jetzt Schaden in HP).
   Ein Modul, das eine Ereignisliste leert, muss NACH dem lesenden Modul laufen.
+- 2026-11-15 Runde 7 — Bei Betriebsart-Schaltern BEIDE Richtungen prüfen (übernimmt der Wechsel Richtung UND Abstand?);
+  ein Sprung ist im Test unsichtbar, solange der Test den Schalter nie mitten im Lauf umlegt.

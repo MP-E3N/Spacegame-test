@@ -18,3 +18,6 @@
   Worktrees ohne Wartezeit. Ereignis-Übergabe Sim→Grafik pro Schritt im Bauauftrag nennen (fast vergessen, per Nachtrag gelöst).
   Erst das Zusammenspiel messen (labor.mjs): Einzeltests mit Ersatz-Modulen waren grün, die echte Balance nicht (Sperrfeuer 0 Abschüsse).
   Verdecktes Pane: Testhilfe spiel.bilder(n) gleich mitbauen. Shell: `cat > datei || true` ohne Heredoc wartet auf stdin → hängt.
+- 2026-11-15 Runde 7 — Verhaltens-Wünsche des Nutzers („nähern UND entfernen“) als Messgröße in den Auftrag schreiben,
+  sonst merkt es erst die Labor-Messung (0 Überlebende). Testhilfe spiel.bilder muss auch Tasten verarbeiten (bedienen()),
+  sonst sind Tastentests im verdeckten Pane wirkungslos. Alle Aufrufe per SendMessage an bestehende Agenten: billig und schnell.

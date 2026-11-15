@@ -5,6 +5,7 @@
 //      ≤ 2 Türme je Ziel, Zielwechsel/min, Zeit bis zum ersten Angriffslauf durch den Schirm, Rechenzeit
 //   F) 5 min Sperrfeuer „folgt“ (R7): Wandmitte ↔ Bedrohung (Winkel), Nachführtempo ≤ 12°/s, Richttempo, Vorstöße/min,
 //      engster Abstand ≥ 200 m, Killzone-Hysterese (kein Flackern), Leuchtspur nur im Nahbereich, Türme am Eindringling
+//   H) Umschalten Folgen ↔ fest mitten im Lauf: kein Sprung der Schirmmitte/des Abstands über das Nachführtempo
 //   D) Gleichlauf: zwei Läufe (Zielfeuer + Folgen) + zuruecksetzen() → gleicher Hash
 //   E) src/sim/ki/** ohne Math.random, DOM, grafik/
 // Ersatz-Waffen: Turm richtet sich sofort aus; Granate fliegt gerade mit v0, zündet nach `zuender` (exakt zwischen den
@@ -364,6 +365,46 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   zeile('G Höchstens gleichzeitige Vorstöße', '≤ 2', String(gleichzeitig), gleichzeitig <= 2);
   zeile('G Kreiser/Schlangen außerhalb der Vorstöße (Atmen)', 'Info', `${f1(atemMin)} – ${f1(atemMax)} m`, true, false);
   zeile('G Engster Abstand zur Batterie', '≥ 200 m', f1(dMin) + ' m', dMin >= 200 - 1e-6);
+}
+
+// ---------- H) Umschalten Folgen ↔ fest (Befund Prüfer R7) ----------
+{
+  const dr = erstelleZieldrohnen({ startwert: 101 }), ki = erstelleTurmKi({ startwert: 202 }), tuerme = ersatzTuerme();
+  const befehl = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800, folgen: true };
+  // Takt → Schalter. „seite“ = wie die Seite: beim Umschalten auf fest den aktuellen KI-Abstand übernehmen
+  const plan = new Map([[20 * 60, { folgen: false, seite: true }], [35 * 60, { folgen: true }],
+    [50 * 60, { folgen: false, seite: false, abstand: 1200 }], [60 * 60, { folgen: true }], [62 * 60, { folgen: false, seite: true }]]);
+  const richtung = (sc) => [Math.sin(sc.gier) * Math.cos(sc.nick), Math.sin(sc.nick), Math.cos(sc.gier) * Math.cos(sc.nick)];
+  const kopie = () => ki.lage.schirme.map((sc) => ({ u: richtung(sc), abstand: sc.abstand, tuerme: sc.tuerme.length }));
+  let vor = null, sprungW = 0, sprungA = 0, normalW = 0, normalA = 0, schalter = 0;
+  for (let k = 0; k < 70 * 60; k++) {
+    const p = plan.get(k);
+    if (p) {
+      schalter++;
+      befehl.folgen = p.folgen;
+      if (p.seite) { let q = ki.lage.schirme[0]; for (const sc of ki.lage.schirme) if (sc.tuerme.length > q.tuerme.length) q = sc; befehl.schirmAbstand = q.abstand; }
+      if (p.abstand) befehl.schirmAbstand = p.abstand;
+    }
+    dr.schritt(DT, null);
+    const bef = ki.schritt(DT, befehl, dr.ziele, tuerme);
+    richte(tuerme, bef);
+    const jetzt = kopie();
+    if (vor && vor.length) {
+      // je Schirm nach dem Takt: nächster Schirm davor (Winkel, Abstand)
+      let w = 0, d = 0;
+      for (const j of jetzt) {
+        let bw = Infinity, bd = Infinity;
+        for (const v of vor) { const c = Math.acos(Math.min(1, j.u[0] * v.u[0] + j.u[1] * v.u[1] + j.u[2] * v.u[2])); if (c < bw) { bw = c; bd = Math.abs(j.abstand - v.abstand); } }
+        w = Math.max(w, bw); d = Math.max(d, bd);
+      }
+      if (p || plan.has(k - 1)) { sprungW = Math.max(sprungW, w); sprungA = Math.max(sprungA, d); } else { normalW = Math.max(normalW, w); normalA = Math.max(normalA, d); }
+    }
+    vor = jetzt;
+  }
+  const grenzeW = TURMKI.folgen.maxDreh * DT * 1.01, grenzeA = TURMKI.folgen.maxAbstandTempo * DT + 1e-6;
+  zeile(`H Umschalten Folgen ↔ fest (${schalter}×): Sprung der Mitte im Umschalt-Takt`, `≤ ${f2(grenzeW / GRAD)}°`, f2(sprungW / GRAD) + '°', sprungW <= grenzeW);
+  zeile('H Umschalten: Sprung des Abstands im Umschalt-Takt', `≤ ${f2(grenzeA)} m`, f2(sprungA) + ' m', sprungA <= grenzeA);
+  zeile('H Zum Vergleich: größter Schritt sonst (Mitte / Abstand)', 'Info', `${f2(normalW / GRAD)}° / ${f2(normalA)} m`, normalW <= grenzeW && normalA <= grenzeA, false);
 }
 
 // ---------- D) Gleichlauf ----------

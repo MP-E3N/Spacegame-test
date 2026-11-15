@@ -93,9 +93,11 @@ function hud(dt) {
   setze('feuer', befehl.feuerFrei ? 'FEUER FREI' : 'FEUER HALT');
   el.feuer.classList.toggle('halt', !befehl.feuerFrei);
   setze('schirm', schirmText());
-  const nah = labor.ki.lage?.eindringlinge?.length ?? 0;
-  setze('nah', nah ? 'NAHBEREICH — ' + nah + (nah === 1 ? ' Eindringling' : ' Eindringlinge') : '');
-  el.nah.classList.toggle('an', nah > 0);
+  // WARUM lage.nahbereich statt Anzahl: der Alarm läuft 0,5 s nach (Hysterese der KI) — so endet die Anzeige mit der
+  // Leuchtspur und nicht vorher (Befund Prüfer R7).
+  const lage = labor.ki.lage, nah = lage?.eindringlinge?.length ?? 0, alarm = !!lage?.nahbereich;
+  setze('nah', alarm ? 'NAHBEREICH' + (nah ? ' — ' + nah + (nah === 1 ? ' Eindringling' : ' Eindringlinge') : '') : '');
+  el.nah.classList.toggle('an', alarm);
   setze('spuren', String(grafik.zaehler.spuren));
   setze('granaten', String(zaehleGranaten()));
   setze('wolken', String(grafik.zaehler.wolken));
@@ -115,6 +117,11 @@ function schirmText() {
   for (let i = 0; i < sch.length; i++) t += (i ? ' / ' : '') + Math.round(sch[i].abstand / 10) * 10;
   return t + ' m';
 }
+/** Aktueller Abstand des (ersten) KI-Schirms, auf 10 m gerundet, im erlaubten Bereich. */
+function aktuellerAbstand() {
+  const a = labor.ki.lage?.schirme?.[0]?.abstand;
+  return a ? Math.max(SCHIRM.min, Math.min(SCHIRM.max, Math.round(a / 10) * 10)) : befehl.schirmAbstand;
+}
 function zaehleGranaten() { return labor.flak.geschosse.anzahlAktiv; }
 
 // ---------------- Hauptschleife ----------------
@@ -128,12 +135,15 @@ function bedienen() {
   if (plus || minus) {
     // + = Schirm näher heran (Nutzersicht „enger ziehen“), − = weiter hinaus
     // Beim ersten Druck aus dem Folgen-Modus: vom aktuellen Schirm der KI ausgehen (kein Sprung)
-    const start = befehl.folgen && labor.ki.lage?.schirme?.length ? Math.round(labor.ki.lage.schirme[0].abstand / 100) * 100 : befehl.schirmAbstand;
+    const start = befehl.folgen ? aktuellerAbstand() : befehl.schirmAbstand;
     befehl.folgen = false;
     befehl.schirmAbstand = Math.max(SCHIRM.min, Math.min(SCHIRM.max, start + (plus ? -SCHIRM.stufe : SCHIRM.stufe)));
     meldung('Flak-Schirm fest auf ' + befehl.schirmAbstand + ' m (F = wieder folgen)');
   }
-  if (einmal.has('KeyF')) { befehl.folgen = !befehl.folgen; meldung(befehl.folgen ? 'Flak-Schirm folgt den Zielen' : 'Flak-Schirm fest auf ' + befehl.schirmAbstand + ' m'); }
+  if (einmal.has('KeyF')) {
+    // Folgen → fest: Wand bleibt, wo sie ist (Abstand hier, Richtung merkt sich die KI) — Befund Prüfer R7
+    if (befehl.folgen) befehl.schirmAbstand = aktuellerAbstand();
+    befehl.folgen = !befehl.folgen; meldung(befehl.folgen ? 'Flak-Schirm folgt den Zielen' : 'Flak-Schirm fest auf ' + befehl.schirmAbstand + ' m'); }
   if (einmal.has('KeyN')) { labor.zuruecksetzen(); gelesen = 0; rate.schuesse = 0; meldung('Neue Drohnen'); }
   if (einmal.has('KeyP')) { pause = !pause; meldung(pause ? 'Pause' : 'Weiter'); }
   if (einmal.has('KeyC')) { kam.modus = kam.modus === 'batterie' ? 'uebersicht' : 'batterie'; meldung(kam.modus === 'batterie' ? 'Kamera: Prüfstand' : 'Kamera: Übersicht'); }
@@ -177,6 +187,7 @@ window.spiel = {
   /** Ganze Bilder von Hand rechnen (Sim + Kamera + Effekte + Zeichnen), je 1/60 s.
    *  WARUM: im verdeckten Browser-Pane läuft requestAnimationFrame nicht — sonst steht die Kamera im Ursprung. */
   bilder(n = 60) {
+    bedienen(); // Tasten, die seit dem letzten Aufruf gedrückt wurden (verdecktes Pane: frame() läuft nicht)
     for (let i = 0; i < n; i++) {
       simSchritt(); zeit += SCHRITT;
       kameraSetzen({ dx: 0, dy: 0, rad: 0 });

@@ -14,6 +14,9 @@ import { uPixel, spurMaterial, gluehMaterial, rauchMaterial } from './shader.js'
 
 const MAX_SPUR = 256, MAX_GLUEH = 128, MAX_RAUCH = 384;
 const SPUR_LAENGE = 45;        // m
+// Nahe der Kamera (Runde 7, Bildprüfer: weiße Glut vor der Batterie-Kamera): Glühen unter NAH_VOLL m gedämpft,
+// Bildschirmradius gedeckelt (Blitz klein, Kern groß). Kamera steht im Prüfstand-Blick ~30 m vom nächsten Turm.
+const NAH_MIN = 15, NAH_VOLL = 80, BLITZ_PX = 18, KERN_PX = 300;
 const WOLKE_R = 42, WOLKE_DECKKRAFT = 0.7; // Quad-Radius m (dichter Kern ~28 m), Deckkraft — Runde 7 (Nutzer: „größer“)
 const SIM_DT = 1 / 60;
 const RUECK = 0.7, RUECK_ZEIT = 0.17; // m, s
@@ -66,7 +69,7 @@ export function erstelleFlakGrafik(scene, camera) {
     groesse: new Float32Array(MAX_GLUEH), kraft: new Float32Array(MAX_GLUEH), art: new Uint8Array(MAX_GLUEH), zeiger: 0 };
   const W = { pos: new Float32Array(MAX_RAUCH * 3), vel: new Float32Array(MAX_RAUCH * 3), alter: new Float32Array(MAX_RAUCH).fill(99),
     dauer: new Float32Array(MAX_RAUCH).fill(1), r0: new Float32Array(MAX_RAUCH), rMax: new Float32Array(MAX_RAUCH),
-    saat: new Float32Array(MAX_RAUCH), zeiger: 0 };
+    saat: new Float32Array(MAX_RAUCH), glut: new Float32Array(MAX_RAUCH), zeiger: 0 };
   const zaehler = { spuren: 0, gluehen: 0, wolken: 0 };
 
   // WARUM Ring statt Suche: ist der Vorrat voll, wird die älteste Wolke ersetzt (fällt im dichten Schirm nicht auf)
@@ -75,11 +78,13 @@ export function erstelleFlakGrafik(scene, camera) {
     G.pos[i * 3] = x; G.pos[i * 3 + 1] = y; G.pos[i * 3 + 2] = z;
     G.alter[i] = 0; G.dauer[i] = dauer; G.groesse[i] = groesse; G.kraft[i] = kraft; G.art[i] = art;
   }
-  function neueWolke(x, y, z, r0, rMax, dauer, vx = 0, vy = 0, vz = 0) {
+  function neueWolke(x, y, z, r0, rMax, dauer, vx = 0, vy = 0, vz = 0, glut = 1) {
     const i = W.zeiger; W.zeiger = (i + 1) % MAX_RAUCH;
     W.pos[i * 3] = x; W.pos[i * 3 + 1] = y; W.pos[i * 3 + 2] = z;
     W.vel[i * 3] = vx + (rnd() - 0.5) * 3; W.vel[i * 3 + 1] = vy + (rnd() - 0.5) * 3; W.vel[i * 3 + 2] = vz + (rnd() - 0.5) * 3;
-    W.alter[i] = 0; W.dauer[i] = dauer; W.r0[i] = r0; W.rMax[i] = rMax * (0.85 + rnd() * 0.3); W.saat[i] = rnd();
+    W.alter[i] = 0; W.dauer[i] = dauer; W.r0[i] = r0; W.saat[i] = rnd(); W.glut[i] = glut;
+    // WARUM breite Größenstreuung 0,6–1,3: gleich große Wolken verschmelzen zu einer glatten „Wattewurst“
+    W.rMax[i] = rMax * (0.6 + rnd() * 0.7);
   }
 
   /** Nach JEDEM flak.schritt aufrufen: Ereignisse des Schritts in die Effekt-Vorräte übernehmen. */
@@ -89,7 +94,7 @@ export function erstelleFlakGrafik(scene, camera) {
       neuesGluehen(s.pos.x + s.richtung.x * 1.2, s.pos.y + s.richtung.y * 1.2, s.pos.z + s.richtung.z * 1.2, 4, 0.07, 1, 0);
       // Mündungsrauch: kleiner Puff, treibt etwas mit dem Rohr — WARUM: ohne Leuchtspur soll man trotzdem sehen, dass geschossen wird
       neueWolke(s.pos.x + s.richtung.x * 3, s.pos.y + s.richtung.y * 3, s.pos.z + s.richtung.z * 3, 1.5, 5, 0.6,
-        s.richtung.x * 8, s.richtung.y * 8, s.richtung.z * 8);
+        s.richtung.x * 8, s.richtung.y * 8, s.richtung.z * 8, 0); // ohne Innenglut: grauer Puff, nicht hell
       rueck[s.turmId * 2 + s.rohr] = 0;
     }
     for (const d of e.detonationen) {
@@ -165,8 +170,14 @@ export function erstelleFlakGrafik(scene, camera) {
       }
       k *= G.kraft[i];
       GP[n * 3] = G.pos[i * 3]; GP[n * 3 + 1] = G.pos[i * 3 + 1]; GP[n * 3 + 2] = G.pos[i * 3 + 2];
+      // Nahe der Kamera: Größe auf Bildschirm-Pixel deckeln, Helligkeit dämpfen (sonst füllt Bloom das halbe Bild)
+      const ex = G.pos[i * 3] - kamPos.x, ey = G.pos[i * 3 + 1] - kamPos.y, ez = G.pos[i * 3 + 2] - kamPos.z;
+      const d = Math.max(1, Math.hypot(ex, ey, ez));
+      gr = Math.min(gr, (G.art[i] === 0 ? BLITZ_PX : KERN_PX) * uPixel.value * d);
+      const t = Math.min(1, Math.max(0, (d - NAH_MIN) / (NAH_VOLL - NAH_MIN)));
+      k *= 0.12 + 0.88 * t * t * (3 - 2 * t);
       GG[n] = gr;
-      if (G.art[i] === 0) { GF[n * 3] = 14 * k; GF[n * 3 + 1] = 7 * k; GF[n * 3 + 2] = 2.5 * k; }
+      if (G.art[i] === 0) { GF[n * 3] = 7 * k; GF[n * 3 + 1] = 2.4 * k; GF[n * 3 + 2] = 0.5 * k; } // orangeroter Funke
       else { GF[n * 3] = 18 * k; GF[n * 3 + 1] = 9 * k; GF[n * 3 + 2] = 3.5 * k; }
       n++;
     }
@@ -193,7 +204,7 @@ export function erstelleFlakGrafik(scene, camera) {
       // Radius: schnell auf rMax (0,4 s), danach langsam weiter
       RR[n] = W.r0[i] + (W.rMax[i] - W.r0[i]) * (1 - Math.exp(-a / 0.13)) + a * 1.5;
       RA[n] = Math.min(1, a / 0.05) * WOLKE_DECKKRAFT * (1 - u) ** 1.4;
-      RG[n] = Math.max(0, 1 - a / 0.4);
+      RG[n] = Math.max(0, 1 - a / 0.4) * W.glut[i];
       RS[n] = W.saat[i];
     }
     rauch.g.instanceCount = zaehler.wolken = n;

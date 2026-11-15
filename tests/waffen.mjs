@@ -188,7 +188,7 @@ function zuenderLauf(zuender) {
   const flak = erstelleFlak({ startwert: 10 });
   const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1];
   const p = { x: l.x, y: l.y + l.zapfen.y + 1000 * Math.tan(0.5), z: l.z + 1000 };
-  befehle[1].punkt = p; befehle[1].toleranz = 0.02; befehle[1].zuender = zuender;
+  befehle[1].punkt = p; befehle[1].toleranz = 0.02; befehle[1].zuender = zuender; befehle[1].zielId = 99; // Zielgranate (±4 %): Nahbereich = Zielfeuer
   for (let i = 0; i < 120; i++) flak.schritt(DT, befehle, []);   // einrichten
   befehle[1].feuer = true;
   let min = Infinity, max = 0, n = 0;

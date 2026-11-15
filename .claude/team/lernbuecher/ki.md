@@ -12,3 +12,9 @@
   Gleichtakt. Änderung: Trennung mit 3-s-Vorausschau, Wechsel erst bei 1,3× und nach 2 s, Warteschleife vor dem Anlauf.
   Messung: 79 m, 5,0/min, 41 Läufe in 5 min, 4,6 µs/Takt, Gleichlauf gleich. Lehre: Schwarm-Werte im Langlauf mit mehreren
   Startwerten messen; Lissajous-Muster brauchen ungekoppelte Phasen je Turm, sonst Linie statt Fläche.
+- 2026-11-15 Runde 7 — Sperr-Befehle sprangen bis 5900°/s (Musterphase hing am Platz im Schirm). Lehre: zustandsabhängige
+  Indizes nie als Musterphase; Bahngeometrie ohne Waffen messen.
+- 2026-11-15 Runde 7 Nachauftrag — 0 von 15 Vorstößen überlebt. Lehre: Rohschaden-Verteilung messen, Faktor daraus rechnen
+  (Panzer 0,065 → 50 %); Verweildauer in der Killzone ist Geometrie (Tangente 250 m ≈ 5 s), nicht Tempo.
+- 2026-11-15 Runde 7 Prüfer-Befund — Moduswechsel fest ↔ Folgen setzte auf Vorgaben zurück. Lehre: jeden Moduswechsel mit
+  Umschalt-Test messen (Sprung im Umschalt-Takt ≤ normaler Schritt).

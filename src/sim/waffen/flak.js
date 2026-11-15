@@ -14,7 +14,8 @@ export const FLAK = {
   schussAbstand: 6,           // Schritte zwischen zwei Schüssen eines Zwillings (10 Schuss/s je Turm)
   streuung: 0.5 * Math.PI / 180, // rad, größte Abweichung je Achse (Dreiecksverteilung)
   zuenderMin: 0.1, zuenderMax: 4.0, // s (0,1 s ≈ 62 m: Nahbereich, Runde 7)
-  zuenderStreu: 0.04,         // ±4 % → Schirm ~60 m tief bei 800 m
+  zuenderStreu: 0.04,         // ±4 % Zielgranaten
+  zuenderStreuSperr: 0.08,    // ±8 % Sperrgranaten → Schirm ~120 m tief bei 800 m: einzelne Wolken davor/dahinter (Runde 7)
   naheZuender: 12,            // m über dem Zielradius
   scharfNach: 6,              // Schritte (~60 m): WARUM: kein Annäherungszünder direkt vor dem Rohr
   // Zwei Granatsorten (Runde 6, Nachauftrag), gewählt nach dem Befehl:
@@ -267,7 +268,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     const n = t.nick + (t.rnd() + t.rnd() - 1) * t.streuung;
     const cn = Math.cos(n), rx = Math.sin(g) * cn, ry = Math.sin(n), rz = Math.cos(g) * cn;
     let zuender = b.zuender ?? entf / FLAK.v0;
-    zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMin, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * FLAK.zuenderStreu);
+    zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMin, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * (b.zielId == null ? FLAK.zuenderStreuSperr : FLAK.zuenderStreu));
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
     geschosse.sperr[i] = b.zielId == null ? 1 : 0;

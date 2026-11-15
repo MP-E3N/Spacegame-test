@@ -16,3 +16,8 @@
   1 Schritt, Wand in 0,4 s gequert. Änderung: Sperrgranate mit Splitterwolke (40 m, 0,7 s, 350/s), Zielgranate nur Sofortschaden 11,
   Treffer je Ziel/Schritt zusammengefasst, Nachbar-Sperre. Messung: Sperrfeuer 800 m 7, Zielfeuer 21 Abschüsse/70 s.
   Lehre: Balance nur im echten Labor (KI + Drohnen) messen; ein Hebel pro Modus statt eines globalen Werts.
+- 2026-11-15 Runde 7 — Leuchtspur auf Befehl: Anteil per Zähler statt Zufall → Prüfsumme mit/ohne Spur gleich. Lehre:
+  Darstellungs-Schalter nie aus dem Sim-Zufall ziehen.
+- 2026-11-15 Runde 7 (Testrunde) — Weiße Glut vor der Batterie-Kamera: Blitz 4 m in 30 m ≈ 136 px bei HDR 14 → Bloom.
+  Änderung: Glühen je Art in px gedeckelt (Blitz 18, Kern 300), unter 80 m gedämpft, Mündungsrauch ohne Glut. Lehre: jeder
+  Effekt braucht eine Nahgrenze; Größe in Bildschirm-Pixeln denken. Wattewurst → Größe 0,6–1,3 + Zünder ±8 % (Sperr).
