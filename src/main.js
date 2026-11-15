@@ -71,9 +71,11 @@ function frame(jetzt) {
     while (rest >= SCHRITT) {
       Object.assign(schrittBefehl, befehl);
       schrittBefehl.stopp = offen.stopp; schrittBefehl.daempferUmschalten = offen.daempfer;
+      const daempferVorher = sim.z.daempfer;
       const k = welt.schritt(SCHRITT, schrittBefehl);
       if (k.schaden > 0) schadenImBild += k.schaden;
-      if (offen.daempfer) zeigeMeldung(sim.z.daempfer ? 'Trägheitsdämpfer EIN' : 'Trägheitsdämpfer AUS — das Schiff treibt');
+      // Meldung nur, wenn sich wirklich etwas geändert hat (Wrack ignoriert Befehle — Befund Prüfer R5)
+      if (offen.daempfer && sim.z.daempfer !== daempferVorher) zeigeMeldung(sim.z.daempfer ? 'Trägheitsdämpfer EIN' : 'Trägheitsdämpfer AUS — das Schiff treibt');
       offen.stopp = false; offen.daempfer = false;
       rest -= SCHRITT;
     }

@@ -23,7 +23,8 @@ export function erstelleSimWelt(start = 'bollwerk') {
     get werte() { return WERTE[typ]; },
     get letzteKollision() { return letzteKollision; },
     /** Schiffstyp wechseln (V): andere Flugwerte und Kollisionskugeln, Lage und HP-Anteil bleiben. */
-    waehle(t) { if (!WERTE[t]) return; typ = t; schiff.setzeWerte(WERTE[t]); },
+    // WARUM throw: sonst zeigt die Grafik das neue Schiff, die Sim rechnet still mit dem alten (Befund Prüfer R5)
+    waehle(t) { if (!WERTE[t] || !SCHIFFSDATEN[t]) throw new Error('Unbekannter Schiffstyp: ' + t); typ = t; schiff.setzeWerte(WERTE[t]); },
     schritt(dt, befehl) {
       schiff.schritt(dt, befehl);
       letzteKollision = kollidiere(schiff.z, SCHIFFSDATEN[typ].kugeln, feld, WERTE[typ]);
