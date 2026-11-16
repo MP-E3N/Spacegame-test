@@ -2,7 +2,8 @@
 //        Detonationskern, Rauchwolken (Fake-Licht), große Explosion bei Drohnen-Abschuss.
 // LIEFERT: erstelleFlakGrafik(scene, camera) → { nachSchritt(flak), aktualisiere(flak, alpha, dt, zeit), explosion(pos, groesse),
 //          zaehler: { spuren, gluehen, wolken, ueberschrieben }, gruppe }
-//          Je Detonation: Kern + Wolke + 3 Zusatz-Explosionen (R9, nur Grafik, verzögert über negatives Alter).
+//          Je Detonation: Kern + Wolke + 4 Zusatz-Explosionen (R9/R10, nur Grafik, verzögert über negatives Alter),
+//          Versatz wächst mit der benutzten Streuung der Granate (Ereignisfeld detonation.streu, R10).
 // REGEL: liest den Sim-Zustand nur. nachSchritt() nach JEDEM flak.schritt (übernimmt Schüsse/Detonationen in die Vorräte),
 //        aktualisiere() einmal pro Bild (Interpolation + Alterung). Vorräte fester Größe, keine neuen Objekte pro Bild.
 //        Zusätzliche Draw-Calls: 3 Effekte + 6 × 5 Turmteile (turm() aus bauteile.js, nur lesend). Keine Lichter.
@@ -13,8 +14,9 @@ import { SONNE_RICHTUNG } from '../weltraum.js';
 import { zufall } from '../zufall.js';
 import { uPixel, spurMaterial, gluehMaterial, rauchMaterial } from './shader.js';
 
-// WARUM 256/768 (R9): je Detonation 1 + 3 Zusatz-Explosionen; Sperrfeuer 60 Det./s × 4 × 1,6–2,8 s ≈ 450 Wolken
-const MAX_SPUR = 256, MAX_GLUEH = 256, MAX_RAUCH = 768;
+// WARUM 384/1024 (R10): je Detonation 1 + 4 Zusatz-Explosionen; 60 Det./s × (2,8 s + 4 × 2,0 s) ≈ 650 Wolken + Mündungsrauch
+//        + Abschüsse (7 × 5 s); Glühen 60 × (0,3 + 4 × ~0,5 s inkl. Wartezeit) ≈ 140 + Blitze + Abschüsse.
+const MAX_SPUR = 256, MAX_GLUEH = 384, MAX_RAUCH = 1024;
 const SPUR_LAENGE = 25;        // m (R8, Nutzer: „kleiner“) — WARUM nicht kürzer: unter ~1 Schrittweg (17 m bei 1000 m/s) wird die Spur zur Perlenkette
 // Nahe der Kamera (Runde 7, Bildprüfer: weiße Glut vor der Batterie-Kamera): Glühen unter NAH_VOLL m gedämpft,
 // Bildschirmradius gedeckelt (Blitz klein, Kern groß). Kamera steht im Prüfstand-Blick ~30 m vom nächsten Turm.
@@ -24,10 +26,14 @@ const SIM_DT = 1 / 60;
 const RUECK = 0.7, RUECK_ZEIT = 0.17; // m, s
 // Mündung (R8, Nutzer: „zu rauchig“): Blitz kleiner/kürzer, Rauch nur jeder 3. Schuss, klein, kurz und durchscheinend
 const BLITZ_M = 2.5, BLITZ_S = 0.05, MRAUCH_JEDER = 3, MRAUCH_M = 2.5, MRAUCH_S = 0.3, MRAUCH_DECKKRAFT = 0.3;
-// Zusatz-Explosionen je Detonation (R9, Nutzer: „3 weitere Explosionseffekte, nur visuell, für mehr Fülle“).
-// Nur Grafik-Zufall (rnd), die Sim merkt nichts. Verzögerung über negatives Alter (keine Warteschlange).
-const ZUSATZ = { anzahl: 3, versatz: [15, 30], verzoegerung: [0.06, 0.14, 0.22], verzoegerungStreu: 0.05,
-  kern: [6, 8], kernDauer: 0.25, kernKraft: 0.8, wolke: [0.5, 0.65], leben: 1.6 };
+// Zusatz-Explosionen je Detonation (R9, Nutzer: „3 weitere Explosionseffekte, nur visuell, für mehr Fülle“; R10: 4, weiter,
+// länger — „das Areal um ein Ziel viel weiter gestreut mit Flak-Wolken gesättigt“). Nur Grafik-Zufall (rnd), die Sim merkt
+// nichts — diese Wolken tragen KEINEN Schaden (Absicht, Entscheidung R10/3). Verzögerung über negatives Alter.
+// Versatz: 20 m bis versatzMax = clamp(30 + versatzJeStreu · streu, 30, 60) m. WARUM mitwachsend: im Nahbereich (Kugel
+// ≤ 35 m) bleibt die Traube eng wie in R9, im Sättigungsraum (Kugel 140 m) füllt sie bis 51 m, ab 200 m bis 60 m.
+// WARUM höchstens 60 m: weiter weg wirkt die Zusatzwolke wie eine eigene Granate ohne Schaden (ehrliche Optik).
+const ZUSATZ = { anzahl: 4, versatz: [20, 30, 60], versatzJeStreu: 0.15, verzoegerung: [0.06, 0.12, 0.18, 0.26], verzoegerungStreu: 0.05,
+  kern: [6, 8], kernDauer: 0.25, kernKraft: 0.8, wolke: [0.5, 0.65], leben: 2.0 };
 const ZWEI_PI = Math.PI * 2;
 const umbruch = (w) => w - ZWEI_PI * Math.floor((w + Math.PI) / ZWEI_PI);
 
@@ -124,17 +130,17 @@ export function erstelleFlakGrafik(scene, camera) {
     for (const d of e.detonationen) {
       neuesGluehen(d.pos.x, d.pos.y, d.pos.z, d.art === 'nah' ? 13 : 11, 0.3, 1, 1);
       neueWolke(d.pos.x, d.pos.y, d.pos.z, 6, WOLKE_R, 2.8); // Sichtgröße ≈ Splitter-Wirkradius (Runde 7)
-      zusatzExplosionen(d.pos);
+      zusatzExplosionen(d.pos, d.streu || 0);
     }
   }
 
-  /** 3 kleinere, leicht verzögerte Explosionen um den Zündpunkt (nur Grafik, R9). */
-  function zusatzExplosionen(p) {
-    const Z = ZUSATZ;
+  /** 4 kleinere, leicht verzögerte Explosionen um den Zündpunkt (nur Grafik, R9/R10); streu = benutzte Streuung (m). */
+  function zusatzExplosionen(p, streu) {
+    const Z = ZUSATZ, vMax = Math.min(Z.versatz[2], Math.max(Z.versatz[1], Z.versatz[1] + Z.versatzJeStreu * streu));
     for (let k = 0; k < Z.anzahl; k++) {
-      // Richtung gleichverteilt auf der Kugel, Abstand 15–30 m
+      // Richtung gleichverteilt auf der Kugel, Abstand 20 m … vMax
       const cz = 2 * rnd() - 1, phi = ZWEI_PI * rnd(), sz = Math.sqrt(1 - cz * cz);
-      const r = Z.versatz[0] + rnd() * (Z.versatz[1] - Z.versatz[0]);
+      const r = Z.versatz[0] + rnd() * (vMax - Z.versatz[0]);
       const x = p.x + r * sz * Math.cos(phi), y = p.y + r * sz * Math.sin(phi), z = p.z + r * cz;
       const warte = Z.verzoegerung[k % Z.verzoegerung.length] + rnd() * Z.verzoegerungStreu;
       neuesGluehen(x, y, z, Z.kern[0] + rnd() * (Z.kern[1] - Z.kern[0]), Z.kernDauer, Z.kernKraft, 1, warte);
