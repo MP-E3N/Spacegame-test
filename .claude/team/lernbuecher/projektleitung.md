@@ -31,3 +31,6 @@
   vor dem Kickoff ins Protokoll → beide Experten bauten darauf. Videos kann ich nicht ansehen — das offen sagen. Messziele
   vorher überschlagen (Detonationen/s × Volumen), sonst Widerspruch wie „≥ 8 Wolken je Drohne“ vs. „weit streuen“.
   Nach einem Sitzungswechsel sind die alten Agenten weg → neue Frühwarnung, die Lernbücher tragen den Kontext.
+- 2026-11-16 Runde 11 — Regler-Wünsche: jeder Besitzer exportiert eine Tabelle { min, max, standard }, die Seite baut
+  daraus generisch (regler.js) → keine doppelten Zahlen. Ein stiller Deckel macht Regler wirkungslos → als eigenen Regler
+  anbieten und den Anteil „gedeckelt“ anzeigen. Testwerte im localStorage nach eigenen Browsertests wieder löschen.

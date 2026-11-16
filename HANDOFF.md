@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`, Stand gepusht).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 11 nur lokal committet).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -58,10 +58,19 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   gedämpft + `KERN_BUDGET` (kein weißer Ballen). Sperrfeuer: Median 163 m, **73 % der Detonationen vor der Drohne**
   (vorher 9 %); Zielfeuer Median 110 m. Balance 1100, 3 Startwerte: Sperr 46–54 Abschüsse / 36–50 % Vorstöße überlebt,
   Ziel 31–32 / 33–43 %. Protokoll `…/2026-11-16-runde10.md`.
-- **Nutzer-Urteil zu Runde 10 offen.** Offene Frage: Für eine wirklich dichte Sättigung um JEDE Drohne reichen 60 Schuss/s
-  nicht (Drohnen in 7–9 Grüppchen) — Hebel wäre die Feuerrate (mehr Türme/Rohre). Station unten links verdeckt die
-  linken Türme. Stellschrauben: `FLAK.sorte` (Ziel 3 HP / 42 m · 15 HP/s, Sperr 1,5 HP / 45 HP/s), `DROHNEN.vorstoss.panzer`
-  0,18 (steil!), Räume in `TURMKI`. Offen (Kann): Schadensskala neu ordnen, Turmteile 30 Draw-Calls.
+- Nutzer zu R10: „nach dem Test viel besser“ → **Runde 11 (2026-11-16, lokal committet, nicht gepusht): Reglerfeld**
+  links oben (Taste R) mit 15 Schiebereglern zum Abstimmen + Konfig: **Streuung (Sim)** `befehl.streu` (sperrQuer,
+  sperrTiefe, raumZuschlag, lagenAnteil, ziel, nahMax — Tabelle `STREU_REGLER` in turmziel.js), **Grenzen der Waffe
+  (Sim)** `befehl.waffe` (deckelQuer, deckelTiefe — `WAFFEN_REGLER` in flak.js; KI-Toleranz liest dieselben Werte),
+  **Optik (nur Grafik)** `grafik.regler` (fuellen = Füll-Flak, lebenFaktor, explosionDauer, rauchDeckkraft,
+  rauchGroesse, zusatzAnzahl, zusatzWeite — `GRAFIK_REGLER` in flakgrafik.js; Vorrat 3072, 1024 Reserve für echte Wolken).
+  Knöpfe Standard / Konfig kopieren (JSON), Werte im Browser gemerkt (`localStorage` „schwarmfront.flaklabor.konfig“).
+  Ohne Regler bitgleich zu R10. Seite: `src/labor/regler.js`. Protokoll `…/2026-11-16-runde11.md`.
+- **Nächster Schritt:** Nutzer testet mit den Reglern und schickt seine Konfig (JSON) → als neue Standardwerte in die
+  drei Tabellen übernehmen, dann Balance bei diesen Werten nachmessen (labor8.mjs-Muster, 3 Startwerte).
+  Offen: Feuerrate als Hebel für dichtere Sättigung; Station unten links verdeckt die linken Türme; kopierte Konfig enthält
+  `v0`, wird aber nicht wieder eingelesen (Kann); Rauch-Größe 2 = weiße Flächen (Reglerende). Stellschrauben Balance:
+  `FLAK.sorte`, `DROHNEN.vorstoss.panzer` 0,18 (steil!). Offen (Kann): Schadensskala, Turmteile 30 Draw-Calls.
 - **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
@@ -122,6 +131,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 11** (2026-11-16, mit Team): Reglerfeld mit 15 Schiebereglern (Streuung, Waffen-Grenzen, Optik inkl. Füll-Flak),
+  Konfig kopieren/merken. Lokal committet.
 - **Runde 10** (2026-11-16, mit Team): Sättigungsfeuer — Räume mit 3 Tiefenlagen, Streu-Ellipsoid, 4 Zusatz-Explosionen,
   Glut-Budget, Balance mit 3 Startwerten. Gepusht e22a475 (mit R8+R9).
 - **Runde 9** (Nutzer-Rückmeldung zu R8, mit Team): Streukugel 60 m, Zusatz-Explosionen, Standard 1100 m/s, Sperrkästen

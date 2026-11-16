@@ -21,3 +21,5 @@
 - 2026-11-16 Runde 10 — Sperrfeuer-Sättigung: Abstand zur nächsten Drohne plus Längsanteil getrennt nach
   ki.lage.nahbereich messen (fern: p50 163 m, 73 % vor der Drohne). Befehlsparameter (labor.ki.befehle[].streuKugel/
   streuTiefe) direkt lesen statt Modus aus dem HUD ableiten. Nicht unbekannte Felder als Funktion aufrufen (bricht die Messung ab).
+- 2026-11-16 Runde 11 — Regler einzeln testen (standard() → setze() → bilder(300)), Pixel per gl.readPixels direkt nach
+  bilder(1). Bei Umschalt-Tasten den Zustand VORHER lesen (Taste R „öffnete nicht“ = Feld war schon offen).

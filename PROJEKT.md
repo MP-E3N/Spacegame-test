@@ -40,7 +40,7 @@ npm test           # Messflüge ohne Browser
 | `src/grafik/schiff/bauteile.js`, `texturen.js` | gemeinsame Bausteine + Effekte, Rumpf-Texturen |
 | `src/grafik/kamera.js` | Außenkamera |
 | `tests/flug.mjs`, `tests/schiffe.mjs` | Messflüge je Schiff + Kollision + Gleichlauf · Turm-Spaltmaß, Feld, Import-/Sim-Regel (ganz src/sim) |
-| `flak.html`, `src/labor/*` | **Flak-Labor** (Runde 6, Demo ohne Schiff): Seite, Prüfstand, Drohnen-Platzhalter, Kamera, HUD |
+| `flak.html`, `src/labor/*` | **Flak-Labor** (Runde 6, Demo ohne Schiff): Seite, Prüfstand, Drohnen-Platzhalter, Kamera, HUD, Bedienfeld (R8), Reglerfeld `regler.js` (R11) |
 | `src/sim/flaklabor.js` | Labor-Sim-Welt: Drohnen → Turm-KI → Waffen (Treffer aus Schritt n wirken in Schritt n+1) |
 | `src/sim/waffen/lafetten.js`, `flak.js` | Turm-Montage (einzige Quelle) · Flak: Richten, Feuern, Geschoss-Pool, Zeit-/Annäherungszünder, Splitterwolke, Nachbar-Sperre |
 | `src/sim/ki/turmziel.js`, `zieldrohnen.js` | Turm-KI (Sperrfeuer-Muster, Zielwahl, Vorhalt) · Zieldrohnen (Bahnen, Ausweichen, Neustart) |

@@ -36,3 +36,6 @@
   Splitterradius (bis zur sichtbaren Wolke 42 m) ist der Hebel für weit gestreutes Zielfeuer. Panzer = getrennter Hebel für
   das Überleben der Vorstöße, nach jeder Änderung an der Zielgranate neu suchen (steil: 0,14 → 80 %, 0,22 → 15 %).
   Methode: 2 Startwerte × 2 Betriebsarten parallel, dritter Startwert zur Bestätigung (Läufe streuen ±10 Abschüsse).
+- 2026-11-16 Runde 11 — Streu-Regler über befehl.streu/befehl.waffe mit Tabelle (STREU_REGLER) und Klemm-Hilfe
+  (streuWert/waffeWert, NaN → Standard): ohne Regler bitgleich. Feste Klammern (Raum 120–250, Lagenabstand) verschlucken
+  Regler → an den Regler koppeln. Fremde Deckel nie als Konstante lesen, sondern über dieselbe Klemmregel wie der Besitzer.

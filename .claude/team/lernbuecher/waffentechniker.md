@@ -36,3 +36,6 @@
 - 2026-11-16 R10-Fix — Additive Glutkerne vieler Detonationen auf einem Fleck werden zum weißen Ballen. Zusatzeffekte
   nur kurz glimmen lassen, ein Kraft-Budget je Bild (KERN_BUDGET) einbauen und Abschüsse davon ausnehmen. Test-Wächter
   nicht mit fester Zahl, sondern aus Bezugsläufen mit Einheitswerten ableiten (Schaden ist linear).
+- 2026-11-16 Runde 11 — Reine Füll-Effekte brauchen eine Reserve im Vorrat, sonst verdrängen sie die echten (2806
+  überschrieben). Regler multiplizieren nur und ändern die Zahl der Zufallsaufrufe nicht → Standard bleibt bitgleich.
+  Vergleich reihenfolgefrei, weil ein größerer Vorrat die Plätze und damit die Zeichenreihenfolge ändert.

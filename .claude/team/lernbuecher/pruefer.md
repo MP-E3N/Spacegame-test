@@ -20,3 +20,6 @@
 - 2026-11-16 Runde 10 — Neue Zustandsfelder in einem Vorrat (schirmVorrat) brauchen den Reset in zuruecksetzen(), nicht
   nur in einem „bereit“-Startblock: setzt ein anderer Pfad (feste Wand) das Flag, bleiben alte Werte stehen. Gleichlauf
   auch als Reset → Modus A → Modus B gegen eine frische Instanz prüfen. Gegenprobe: alten Stand per git archive ins Scratchpad.
+- 2026-11-16 Runde 11 — Wird ein Deckel zum Regler, alle Leser des Deckels suchen: die Waffe nutzte den Reglerwert, die
+  KI-Toleranz noch die Konstante. Gefährlich ist die Richtung, in der der Regler UNTER der Konstante steht.
+  Bitgleichheit „ohne Regler“ gegen den alten Stand per git archive prüfen, nicht nur gegen Standardwerte im neuen Code.
