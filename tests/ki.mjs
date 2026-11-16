@@ -629,6 +629,24 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
   const va = lauf(5400, false, { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }, { v0Plan: V0_PLAN, modell: 'r8' });
   const vb = lauf(5400, false, { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 }, { v0Plan: V0_PLAN, modell: 'r8' });
   zeile('D Gleichlauf mit v0-Umschalten + Streukugel + Splitter (5400 Takte)', 'gleich', `${va.h.toString(16)} / ${vb.h.toString(16)}`, va.h === vb.h);
+  // Befund Prüfer R10: zuruecksetzen() → Start im festen Modus → folgen muss wie eine frische KI laufen (die Raumfelder
+  // v*, tempo, laengs, lagenAbstand setzte nur der Startblock von folgeSchirme zurück, den festerSchirm überspringt)
+  const reihe = (ki, festTakte, takte) => {
+    const d = erstelleZieldrohnen({ startwert: 101 }), t = ersatzTuerme(1100), b = { ...FOLGEN };
+    let hh = 0x811c9dc5; const f = new Float64Array(1), u = new Uint32Array(f.buffer);
+    for (let k = 0; k < takte; k++) {
+      b.folgen = k >= festTakte; d.schritt(DT, null);
+      const bf = ki.schritt(DT, b, d.ziele, t); richte(t, bf);
+      for (const q of bf) for (const v of [q.punkt.x, q.punkt.y, q.punkt.z, q.feuer ? 1 : 0, q.streuKugel, q.streuTiefe]) { f[0] = v; hh = Math.imul(hh ^ u[0], 16777619); hh = Math.imul(hh ^ u[1], 16777619); }
+    }
+    return hh >>> 0;
+  };
+  for (const festTakte of [0, 60]) {
+    const kiA = erstelleTurmKi({ startwert: 202 });
+    reihe(kiA, 0, 1800); kiA.zuruecksetzen();
+    const hA = reihe(kiA, festTakte, 900), hB = reihe(erstelleTurmKi({ startwert: 202 }), festTakte, 900);
+    zeile(`D zuruecksetzen() nach 30 s Folgen → ${festTakte ? '1 s fest → folgen' : 'folgen'} = frische KI (900 Takte)`, 'gleich', `${hA.toString(16)} / ${hB.toString(16)}`, hA === hB);
+  }
   // zuruecksetzen() muss denselben Anfang liefern
   const dr = erstelleZieldrohnen({ startwert: 101 }), p0 = JSON.stringify(dr.ziele);
   for (let k = 0; k < 500; k++) dr.schritt(DT, null);
