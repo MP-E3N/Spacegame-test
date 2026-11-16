@@ -19,8 +19,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { erstelleZieldrohnen, DROHNEN } from '../src/sim/ki/zieldrohnen.js';
-import { erstelleTurmKi, abfangen, TURMKI, querDeckel, STREU_REGLER, streuWert } from '../src/sim/ki/turmziel.js';
-import { FLAK } from '../src/sim/waffen/flak.js';
+import { erstelleTurmKi, abfangen, TURMKI, querDeckel, STREU_REGLER, streuWert, waffeWert } from '../src/sim/ki/turmziel.js';
+import { FLAK, erstelleFlak } from '../src/sim/waffen/flak.js';
 import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR as S } from '../src/sim/waffen/lafetten.js';
 import { zufall } from '../src/sim/zufall.js';
 
@@ -678,6 +678,30 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
   };
   const m70 = medSperr({ sperrQuer: 70 }), m150 = medSperr({ sperrQuer: 150 });
   zeile('L Wirkung: Sperr Detonation ↔ Drohne Median bei sperrQuer 70 → 150 (Ersatz-Flak, unverwundbar)', 'steigt', `${f1(m70)} → ${f1(m150)} m`, m150 > m70);
+}
+
+// ---------- M) Toleranz folgt dem Waffen-Regler deckelQuer (Befund Prüfer R11), echte Flak ----------
+{
+  // Stehendes Ziel 1000 m vor der Batterie, Zielfeuer, Regler deckelQuer 0,10: Kugel 140 → Waffe kürzt auf 100 m.
+  // Granate ↔ Punkt QUER zur Schusslinie (WARUM quer: längs streut streuTiefe 140 m unabhängig vom Querdeckel)
+  // ≤ Kugel (100) + Feuer-Spielraum (toleranz · d, jetzt ≤ 100 m statt 140) + Streuung/Rohrversatz 10 m;
+  // nach dem Einrichten (Turm steht) ≤ Kugel + 10 m.
+  for (const dq of [0.10, 0.30]) {
+    const ki = erstelleTurmKi({ startwert: 202 }), fl = erstelleFlak({ startwert: 303 }), befehl = { modus: 'zielfeuer', feuerFrei: true, waffe: { deckelQuer: dq } };
+    const z = { id: 1, aktiv: true, r: 6, hp: 1e9, pos: { x: 0, y: 4 + 1000 * Math.sin(0.5), z: 1000 * Math.cos(0.5) }, vel: { x: 0, y: 0, z: 0 } };
+    let maxAll = 0, maxSpaet = 0, tolMax = 0, tolSoll = 0;
+    for (let k = 0; k < 6 * 60; k++) {
+      fl.einstellen(befehl.waffe);
+      const bf = ki.schritt(DT, befehl, [z], fl.tuerme); fl.schritt(DT, bf, [z]);
+      for (const q of bf) { const m = fl.tuerme[q.turmId].muendung, d = L(q.punkt.x - m.x, q.punkt.y - m.y, q.punkt.z - m.z); tolMax = Math.max(tolMax, q.toleranz * d); tolSoll = Math.max(tolSoll, Math.min(q.streuKugel, waffeWert(befehl.waffe, 'deckelQuer') * d)); }
+      for (const e of fl.ereignisse.detonationen) {
+        const rx = e.pos.x - z.pos.x, ry = e.pos.y - z.pos.y, rz = e.pos.z - z.pos.z, ux = z.pos.x - M.x, uy = z.pos.y - M.y, uz = z.pos.z - M.z, ul = L(ux, uy, uz);
+        const la = (rx * ux + ry * uy + rz * uz) / ul, a = Math.sqrt(Math.max(0, rx * rx + ry * ry + rz * rz - la * la)); maxAll = Math.max(maxAll, a); if (k > 3 * 60) maxSpaet = Math.max(maxSpaet, a); }
+    }
+    const kug = Math.min(TURMKI.streuKugel.ziel, dq * 1000);
+    zeile(`M deckelQuer ${dq}: Feuer-Spielraum ≤ wirksamer Deckel · d (max, m)`, `≤ ${f1(tolSoll)} m`, f1(tolMax) + ' m', tolMax <= tolSoll + 1e-6);
+    zeile(`M deckelQuer ${dq}: Granate ↔ Punkt quer, max gesamt / nach dem Einrichten (1000 m, Kugel 140)`, `≤ ${f1(2 * kug + 10)} / ${f1(kug + 10)} m`, `${f1(maxAll)} / ${f1(maxSpaet)} m`, maxAll <= 2 * kug + 10 && maxSpaet <= kug + 10);
+  }
 }
 
 // ---------- D) Gleichlauf ----------
