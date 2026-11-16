@@ -43,7 +43,10 @@ export const DROHNEN = {
     // trifft beide Ziele: Sperr 30–60 %, Ziel ≥ 20 %).
     // R9 (1100 m/s, neue Granaten-Zahlen): 0,28 → Sperr 5/14, Ziel 5/14 überleben (36 %); 620: 6/14 bzw. 9/14.
     // Das Überleben kippt steil (Rohschaden je Vorstoß eng verteilt) — einzelne Läufe streuen um ±1–3 Vorstöße.
-    panzer: 0.28,
+    // R10 (Zielgranate 3 / 42 m / 15, Sperrgranate 1,5 / 45, 1100 m/s, Startwerte 101 / 7): 0,14 → Sperr 79 / 80 %,
+    // Ziel 64 / 86 %; 0,16 → 64 / 43 %, 64 / 64 %; 0,18 → Sperr 50 / 36 %, Ziel 43 / 43 % (Startwert 202: 43 / 33 %);
+    // 0,22 → 21 / 14 %, 7 / 21 %. WARUM tiefer als R9: die Zielgranate (auch im Nahbereich) trifft jetzt fast doppelt so hart.
+    panzer: 0.18,
     weichMin: 230, hoeheWeich: 110,   // im Vorstoß: weiche Grenzen tiefer, harte Klammer bleibt 200 m / 80 m
   },
   atmen: { mitte: 1200, hub: 300, periode: 60 }, // Kreis-/Schlangen-Mitte pendelt 900 ↔ 1500 m
