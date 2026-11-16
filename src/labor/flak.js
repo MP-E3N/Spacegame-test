@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { erstelleRenderer } from '../grafik/renderer.js';
 import { erstelleFlakGrafik, GRAFIK_REGLER } from '../grafik/waffen/flakgrafik.js';
 import { STREU_REGLER } from '../sim/ki/turmziel.js';
+import { WAFFEN_REGLER } from '../sim/waffen/flak.js';
 import { erstelleReglerfeld } from './regler.js';
 import { erstelleFlakLabor } from '../sim/flaklabor.js';
 import { STANDARD_SEKTOR } from '../sim/waffen/lafetten.js';
@@ -38,7 +39,8 @@ const labor = erstelleFlakLabor();
 // v0 (Runde 8): gilt für neu abgefeuerte Granaten; die KI rechnet den Vorhalt mit dem v0 der Türme.
 // streu (Runde 11): Schieberegler für die Streuung — Standardwerte aus der KI-Tabelle (eine Quelle), Sim liest sie je Takt.
 const befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, v0: V0_START, sektor: { ...STANDARD_SEKTOR },
-  streu: Object.fromEntries(Object.entries(STREU_REGLER).map(([k, r]) => [k, r.standard])) };
+  streu: Object.fromEntries(Object.entries(STREU_REGLER).map(([k, r]) => [k, r.standard])),
+  waffe: Object.fromEntries(Object.entries(WAFFEN_REGLER).map(([k, r]) => [k, r.standard])) };
 
 // ---------------- Kamera ----------------
 // batterie: steht hinter dem Prüfstand, Maus = umsehen, Rad = Zoom (Brennweite).
@@ -115,6 +117,8 @@ const R_NAMEN = {
   lagenAnteil: ['Sperrfeuer: Lagenabstand', 0.05, '×', 'Abstand der 3 Tiefenlagen (vor / auf / hinter)'],
   ziel: ['Zielfeuer: Streuung', 5, 'm', 'Ellipsoid um den Vorhaltepunkt (quer = tief)'],
   nahMax: ['Nahbereich: Streuung max.', 1, 'm', 'Obergrenze unter 500 m (min mit 0,10 · Entfernung)'],
+  deckelQuer: ['Grenze quer (× Entfernung)', 0.01, '', 'Wie weit eine Granate seitlich neben dem Rohr landen darf (ohne Leuchtspur) — begrenzt die Streuung quer'],
+  deckelTiefe: ['Grenze Tiefe (× Entfernung)', 0.01, '', 'Wie weit der Zünder vor/hinter den Punkt streuen darf — begrenzt Lagendicke/Zielstreuung längs'],
   fuellen: ['Füll-Flak (nur Optik)', 0.05, '×', 'Rein visuelle Wolken zwischen den Detonationen und in den Räumen'],
   zusatzAnzahl: ['Zusatz-Explosionen', 1, '', 'Visuelle Explosionen je Detonation'],
   zusatzWeite: ['Zusatz-Explosionen: Weite', 0.05, '×', 'Versatz der Zusatz-Explosionen'],
@@ -131,6 +135,7 @@ const reglerfeld = erstelleReglerfeld({
   wurzel: document.getElementById('regler-gruppen'),
   gruppen: [
     { titel: 'Streuung (Simulation)', schluessel: 'streu', ziel: () => befehl.streu, eintraege: eintraegeAus(STREU_REGLER) },
+    { titel: 'Grenzen der Waffe (Simulation)', schluessel: 'waffe', ziel: () => befehl.waffe, eintraege: eintraegeAus(WAFFEN_REGLER) },
     { titel: 'Optik (nur Grafik)', schluessel: 'grafik', ziel: () => grafik.regler, eintraege: eintraegeAus(GRAFIK_REGLER) },
   ],
 });
