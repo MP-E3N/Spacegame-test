@@ -11,12 +11,15 @@
 //   D) Gleichlauf: zwei Läufe (Zielfeuer + Folgen + v0-Umschalten) + zuruecksetzen() → gleicher Hash
 //   E) src/sim/ki/** ohne Math.random, DOM, grafik/
 // Ersatz-Waffen: Turm richtet sich sofort aus (in I mit Richttempo); Granate fliegt gerade mit dem v0 des Turms, zielt
-// auf einen Punkt in der Streukugel, zündet nach `zuender` bzw. auf dem Kugelpunkt (nur Zeitzünder, R8). Streuung 0,25°.
+// auf einen Punkt im Streu-Ellipsoid (R10: quer streuKugel, längs streuTiefe, Deckel aus FLAK), zündet nach `zuender`
+// bzw. auf dem Ellipsoid-Punkt (nur Zeitzünder, R8). Streuung 0,25°.
+//   K) R10 Sättigungsräume: Lagen vor/auf/hinter (Abstand, Schwenktempo der Richtung), Streu-Regel, Anteil vor/hinter
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { erstelleZieldrohnen, DROHNEN } from '../src/sim/ki/zieldrohnen.js';
-import { erstelleTurmKi, abfangen, TURMKI } from '../src/sim/ki/turmziel.js';
+import { erstelleTurmKi, abfangen, TURMKI, querDeckel } from '../src/sim/ki/turmziel.js';
+import { FLAK } from '../src/sim/waffen/flak.js';
 import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR as S } from '../src/sim/waffen/lafetten.js';
 import { zufall } from '../src/sim/zufall.js';
 
@@ -75,13 +78,16 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12, modell = 'r7') {
         const m = tm.muendung;
         let qx = b.punkt.x, qy = b.punkt.y, qz = b.punkt.z;
         const dp = L(qx - m.x, qy - m.y, qz - m.z);
-        // Streukugel (wie die Waffe, Entscheidung 2): Punkt gleichverteilt in der Kugel um `punkt`, Radius ≤ Deckel·d (R9 0,10),
-        // genau 3 Zufallszahlen (Gleichlauf); Zeitzünder auf diesen Punkt.
-        const R = Math.min(b.streuKugel ?? 0, TURMKI.kugelDeckel * dp);
+        // Streu-Ellipsoid (wie die Waffe, R10 Entscheidung 1): Punkt gleichverteilt im Ellipsoid um `punkt` — quer
+        // ≤ Querdeckel·d (0,10 mit / 0,18 ohne Leuchtspur), längs zur Schusslinie streuTiefe ≤ deckelTiefe·d; genau 3
+        // Zufallszahlen (Gleichlauf); Zeitzünder auf diesen Punkt.
+        const R = Math.min(b.streuKugel ?? 0, querDeckel(b.leuchtspur) * dp), RT = Math.min(b.streuTiefe ?? b.streuKugel ?? 0, FLAK.deckelTiefe * dp);
         let zuender = b.zuender;
         if (R > 0) {
-          const cu = 2 * rnd() - 1, ph = 2 * Math.PI * rnd(), r = R * Math.cbrt(rnd()), su = Math.sqrt(1 - cu * cu);
-          qx += r * su * Math.cos(ph); qy += r * cu; qz += r * su * Math.sin(ph);
+          const cu = 2 * rnd() - 1, ph = 2 * Math.PI * rnd(), r = Math.cbrt(rnd()), su = Math.sqrt(1 - cu * cu);
+          let ux = r * su * Math.cos(ph), uy = r * cu, uz = r * su * Math.sin(ph);
+          const ex = (qx - m.x) / dp, ey = (qy - m.y) / dp, ez = (qz - m.z) / dp, al = ux * ex + uy * ey + uz * ez;
+          qx += (ux - al * ex) * R + al * ex * RT; qy += (uy - al * ey) * R + al * ey * RT; qz += (uz - al * ez) * R + al * ez * RT;
           zuender = L(qx - m.x, qy - m.y, qz - m.z) / v0;
         }
         let dx = qx - m.x, dy = qy - m.y, dz = qz - m.z; const d = L(dx, dy, dz);
@@ -115,7 +121,7 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12, modell = 'r7') {
     },
   };
 }
-const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Kugel < Zielfeuer-Radius = Nahbereich (Messung getrennt)
+const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Zielgranate mit Kugel < Zielfeuer-Radius = Nahbereich (Messung getrennt)
 
 // ---------- A) Vorhalt ----------
 {
@@ -141,12 +147,12 @@ const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Kugel < Zielfeuer-Radius =
     const tk = Math.round(t / DT) * DT; // Detonation auf dem nächsten ganzen Takt
     maxTakt = Math.max(maxTakt, L(m.x + dx / d * V0 * tk - ziel.pos.x - ziel.vel.x * tk, m.y + dy / d * V0 * tk - ziel.pos.y - ziel.vel.y * tk, m.z + dz / d * V0 * tk - ziel.pos.z - ziel.vel.z * tk));
     const K0 = TURMKI.streuKugel.ziel;
-    if (b.streuKugel !== K0 || Math.abs(b.toleranz - Math.max(Math.min(K0, TURMKI.kugelDeckel * d) / d, 0.008)) > 1e-12) kugelZiel = false;
+    if (b.streuKugel !== K0 || b.streuTiefe !== TURMKI.streuKugel.zielTiefe || Math.abs(b.toleranz - Math.max(Math.min(K0, querDeckel(false) * d) / d, 0.008)) > 1e-12) kugelZiel = false;
   }
   zeile('A Vorhaltfehler rechnerisch (5 Bahnen × v0 620/1100, 1500 m, 150 m/s)', '< 1 m', f2(maxRech) + ' m', maxRech < 1);
   // WARUM ≤ 11 m: Zündung auf ganzen Takten verschiebt um ≤ DT/2 → (v0 + 150)·DT/2 = 10,4 m bei 1100 m/s
   zeile('A Vorhaltfehler, Zündung nur auf ganzen Takten', '≤ 11 m (Info)', f1(maxTakt) + ' m', maxTakt <= 11, false);
-  zeile(`A Zielfeuer: streuKugel ${TURMKI.streuKugel.ziel} m, toleranz = min(Kugel, ${TURMKI.kugelDeckel}·d)/d`, 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
+  zeile(`A Zielfeuer: streuKugel/streuTiefe ${TURMKI.streuKugel.ziel}/${TURMKI.streuKugel.zielTiefe} m, toleranz = min(Kugel, ${FLAK.deckelQuer}·d)/d (ohne Leuchtspur)`, 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
   // unlösbar: Ziel flieht schneller als die Granate (v0 620)
   const tuerme = ersatzTuerme(620), m = tuerme[1].muendung;
   const flieht = { id: 9, pos: { x: m.x, y: m.y + 500, z: m.z + 1400 }, vel: { x: 0, y: 0, z: 700 }, r: 6, aktiv: true, angriff: false };
@@ -234,7 +240,7 @@ function messeR7(k, dr, ki, bef, flak, befehl, m, z0) {
   if (befehl.modus !== 'sperrfeuer' || befehl.folgen === false) return;
   // Folgen: Wandmitte ↔ Soll, Nachführtempo je Schirm-Platz
   m.folgTakte++; if (lage.schirme.length >= 2) m.zweiSchirme++;
-  for (let g = 0; g < 3; g++) {
+  for (let g = 0; g < z0.vorSchirm.length; g++) {
     const s = lage.schirme[g];
     if (!s) { z0.vorSchirm[g] = null; continue; }
     const cw = (a, b) => [Math.sin(a) * Math.cos(b), Math.sin(b), Math.cos(a) * Math.cos(b)];
@@ -286,7 +292,7 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
   const wartet = new Map(); // slot → { takt, id }
   const innen = new Array(DROHNEN.anzahl).fill(false);
   const vsMin = new Array(DROHNEN.anzahl).fill(Infinity), vsWar = new Array(DROHNEN.anzahl).fill(false);
-  const raus = new Map(), drinIds = new Set(), vorSchirm = [null, null, null], vorRohr = new Array(6).fill(null);
+  const raus = new Map(), drinIds = new Set(), vorSchirm = new Array(6).fill(null), vorRohr = new Array(6).fill(null);
   let h = 0x811c9dc5;
   const f64 = new Float64Array(1), u32 = new Uint32Array(f64.buffer);
   const misch = (x) => { f64[0] = x; h = Math.imul(h ^ u32[0], 16777619); h = Math.imul(h ^ u32[1], 16777619); };
@@ -303,22 +309,24 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
     flak.schritt(tuerme, bef, dr.ziele);
     mess.treffer += flak.ereignisse.treffer.length; mess.schuesse += flak.ereignisse.schuesse.length;
     for (const z of dr.ziele) { misch(z.pos.x); misch(z.pos.y); misch(z.pos.z); misch(z.id); }
-    for (const b of bef) { misch(b.punkt.x); misch(b.zielId ?? -1); misch(b.feuer ? 1 : 0); misch(b.leuchtspur ? 1 : 0); misch(b.streuKugel); }
+    for (const b of bef) { misch(b.punkt.x); misch(b.zielId ?? -1); misch(b.feuer ? 1 : 0); misch(b.leuchtspur ? 1 : 0); misch(b.streuKugel); misch(b.streuTiefe); }
     for (const sc of ki.lage.schirme) { misch(sc.gier); misch(sc.nick); misch(sc.abstand); }
     if (!mitMessung) continue;
     messeR7(k, dr, ki, bef, flak, befehl, mess, { vsMin, vsWar, raus, drinIds, vorSchirm, vorRohr, tuerme });
     for (const a of erg.abschuesse) { mess.abschuesse++; const slot = dr.ziele.findIndex((z) => z.id === a.id); wartet.set(slot, { takt: k, id: a.id }); }
-    // R8/R9: Streukugel-Regel je Befehl (Sperrfeuer/kein Ziel 0, Nahbereich min(20, 0,06·d), Zielfeuer 60) + toleranz
-    // (Ziel: min(max(Kugel, 8), Deckel·d)/d ≥ 0,008; Sperrkasten: halbe kleinste Seite / Abstand, 0,015–toleranzSperr)
+    // R8–R10: Streu-Regel je Befehl (Sperrraum 70/40, feste Wand/kein Ziel 0, Nahbereich min(35, 0,10·d) quer = tief,
+    // Zielfeuer 140/140) + toleranz (Ziel: min(max(Kugel, 8), Querdeckel·d)/d ≥ 0,008; Sperrraum: halbe kleinste Seite /
+    // Abstand, 0,015–toleranzSperr)
     const SK = TURMKI.streuKugel, folgt = befehl.modus === 'sperrfeuer' && befehl.folgen !== false;
     bef.forEach((b, i) => {
       const mu = tuerme[i].muendung, d = L(b.punkt.x - mu.x, b.punkt.y - mu.y, b.punkt.z - mu.z);
       const nah = b.zielId !== null && ki.lage.eindringlinge.includes(b.zielId);
-      const soll = b.zielId === null ? 0 : nah ? Math.min(SK.nahMax, SK.nahAnteil * d) : SK.ziel;
+      const soll = b.zielId === null ? (folgt ? SK.sperr : 0) : nah ? Math.min(SK.nahMax, SK.nahAnteil * d) : SK.ziel;
+      const sollT = b.zielId === null ? (folgt ? SK.sperrTiefe : 0) : nah ? soll : SK.zielTiefe;
       const sc = ki.lage.schirme.find((q) => q.tuerme.includes(i));
       const tolSperr = folgt && sc ? Math.min(Math.max(0.5 * Math.min(sc.breite, sc.hoehe) / sc.abstand, 0.015), TURMKI.toleranzSperr) : TURMKI.toleranzSperr;
-      const tol = b.zielId === null ? tolSperr : Math.max(Math.min(Math.max(soll, 8), TURMKI.kugelDeckel * d) / d, 0.008);
-      if (!(Math.abs(b.streuKugel - soll) < 1e-6 && Math.abs(b.toleranz - tol) < 1e-9)) mess.kugelFalsch++;
+      const tol = b.zielId === null ? tolSperr : Math.max(Math.min(Math.max(soll, 8), querDeckel(b.leuchtspur) * d) / d, 0.008);
+      if (!(Math.abs(b.streuKugel - soll) < 1e-6 && Math.abs(b.streuTiefe - sollT) < 1e-6 && Math.abs(b.toleranz - tol) < 1e-9)) mess.kugelFalsch++;
     });
     for (const dt of flak.ereignisse.detonationen) if (Number.isFinite(dt.naechste)) (!dt.ziel ? mess.detSperr : dt.nah ? mess.detNah : mess.detZiel).push(dt.naechste);
     const zaehl = new Map();
@@ -371,8 +379,9 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
   zeile('C Streukugel/toleranz nach Regel (Befehle × Takte falsch)', '0', String(m.kugelFalsch), m.kugelFalsch === 0);
   const dz = m.detZiel.slice().sort((a, b) => a - b), dn = m.detNah.slice().sort((a, b) => a - b);
   const unter4 = (a) => 100 * a.filter((x) => x < 4).length / Math.max(1, a.length);
-  // WARUM weich: der Abstand enthält neben der Kugel die Ausweichhaken der Drohnen (Vorhalt-Fehler) — das Labor misst echt
-  zeile('C Zielfeuer: Detonation ↔ nächste Drohne (Median / < 4 m)', '10–25 m / < 5 %', `${f1(dz[dz.length >> 1] ?? NaN)} m / ${f1(unter4(dz))} % (n = ${dz.length})`, dz.length > 0 && dz[dz.length >> 1] >= 10 && dz[dz.length >> 1] <= 25 && unter4(dz) < 5, false);
+  // WARUM weich: der Abstand enthält neben der Kugel die Ausweichhaken der Drohnen (Vorhalt-Fehler) — das Labor misst echt.
+  // R10 (Nutzer: „wenig gezieltes Feuer“): Ziel ≥ 100 m statt 10–25 m (Kugel 140 m quer und tief)
+  zeile('C Zielfeuer: Detonation ↔ nächste Drohne (Median / < 4 m)', '≥ 100 m / < 5 %', `${f1(dz[dz.length >> 1] ?? NaN)} m / ${f1(unter4(dz))} % (n = ${dz.length})`, dz.length > 0 && dz[dz.length >> 1] >= 100 && unter4(dz) < 5, false);
   zeile('C Nahbereich: Detonation ↔ nächste Drohne (Median / < 4 m)', 'Info', `${f1(dn[dn.length >> 1] ?? NaN)} m / ${f1(unter4(dn))} % (n = ${dn.length})`, true, false);
   const msDr = m.zeitDr / T, msKi = m.zeitKi / T;
   zeile('C Rechenzeit Drohnen je Takt', '< 0,1 ms', (msDr * 1000).toFixed(1) + ' µs', msDr < 0.1, false);
@@ -399,7 +408,8 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   zeile('F Abstands-Nachführung (max)', `≤ ${FG.maxAbstandTempo} m/s`, f1(m.abstandTempoMax) + ' m/s', m.abstandTempoMax <= FG.maxAbstandTempo + 1e-6);
   const ds = m.detSperr.slice().sort((a, b) => a - b);
   // WARUM weich: Ersatz-Flak (Zünder exakt, Drohnen sterben) — die Labor-Messung mit unverwundbaren Drohnen ist maßgeblich
-  zeile('F Sperrfeuer: Detonation ↔ nächste Drohne (Median, Ersatz-Flak)', '≤ 100 m', `${f1(ds[ds.length >> 1] ?? NaN)} m (n = ${ds.length})`, ds.length > 0 && ds[ds.length >> 1] <= 100, false);
+  // R10: Sättigungsraum statt Kasten auf der Drohne → 150–250 m (Protokoll R10, Messgrößen)
+  zeile('F Sperrfeuer: Detonation ↔ nächste Drohne (Median, Ersatz-Flak)', '150–250 m', `${f1(ds[ds.length >> 1] ?? NaN)} m (n = ${ds.length})`, ds.length > 0 && ds[ds.length >> 1] >= 150 && ds[ds.length >> 1] <= 250, false);
   zeile('F Drohnen streng im Kasten (Gier, Nick, Tiefe)', 'Info', f1(100 * m.imKasten / Math.max(1, m.bedrohung)) + ' %', true, false);
   zeile('F Richttempo der Sperr-Rohre Gier / Nick (Befehl, max)', '< 60 / 50°/s', `${f1(m.richtG / GRAD)} / ${f1(m.richtN / GRAD)}°/s`, m.richtG < 60 * GRAD && m.richtN < 50 * GRAD);
   zeile('F Anteil Zeit mit ≥ 2 Kästen / Gruppenwechsel / Rohr wechselt Kasten', 'Info', `${f1(100 * m.zweiSchirme / m.folgTakte)} % / ${ki.statistik.gruppenWechsel} / ${m.schirmWechselRohr ?? 0}`, true, false);
@@ -558,6 +568,56 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
     teile.push(`${v0}: Z ${z.abschuesse} / S ${f.abschuesse} / Vorstoß überlebt ${f.vsNah.length}/${f.vsNah.length + (f.vsAb ?? 0)} / Med ${f1(dz[dz.length >> 1] ?? NaN)} m`);
   }
   zeile('J 5 min je v0: Abschüsse Zielfeuer / Sperrfeuer, Vorstöße überlebt (Ersatz-Flak: nur Verhalten, KEINE Balance — die misst das Labor mit der echten Flak, Protokoll R8)', 'Info', teile.join(' · '), true, false);
+}
+
+// ---------- K) Sättigungsräume (R10): Lagen, Schwenktempo, Detonationen vor/hinter, Abstand (unverwundbar) ----------
+{
+  const dr = erstelleZieldrohnen({ startwert: Number(process.env.DROHNEN_START ?? 101) }), ki = erstelleTurmKi({ startwert: 202 });
+  const tuerme = ersatzTuerme(1100), flak = erstelleErsatzFlak(303, 6), LA = TURMKI.folgen.lagen;
+  let lagenFalsch = 0, schwenk = 0, proben = 0, raeume = 0, dreiLagen = 0, mitDrei = 0;
+  const vorR = new Array(6).fill(null), laengs = [], abst = [];
+  for (let k = 0; k < 3 * 60 * 60; k++) {
+    for (const z of dr.ziele) z.hp = 1e9; // unverwundbar: Abstand/Lage ohne tote Ziele messen (Lehre R8)
+    dr.schritt(DT, flak.ereignisse);
+    const bef = ki.schritt(DT, FOLGEN, dr.ziele, tuerme);
+    richte(tuerme, bef);
+    flak.schritt(tuerme, bef, dr.ziele);
+    const S = ki.lage.schirme;
+    S.forEach((sc, g) => {
+      const e = sc.laengs, a = sc.lagenAbstand, l0 = sc.lagen[0], l2 = sc.lagen[2];
+      proben++;
+      // Lagen: Abstand vor ↔ hinter = 2a, a in [min, max], Richtung Einheitsvektor, auf der Linie längs e
+      const d02 = L(l0.x - l2.x, l0.y - l2.y, l0.z - l2.z), ok = Math.abs(d02 - 2 * a) < 1e-6 && a >= LA.min - 1e-9 && a <= LA.max + 1e-9 && Math.abs(L(e.x, e.y, e.z) - 1) < 1e-9
+        && Math.abs(((l0.x - l2.x) * e.x + (l0.y - l2.y) * e.y + (l0.z - l2.z) * e.z) - d02) < 1e-6;
+      if (!ok) lagenFalsch++;
+      const p = vorR[g];
+      if (p && p.anz === S.length) schwenk = Math.max(schwenk, Math.acos(Math.min(1, e.x * p.x + e.y * p.y + e.z * p.z)) / DT);
+      vorR[g] = { x: e.x, y: e.y, z: e.z, anz: S.length };
+      // Räume mit ≥ 3 Sperr-Rohren (ohne Killzone) besetzen alle drei Lagen
+      const frei = sc.tuerme.filter((i) => bef[i].zielId === null).length;
+      if (sc.tuerme.length >= 3 && frei === sc.tuerme.length) mitDrei++;
+    });
+    for (let g = S.length; g < vorR.length; g++) vorR[g] = null; // WARUM: Raum fiel weg → später neu, kein Vergleich mit alt
+    raeume = Math.max(raeume, S.length);
+    if (k < 600 || ki.lage.nahbereich) continue;
+    for (const d of flak.ereignisse.detonationen) {
+      if (d.ziel) continue;
+      let best = null, bd = Infinity;
+      for (const z of dr.ziele) if (z.aktiv) { const e = L(z.pos.x - d.pos.x, z.pos.y - d.pos.y, z.pos.z - d.pos.z); if (e < bd) { bd = e; best = z; } }
+      if (!best) continue;
+      const v = L(best.vel.x, best.vel.y, best.vel.z) || 1;
+      laengs.push(((d.pos.x - best.pos.x) * best.vel.x + (d.pos.y - best.pos.y) * best.vel.y + (d.pos.z - best.pos.z) * best.vel.z) / v);
+      abst.push(bd);
+    }
+  }
+  zeile(`K Lagen vor/auf/hinter: Abstand ${LA.min}–${LA.max} m, auf einer Linie längs der Flugrichtung (Proben falsch)`, '0', `${lagenFalsch} von ${proben}`, lagenFalsch === 0);
+  zeile('K Schwenktempo der Richtung „vor“ (max)', `≤ ${f1(LA.maxDreh / GRAD)}°/s`, f2(schwenk / GRAD) + '°/s', schwenk <= LA.maxDreh * 1.01);
+  zeile('K Räume höchstens / Proben mit ≥ 3 Sperr-Rohren in einem Raum', 'Info', `${raeume} / ${mitDrei}`, true, false);
+  const vor = 100 * laengs.filter((x) => x > 75).length / Math.max(1, laengs.length), hinter = 100 * laengs.filter((x) => x < -75).length / Math.max(1, laengs.length);
+  const sa = abst.slice().sort((a, b) => a - b), medA = sa[sa.length >> 1] ?? NaN;
+  // WARUM weich: Ersatz-Flak (exakter Zünder, Turm sofort ausgerichtet) — maßgeblich ist die Labor-Messung (Protokoll R10)
+  zeile('K Sperr-Detonationen vor (> +75 m) / hinter (< −75 m) der nächsten Drohne, längs ihrer Flugrichtung', '≥ 25 % / > 0 (Ersatz-Flak)', `${f1(vor)} % / ${f1(hinter)} % (n = ${laengs.length})`, vor >= 25 && hinter > 0, false);
+  zeile('K Sperr: Detonation ↔ nächste Drohne (Median, unverwundbar, Ersatz-Flak)', '150–250 m', f1(medA) + ' m', medA >= 150 && medA <= 250, false);
 }
 
 // ---------- D) Gleichlauf ----------

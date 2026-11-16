@@ -1,9 +1,11 @@
 // ZWECK: Turm-KI des Flak-Labors — entscheidet je Turm und Schritt, WOHIN gerichtet wird, WANN gefeuert wird, WANN die
 //        Granate zündet und ob sie Leuchtspur trägt.
-//        · sperrfeuer, folgen (Standard, R9 „Sperrkästen“, Nutzer: „Das Sperrfeuer soll sich an den feindlichen
-//          Objekten ausrichten“): die Drohnen werden in bis zu 3 Gruppen geteilt (Gier-Lücke oder radiale Lücke), je
-//          Gruppe ein Kasten AUF der vorausgesagten Lage (Größe aus der Streuung der Gruppe: quer, hoch, tief), träge
-//          nachgeführt; die Rohre streichen den Kasten im Dreieck-Lissajous-Muster in drei Achsen ab (Gier, Nick, Abstand).
+//        · sperrfeuer, folgen (Standard, R10 „Sättigungsräume“, Nutzer: „In Richtung der Gefahr wird einfach der Raum
+//          gesättigt, es gibt recht wenig gezieltes Feuer“): die Drohnen werden in bis zu 3 Gruppen geteilt (Lücken in
+//          Metern), je Gruppe ein Raum auf der vorausgesagten Lage, halbe Breite/Höhe = Streuung + 100 m (120–250 m),
+//          gestaffelt in 3 TIEFENLAGEN längs der geglätteten Flugrichtung der Gruppe (vor / auf / hinter, Abstand
+//          0,6·Tempo·Flugzeit, 80–150 m). Jedes Rohr hat eine feste Lage (vordere zuerst) und streicht sie im
+//          Dreieck-Lissajous-Muster (Gier, Nick, Abstand); jede Granate fliegt in eine Sperr-Kugel 70 m quer / 40 m tief.
 //        · sperrfeuer, folgen === false: fester Sektor + befehl.schirmAbstand. Der Sektor ist der beim Umschalten
 //          gemerkte (Mitte + Breite des größten Schirms, „Wand bleibt, wo sie ist“), ohne Schirm STANDARD_SEKTOR;
 //          befehl.sektor überschreibt ihn ausdrücklich. Abstand gleitet mit ≤ 150 m/s; Umschalten in beide
@@ -14,29 +16,38 @@
 // LIEFERT: erstelleTurmKi({ startwert }) → { befehle, lage, schritt(dt, befehl, ziele, turmZustand) → befehle,
 //          zuruecksetzen(), statistik } · TURMKI (Werte) · abfangen(m, pos, vel, v0, aus) (für Tests)
 //          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
-//          streuKugel (m, 0 = aus) }
-//        · streuKugel (R8, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“): Radius der Kugel um `punkt`, in
-//          die die Waffe jede Granate auf einen eigenen Punkt schießt (Zeitzünder dorthin). Zielfeuer 60 m, Nahbereich
-//          min(20, 0,06·d) (R9, Nutzer: „viel größer“), Sperrfeuer/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0 (620–1100 m/s).
+//          streuKugel (m, 0 = aus), streuTiefe (m) }
+//        · streuKugel / streuTiefe (R8/R10, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“, R10: „das Areal um
+//          ein Ziel noch viel weiter gestreut sättigen“): Ellipsoid um `punkt` — streuKugel quer zur Schusslinie,
+//          streuTiefe längs (über den Zünder). Die Waffe schießt jede Granate auf einen eigenen Punkt darin und deckelt
+//          (quer 0,10·d mit / 0,18·d ohne Leuchtspur, längs 0,35·d; Werte in FLAK). Zielfeuer 140/140 m, Nahbereich
+//          min(35, 0,10·d), Sperrraum 70/40 m, feste Wand/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0.
 //          lage = { nahbereich (bool), schirme: [{ mitte{x,y,z}, abstand, gierHalb, nickHalb, tuerme[], gier, nick,
-//          sollGier, sollNick, sollAbstand, breite, hoehe, tiefeHalb (m, halbe Kastenmaße) }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
+//          sollGier, sollNick, sollAbstand, breite, hoehe, tiefeHalb (m, halbe Kastenmaße), laengs{x,y,z} (Einheit,
+//          „vor“), lagenAbstand (m), lagen[{x,y,z}] (Mitten vor/auf/hinter, Welt) }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
 //        Simulation: kein DOM, kein Math.random, fester Schritt; keine neuen Objekte im Schritt.
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
 import { zufall } from '../zufall.js';
 import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR } from '../waffen/lafetten.js';
+import { FLAK } from '../waffen/flak.js';
+
+// Deckel der Waffe (R10, Entscheidung 1): die KI liest sie aus FLAK, statt sie doppelt zu führen (· Entfernung ab Mündung).
+export const DECKEL = { querHell: FLAK.deckelQuerLeucht, querDunkel: FLAK.deckelQuer, laengs: FLAK.deckelTiefe };
 
 export const TURMKI = {
   // Ersatzwerte, falls turmZustand fehlt. v0-Standard 1000 m/s (Entscheidung R8). Zünder: frühestens nach 60 m Flug
   // (als Strecke, R8: bei 1100 m/s wären 0,1 s schon 110 m), spätestens nach 4 s.
   v0: 1000, reichweite: 2500, zuender: [0.1, 4], zuenderStrecke: 60,
   nick: [-0.05, 1.45],
-  // Streukugel: Radius in m. R9 (Nutzer: „viel größer“): Zielfeuer 60 m → Median 0,79·R ≈ 47 m, sichtbar eine Wolke um
-  // das Ziel. Nahbereich min(20, 0,06·d): bei 250 m 15 m ≈ 3,4° Versatz — die Spur verlässt das Rohr noch gerade genug.
-  streuKugel: { ziel: 60, nahMax: 20, nahAnteil: 0.06 },
+  // Streukugel quer / Streutiefe längs (m). R10 (Nutzer: „noch viel weiter gestreut“): Zielfeuer 60 → 140 m quer und
+  // tief — Messung Frühwarnung: Kugel 130 mit Deckel 0,10 nur Median 73 m, mit 0,18 98 m. Nahbereich min(35, 0,10·d):
+  // mit Leuchtspur deckelt die Waffe ohnehin auf 0,10·d (Spur verlässt das Rohr sonst sichtbar schief).
+  // Sperr 70/40: die Kugel füllt das Volumen um den Musterpunkt, ohne das Richttempo zu belasten; 40 m = Lagendicke.
+  streuKugel: { ziel: 140, zielTiefe: 140, nahMax: 35, nahAnteil: 0.10, sperr: 70, sperrTiefe: 40 },
   // toleranz = min(max(Kugel, toleranzMin), Deckel·d) / d, mindestens toleranzRadMin. WARUM unter dem Deckel: die Waffe
-  // deckelt den Versatz auf 0,10·Entfernung (R9) — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
-  toleranzMin: 8, toleranzRadMin: 0.008, kugelDeckel: 0.10,
+  // deckelt den Querversatz (DECKEL.querHell/querDunkel) — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
+  toleranzMin: 8, toleranzRadMin: 0.008,
   // Sperrfeuer: Gier-Dreieck 4 s, Nick-Dreieck 4/1,5 s, Abstands-Dreieck 4/1,25 s (R9). Spitzentempo bei gierHalb 0,52:
   // 4·0,52/4 = 0,52 rad/s (30°/s) < 60°/s Gier; Nick 4·0,31/2,67 = 0,47 rad/s (27°/s) < 50°/s.
   periodeGier: 4, verhaeltnis: 1.5, verhaeltnisTiefe: 1.25,
@@ -62,11 +73,25 @@ export const TURMKI = {
     tauGroesse: 1.0,            // s: Glättung der Kastengröße
     // WARUM 35°/s: Muster ≤ 4·0,35/4 = 20°/s Gier bzw. 4·0,15/2,67 = 13°/s Nick + Nachführen 35°/s < 60 / 50°/s Richttempo
     maxDreh: 35 * Math.PI / 180, // rad/s: Nachführtempo der Mitte, Gier
-    maxDrehNick: 30 * Math.PI / 180, // rad/s: Nick (Muster ≤ 13°/s + 30 < 50°/s)
+    // WARUM 25 (R10, vorher 30): die Lagen verschieben sich mit der Flugrichtung zusätzlich (≤ lagen.maxDreh·Abstand)
+    maxDrehNick: 25 * Math.PI / 180, // rad/s: Nick (Muster ≤ 13°/s + 25 + Lagen < 50°/s)
     maxAbstandTempo: 300,       // m/s
-    // WARUM kleiner als im Plan (σ+40, 60–250): Messung R9 Median 109 → 98 m mit σ+25, 50–200 (Kern-Gewichtung)
-    quer: [25, 50, 200],        // m: halbe Breite/Höhe = Streuung der Gruppe + 25, geklammert 50–200
-    tiefe: [25, 50, 200],       // m: halbe Tiefe = radiale Streuung + 25, geklammert 50–200
+    // WARUM σ + 100 (R10, vorher σ + 25, 50–200): Sättigung des Manöverraums statt Treffen. WARUM höchstens 250: nur
+    // 60 Detonationen/s — ab ~210 Mio. m³ gesättigtem Raum (alle Gruppen) fällt die Abdeckung wieder (Frühwarnung R10)
+    quer: [100, 120, 250],      // m: halbe Breite/Höhe = Streuung der Gruppe + 100, geklammert 120–250
+    // WARUM ohne Zuschlag: die Tiefe kommt jetzt aus den Lagen (längs) und der Sperr-Streutiefe; das Abstands-Muster
+    // deckt nur noch die radiale Streuung der Gruppe
+    tiefe: [0, 0, 120],         // m: halbe Tiefe des Abstands-Musters = radiale Streuung, höchstens 120
+    // Tiefenlagen (R10, Recherche: Sperrfeuer „gestaffelt in die Tiefe … auf den wahrscheinlichen Anfluglinien“):
+    // Lage 0 = vor der Gruppe (Flugrichtung), 1 = auf ihr, 2 = dahinter; Abstand = anteil · Tempo · Flugzeit.
+    // Richtung = geglättete mittlere Geschwindigkeit (τ 1 s) + zuBatterie m/s zur Batterie hin (WARUM: Kreiser einer
+    // Gruppe heben sich auf → ohne Zuschlag kippt die Richtung; so zeigt „vor“ dann zur Batterie = Richtung der Gefahr).
+    // WARUM maxDreh 20°/s: die Lagenmitten schwenken mit a · Drehrate (150 m · 0,35 rad/s = 52 m/s ≈ 7°/s bei 450 m).
+    // Abstimmung (Labor, unverwundbar, 1100 m/s, 5 min): min 80 / zuBatterie 20 / vorlauf 1 → Detonation ↔ Drohne
+    // Median 140 m, 20 % vor / 24 % hinter der Drohne; min 120 / 60 / 2 → 163 m, 35 % vor / 17 % hinter.
+    // WARUM min 120: 0,6·120 m/s·1,15 s ≈ 83 m — die vordere Lage lag kaum vor der Drohne (Ziel ≥ 25 % „vor“)
+    // vorlauf 2 = Glättungsrückstand v·τ zurück + noch einmal v·τ (≈ 35 m) nach vorn, „in Richtung der Gefahr“.
+    lagen: { anteil: 0.6, min: 120, max: 150, tau: 1.0, zuBatterie: 60, maxDreh: 20 * Math.PI / 180, vorlauf: 2 },
     nickMax: 1.2,               // rad: Kastenmitte höchstens so hoch
     // WARUM 0,28 (Befund Prüfer R9): Muster 4·0,28/4 = 16°/s + Nachführen 35°/s + Größenänderung ≤ 7°/s < 60°/s Gier um
     // BATTERIE_MITTE (mit 0,35 bis 67°/s)
@@ -85,6 +110,8 @@ export const TURMKI = {
     // Befehlspunkt mit höchstens diesem Tempo (Winkel von der Mündung) zum neuen Muster, statt im Takt 22–38° zu springen.
     // WARUM 50/40°/s, 600 m/s: unter dem Richttempo 60/50°/s, damit der Turm dem Befehl folgen kann.
     uebergang: { gier: 50 * Math.PI / 180, nick: 40 * Math.PI / 180, abstand: 600 },
+    // Tempobremse im Muster (R10): Befehl höchstens 57/47°/s von der Mündung (Rest bis 60/50°/s: Mündung wandert mit)
+    bremse: { gier: 57 * Math.PI / 180, nick: 47 * Math.PI / 180, abstand: 1200 },
   },
   // Killzone (R7, Entscheidung 3): Hysterese ein < 500 m, aus > 600 m um BATTERIE_MITTE, Alarm-Nachlauf 0,5 s
   killzone: { ein: 500, aus: 600, nachlauf: 0.5, tuermeEiner: 3, tuermeJe: 2 },
@@ -93,13 +120,15 @@ export const TURMKI = {
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const dreieck = (u) => 1 - 4 * Math.abs(u - Math.floor(u) - 0.5); // −1 … 1 … −1, Periode 1
 const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
-/** Feuer-Spielraum (rad) zur Streukugel in Entfernung d: min(max(Kugel, 8 m), 0,05·d) / d, mindestens 0,008 rad.
+/** Querdeckel der Waffe (Anteil der Entfernung): mit Leuchtspur 0,10, ohne 0,18 (R10, Entscheidung 1). */
+export const querDeckel = (leucht) => (leucht ? DECKEL.querHell : DECKEL.querDunkel);
+/** Feuer-Spielraum (rad) zur Streukugel in Entfernung d: min(max(Kugel, 8 m), Querdeckel·d) / d, mindestens 0,008 rad.
  *  WARUM auch das 8-m-Mindestmaß unter dem Deckel: sonst feuert der Turm unter 160 m weiter neben den Punkt, als die
  *  Kugel der Waffe reicht (Befund Prüfer R8: bei 60 m 7,6° statt höchstens 2,9°). */
-const kugelToleranz = (kugel, d) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), TURMKI.kugelDeckel * d) / d, TURMKI.toleranzRadMin);
+const kugelToleranz = (kugel, d, leucht) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), querDeckel(leucht) * d) / d, TURMKI.toleranzRadMin);
 const ZWEI_PI = 2 * Math.PI;
-// Zuordnung Gruppen → Kästen: alle Reihenfolgen von 3 (feste Tabelle, keine Objekte im Schritt)
-const PERM = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+// Höchstzahl der Räume (Vorrat; TURMKI.folgen.maxKaesten wählt, wie viele genutzt werden)
+const MAXK = 6;
 const winkelDiff = (a, b) => { const d = a - b; return d - ZWEI_PI * Math.floor((d + Math.PI) / ZWEI_PI); }; // → [−π, π)
 
 /**
@@ -126,7 +155,7 @@ export function abfangen(m, pos, vel, v0, aus) {
 
 export function erstelleTurmKi({ startwert = 202 } = {}) {
   const K = TURMKI, F = K.folgen, KZ = K.killzone, n = LAFETTEN.length;
-  const befehle = LAFETTEN.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0 }));
+  const befehle = LAFETTEN.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0, streuTiefe: 0 }));
   // Ersatz-Mündung (Drehpunkt der Wiege), falls turmZustand noch keine liefert
   const ersatzM = LAFETTEN.map((l) => ({ x: l.x, y: l.y + l.zapfen.y, z: l.z }));
   const halt = new Float64Array(n);           // Haltezeit des aktuellen Ziels je Turm
@@ -140,18 +169,22 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   const vorZiel = new Float64Array(n).fill(-1), wechselZeit = new Float64Array(n).fill(-1e9); // Flackern: A → B → A in < 5 s
   const ab = { t: 0, x: 0, y: 0, z: 0 }, abBest = { t: 0, x: 0, y: 0, z: 0 };
 
-  // Kästen (fest 3 Stück, lage.schirme zeigt 0–3 davon; Name „schirme“ bleibt für Seite/Tests)
-  const schirmVorrat = [0, 1, 2].map(() => ({ mitte: { x: 0, y: 0, z: 0 }, abstand: 800, gierHalb: 0.3, nickHalb: 0.15, tuerme: [],
+  // Räume (Vorrat MAXK Stück, lage.schirme zeigt 1–maxKaesten davon; Name „schirme“ bleibt für Seite/Tests)
+  const schirmVorrat = Array.from({ length: MAXK }, () => ({ mitte: { x: 0, y: 0, z: 0 }, abstand: 800, gierHalb: 0.3, nickHalb: 0.15, tuerme: [],
     gier: 0, nick: 0.4, sollGier: 0, sollNick: 0.4, sollAbstand: 800,
-    breite: 150, hoehe: 80, tiefeHalb: 0, sollBreite: 150, sollHoehe: 80, sollTiefe: 0, gewicht: 0 }));
+    breite: 150, hoehe: 80, tiefeHalb: 0, sollBreite: 150, sollHoehe: 80, sollTiefe: 0, gewicht: 0,
+    // R10 Tiefenlagen: geglättete Gruppengeschwindigkeit (v*, Soll sv*), mittleres Tempo, Einheitsrichtung „vor“
+    vx: 0, vy: 0, vz: 0, svx: 0, svy: 0, svz: 0, tempo: 130, sollTempo: 130,
+    laengs: { x: 0, y: 0, z: -1 }, lagenAbstand: 100, lagen: [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }] }));
   const lage = { nahbereich: false, schirme: [], eindringlinge: [] };
   // Arbeitsfelder Folgen
   const bG = new Float64Array(MAXZ), bN = new Float64Array(MAXZ), bD = new Float64Array(MAXZ), bW = new Float64Array(MAXZ);
+  const bVx = new Float64Array(MAXZ), bVy = new Float64Array(MAXZ), bVz = new Float64Array(MAXZ);
   const bE = new Float64Array(MAXZ), bQ = new Float64Array(MAXZ), bH = new Float64Array(MAXZ), bK = new Float64Array(MAXZ), bX = new Float64Array(MAXZ), bY = new Float64Array(MAXZ), bZ = new Float64Array(MAXZ), grp = new Int32Array(MAXZ);
-  const gmX = new Float64Array(3), gmY = new Float64Array(3), gmZ = new Float64Array(3);
-  const kastenGruppe = new Int32Array(3), kOrd = new Int32Array(3), kAnz = new Int32Array(3), kBel = new Int32Array(3);
+  const gmX = new Float64Array(MAXK), gmY = new Float64Array(MAXK), gmZ = new Float64Array(MAXK);
+  const kOrd = new Int32Array(MAXK), kAnz = new Int32Array(MAXK), kBel = new Int32Array(MAXK);
   // Übergang je Rohr: Kasten im letzten Takt (−1 = kein Muster, −2 = Start), laufender Übergang + Punkt (Gier, Nick, R um M)
-  const kastenVor = new Int32Array(n).fill(-2), ueb = new Uint8Array(n);
+  const kastenVor = new Int32Array(n).fill(-2), ueb = new Uint8Array(n), uOk = new Uint8Array(n), lageVor = new Int32Array(n).fill(-1);
   const uG = new Float64Array(n), uN = new Float64Array(n), uR = new Float64Array(n);
   const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAFETTEN.map((l, i) => i).sort((a, b) => LAFETTEN[a].x - LAFETTEN[b].x || a - b);
   let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
@@ -162,11 +195,11 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     phase0 = rnd(); // gemeinsamer Phasenversatz des Musters (nur Optik, deterministisch)
     takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false; warFest = false;
     Object.assign(fest, STANDARD_SEKTOR);
-    kastenVor.fill(-2); ueb.fill(0);
+    kastenVor.fill(-2); ueb.fill(0); uOk.fill(0); lageVor.fill(-1);
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
     statistik.maxJeZiel = 0; statistik.unloesbar = 0; statistik.alarmAn = 0; statistik.gruppenWechsel = 0;
-    for (const b of befehle) { b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; }
+    for (const b of befehle) { b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; b.streuTiefe = 0; }
     lage.nahbereich = false; lage.schirme.length = 0; lage.eindringlinge.length = 0;
   }
 
@@ -195,23 +228,30 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     b.zuender = Math.min(Math.max(t, K.zuenderStrecke / v0), K.zuender[1]);
   }
 
-  /** Lissajous-Punkt für Turm k im Kasten s (Gier ± gierHalb, Nick ± nickHalb, Abstand ± tiefeHalb). */
-  function streiche(b, m, v0, k, s, dt) {
+  /** Lissajous-Punkt für Turm k in Lage j des Raums s (Gier ± gierHalb, Nick ± nickHalb, Abstand ± tiefeHalb um die
+   *  Lagenmitte). */
+  function streiche(b, m, v0, k, s, j, dt) {
     const Tg = K.periodeGier, Tn = Tg / K.verhaeltnis, Tr = Tg / K.verhaeltnisTiefe;
+    const c = s.lagen[j], cx = c.x - M.x, cy = c.y - M.y, cz = c.z - M.z, cr = L(cx, cy, cz) || 1;
+    const lg = Math.atan2(cx, cz), ln = Math.min(Math.asin(klemme(cy / cr, -1, 1)), F.nickMax);
     // WARUM eigene Phasen je Achse: sonst laufen alle Türme zeitversetzt dieselbe geschlossene Kurve ab → Linie statt
     // Fläche. Gier-Phase k·0,382 (goldener Schnitt, R9): je zwei Türme eines Kastens liegen weit auseinander.
-    const gier = s.gier + s.gierHalb * dreieck(zeit / Tg + k * 0.381966 + phase0);
-    const nick = s.nick + s.nickHalb * dreieck(zeit / Tn + (k * 5 % 12) / 12 + phase0 * 0.37);
-    const R = s.abstand + s.tiefeHalb * dreieck(zeit / Tr + (k * 7 % 11) / 11 + phase0 * 0.71);
+    const gier = lg + s.gierHalb * dreieck(zeit / Tg + k * 0.381966 + phase0);
+    const nick = ln + s.nickHalb * dreieck(zeit / Tn + (k * 5 % 12) / 12 + phase0 * 0.37);
+    const R = cr + s.tiefeHalb * dreieck(zeit / Tr + (k * 7 % 11) / 11 + phase0 * 0.71);
     setzeAufSchale(b, m, v0, gier, nick, R);
-    if (!ueb[k]) return;
-    // Übergang: vom alten Punkt mit begrenztem Tempo zum Musterpunkt, gerechnet in Winkeln VON DER MÜNDUNG aus.
-    // WARUM von der Mündung (nicht von BATTERIE_MITTE): steil über der Batterie dreht die Gier eines Turms neben M
-    // vielfach schneller als die Gier um M (Messung R9: 132°/s bei 66 m waagrecht). Achsen einzeln begrenzt.
-    const U = F.uebergang, px = b.punkt.x - m.x, py = b.punkt.y - m.y, pz = b.punkt.z - m.z, pr = L(px, py, pz) || 1;
-    const dg = winkelDiff(Math.atan2(px, pz), uG[k]), dn = Math.asin(klemme(py / pr, -1, 1)) - uN[k], dr = pr - uR[k];
+    // Übergang (ueb) bzw. Tempobremse: vom letzten Befehl mit begrenztem Tempo zum Musterpunkt, gerechnet in Winkeln
+    // VON DER MÜNDUNG aus. WARUM von der Mündung (nicht von BATTERIE_MITTE): steil über der Batterie dreht die Gier eines
+    // Turms neben M vielfach schneller als die Gier um M (Messung R9: 132°/s bei 66 m waagrecht). Achsen einzeln.
+    // WARUM die Bremse auch ohne Übergang (R10): Raum-Nachführen + Muster + Lagen-Schwenk summieren sich bei steilen,
+    // nahen Lagen (400 m, Nick 50°) auf bis 78°/s Gier — der Turm (60°/s) hinge dann hinter dem Befehl.
+    const px = b.punkt.x - m.x, py = b.punkt.y - m.y, pz = b.punkt.z - m.z, pr = L(px, py, pz) || 1;
+    const pg = Math.atan2(px, pz), pn = Math.asin(klemme(py / pr, -1, 1));
+    if (!uOk[k]) { uOk[k] = 1; uG[k] = pg; uN[k] = pn; uR[k] = pr; return; }
+    const U = ueb[k] ? F.uebergang : F.bremse;
+    const dg = winkelDiff(pg, uG[k]), dn = pn - uN[k], dr = pr - uR[k];
     const mg = U.gier * dt, mn = U.nick * dt, mr = U.abstand * dt;
-    if (Math.abs(dg) <= mg && Math.abs(dn) <= mn && Math.abs(dr) <= mr) { ueb[k] = 0; return; } // angekommen → Muster
+    if (Math.abs(dg) <= mg && Math.abs(dn) <= mn && Math.abs(dr) <= mr) { ueb[k] = 0; uG[k] = pg; uN[k] = pn; uR[k] = pr; return; } // angekommen → Muster
     uG[k] = winkelDiff(uG[k] + klemme(dg, -mg, mg), 0); uN[k] += klemme(dn, -mn, mn); uR[k] += klemme(dr, -mr, mr);
     const cn = Math.cos(uN[k]);
     b.punkt.x = m.x + Math.sin(uG[k]) * cn * uR[k]; b.punkt.y = m.y + Math.sin(uN[k]) * uR[k]; b.punkt.z = m.z + Math.cos(uG[k]) * cn * uR[k];
@@ -272,8 +312,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z; b.zuender = Math.max(ab.t, K.zuenderStrecke / v0);
     } else { b.punkt.x = z.pos.x; b.punkt.y = z.pos.y; b.punkt.z = z.pos.z; b.zuender = K.zuenderStrecke / v0; }
     const d = L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) || 1;
-    b.streuKugel = Math.min(K.streuKugel.nahMax, K.streuKugel.nahAnteil * d);
-    b.toleranz = kugelToleranz(b.streuKugel, d);
+    b.streuKugel = b.streuTiefe = Math.min(K.streuKugel.nahMax, K.streuKugel.nahAnteil * d);
+    b.toleranz = kugelToleranz(b.streuKugel, d, b.leuchtspur);
     b.feuer = frei;
   }
 
@@ -338,6 +378,10 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     s.sollTiefe = klemme(Math.sqrt(vr / sw) + T[0], T[1], T[2]);
     let gw = 0; for (let a = 0; a < nb; a++) if (grp[a] === g) gw += bW[a];
     s.gewicht = gw;
+    // Tiefenlagen (R10): mittlere Geschwindigkeit (Richtung) und mittleres Tempo (Lagenabstand), kern-gewichtet
+    let vx = 0, vy = 0, vz = 0, vt = 0;
+    for (let a = 0; a < nb; a++) { const w = bK[a]; if (!w) continue; vx += w * bVx[a]; vy += w * bVy[a]; vz += w * bVz[a]; vt += w * L(bVx[a], bVy[a], bVz[a]); }
+    s.svx = vx / sw; s.svy = vy / sw; s.svz = vz / sw; s.sollTempo = vt / sw;
   }
 
   /** Kasten b übernimmt den Zustand von Kasten a (neuer Kasten entsteht aus dem alten → kein Sprung). */
@@ -345,6 +389,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     b.gier = a.gier; b.nick = a.nick; b.abstand = a.abstand; b.breite = a.breite; b.hoehe = a.hoehe; b.tiefeHalb = a.tiefeHalb;
     b.sollGier = a.sollGier; b.sollNick = a.sollNick; b.sollAbstand = a.sollAbstand;
     b.sollBreite = a.breite; b.sollHoehe = a.hoehe; b.sollTiefe = a.tiefeHalb; b.gewicht = 0;
+    b.vx = a.vx; b.vy = a.vy; b.vz = a.vz; b.svx = a.svx; b.svy = a.svy; b.svz = a.svz; b.tempo = a.tempo; b.sollTempo = a.sollTempo;
+    b.laengs.x = a.laengs.x; b.laengs.y = a.laengs.y; b.laengs.z = a.laengs.z; b.lagenAbstand = a.lagenAbstand;
   }
   /** Abstand (m) zwischen der Mitte von Kasten s und der Soll-Mitte von Gruppe g (über die vorher berechneten gm*). */
   function kastenZuGruppe(s, g) {
@@ -361,7 +407,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       const d0 = L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z), tf = d0 / v0;
       const qx = z.pos.x + z.vel.x * tf - M.x, qy = z.pos.y + z.vel.y * tf - M.y, qz = z.pos.z + z.vel.z * tf - M.z, d = L(qx, qy, qz) || 1;
       const an = -((z.pos.x - M.x) * z.vel.x + (z.pos.y - M.y) * z.vel.y + (z.pos.z - M.z) * z.vel.z) / (d0 || 1) / K.tempoBezug;
-      bX[nb] = qx; bY[nb] = qy; bZ[nb] = qz;
+      bX[nb] = qx; bY[nb] = qy; bZ[nb] = qz; bVx[nb] = z.vel.x; bVy[nb] = z.vel.y; bVz[nb] = z.vel.z;
       bG[nb] = Math.atan2(qx, qz); bN[nb] = Math.asin(klemme(qy / d, -1, 1)); bD[nb] = d;
       bQ[nb] = bG[nb] * Math.cos(bN[nb]) * d; bH[nb] = bN[nb] * d; // Bogenlängen für die Lücken
       bW[nb] = 1 + (z.angriff ? 1 : 0) + 0.5 * klemme(an, 0, 1);
@@ -372,13 +418,15 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       for (const s of schirmVorrat) {
         s.gier = s.sollGier = STANDARD_SEKTOR.gierMitte; s.nick = s.sollNick = (STANDARD_SEKTOR.nickMin + STANDARD_SEKTOR.nickMax) / 2;
         s.abstand = s.sollAbstand = 800; s.breite = s.sollBreite = 150; s.hoehe = s.sollHoehe = 80; s.tiefeHalb = s.sollTiefe = 100;
+        s.vx = s.vy = s.vz = s.svx = s.svy = s.svz = 0; s.tempo = s.sollTempo = 130; s.lagenAbstand = 100;
+        richtungZurBatterie(s, s.laengs);
       }
       schirmeBereit = true;
     }
     seitUmgruppiert += dt;
     if (nb > 0) {
       // 2) Anzahl der Kästen mit Hysterese: mehr erst über den hohen, weniger erst unter den tiefen Lücken; ≤ alle 2 s
-      const LG = F.luecke, maxK = Math.min(F.maxKaesten, Math.floor(n / F.minTuerme));
+      const LG = F.luecke, maxK = Math.min(F.maxKaesten, MAXK, Math.floor(n / F.minTuerme));
       const nHoch = teile(nb, LG[0], maxK), nTief = teile(nb, LG[1], maxK);
       const wunsch = nHoch > anzahlGruppen ? nHoch : nTief < anzahlGruppen ? Math.max(1, nTief) : anzahlGruppen;
       if (wunsch !== anzahlGruppen && seitUmgruppiert >= F.umgruppieren) {
@@ -446,11 +494,50 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       s.gierHalb = Math.min(s.breite / s.abstand, F.gierHalbMax); s.nickHalb = Math.min(s.hoehe / s.abstand, F.nickHalbMax);
       const c2 = Math.cos(s.nick);
       s.mitte.x = M.x + Math.sin(s.gier) * c2 * s.abstand; s.mitte.y = M.y + Math.sin(s.nick) * s.abstand; s.mitte.z = M.z + Math.cos(s.gier) * c2 * s.abstand;
+      lagenNachfuehren(s, dt, v0);
       s.tuerme.length = 0;
       lage.schirme.push(s);
     }
     for (let i = 0; i < n; i++) { if (gruppeTurm[i] >= anzahlGruppen) gruppeTurm[i] = anzahlGruppen - 1; schirmVorrat[gruppeTurm[i]].tuerme.push(i); }
   }
+
+  /** Einheitsrichtung von der Raummitte (s.gier, s.nick) zur Batterie nach `aus`. */
+  function richtungZurBatterie(s, aus) {
+    const c = Math.cos(s.nick);
+    aus.x = -Math.sin(s.gier) * c; aus.y = -Math.sin(s.nick); aus.z = -Math.cos(s.gier) * c;
+  }
+
+  /** Tiefenlagen (R10): Flugrichtung glätten (τ lagen.tau), Richtung „vor“ mit ≤ lagen.maxDreh schwenken, Lagenabstand
+   *  aus Tempo × Flugzeit, Lagenmitten vor / auf / hinter der Raummitte. */
+  const tmpR = { x: 0, y: 0, z: 0 };
+  function lagenNachfuehren(s, dt, v0) {
+    const LA = F.lagen, a = 1 - Math.exp(-dt / LA.tau);
+    s.vx += (s.svx - s.vx) * a; s.vy += (s.svy - s.vy) * a; s.vz += (s.svz - s.vz) * a; s.tempo += (s.sollTempo - s.tempo) * a;
+    richtungZurBatterie(s, tmpR);
+    let tx = s.vx + tmpR.x * LA.zuBatterie, ty = s.vy + tmpR.y * LA.zuBatterie, tz = s.vz + tmpR.z * LA.zuBatterie;
+    const tl = L(tx, ty, tz);
+    if (tl > 1e-6) {
+      tx /= tl; ty /= tl; tz /= tl;
+      const e = s.laengs, w = Math.acos(klemme(e.x * tx + e.y * ty + e.z * tz, -1, 1)), mw = LA.maxDreh * dt;
+      // WARUM Mischen mit Faktor statt Drehmatrix: bei ≤ 0,006 rad je Takt ist der Fehler vernachlässigbar; Länge neu
+      const f = w > mw ? mw / w : 1;
+      let ex = e.x + (tx - e.x) * f, ey = e.y + (ty - e.y) * f, ez = e.z + (tz - e.z) * f;
+      const el = L(ex, ey, ez) || 1; e.x = ex / el; e.y = ey / el; e.z = ez / el;
+    }
+    s.lagenAbstand = klemme(LA.anteil * s.tempo * s.abstand / v0, LA.min, LA.max);
+    const e = s.laengs, d = s.lagenAbstand;
+    // WARUM + vorlauf·v·τ: die Glättung der Mitte (τ) hinkt einer bewegten Gruppe um v·τ hinterher (Messung R10: 30 %
+    // der Detonationen hinter, 15 % vor der Drohne) — die Lagen bekommen diesen Rückstand zurück und etwas Vorlauf
+    const px = s.mitte.x + s.vx * F.tau * F.lagen.vorlauf, py = s.mitte.y + s.vy * F.tau * F.lagen.vorlauf, pz = s.mitte.z + s.vz * F.tau * F.lagen.vorlauf;
+    for (let j = 0; j < 3; j++) {
+      const o = (1 - j) * d; // Lage 0 vor (+d), 1 auf, 2 hinter (−d)
+      s.lagen[j].x = px + e.x * o; s.lagen[j].y = py + e.y * o; s.lagen[j].z = pz + e.z * o;
+    }
+  }
+
+  /** Lage des k-ten Rohrs (Platz in s.tuerme) bei T Rohren im Raum: vor, auf, hinter, vor, … — WARUM die vordere zuerst:
+   *  „in Richtung der Gefahr“; bei 2 Rohren (3 Gruppen) vor + auf, bei 1 Rohr nur vor. */
+  const lageVon = (k) => k % 3;
 
   /** Soll-Mitten (kartesisch, relativ zu M) der Gruppen 0..ng nach gmX/gmY/gmZ. */
   function gruppenMitten(ng, nb) {
@@ -519,6 +606,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     s.breite = s.sollBreite = s.gierHalb * s.abstand; s.hoehe = s.sollHoehe = s.nickHalb * s.abstand; s.sollTiefe = s.tiefeHalb;
     const c = Math.cos(s.nick), A = s.abstand;
     s.mitte.x = M.x + Math.sin(s.gier) * c * A; s.mitte.y = M.y + Math.sin(s.nick) * A; s.mitte.z = M.z + Math.cos(s.gier) * c * A;
+    // feste Wand = eine Lage (die mittlere) auf der Schale; beim Zurückschalten führt lagenNachfuehren weiter
+    s.lagen[1].x = s.mitte.x; s.lagen[1].y = s.mitte.y; s.lagen[1].z = s.mitte.z;
     s.tuerme.length = 0; for (let i = 0; i < n; i++) s.tuerme.push(i);
     lage.schirme.length = 0; lage.schirme.push(s);
     // Kasten 0 bleibt gültig → beim Zurückschalten auf Folgen gleitet er von hier aus weiter (kein Rücksprung)
@@ -543,20 +632,26 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           const i = T[k], b = befehle[i], tz = turmZustand?.[i], m = tz?.muendung ?? ersatzM[i], v0 = tz?.v0 ?? K.v0;
           b.leuchtspur = leucht;
           if (nahTurm[i] >= 0) { richteNah(i, ziele, m, v0, frei); kastenVor[i] = -1; continue; }
-          // Neuer Kasten (oder zurück aus Killzone/Zielfeuer): Übergang vom letzten Befehl aus (Befund Prüfer R9)
-          if (kastenVor[i] !== g && kastenVor[i] !== -2) {
+          // Lage fest je Rohr: Platz im Raum (Türme in fester Reihenfolge) → vor / auf / hinter; feste Wand: nur „auf“.
+          // WARUM Platz inkl. Rohren in der Killzone: sonst wechselten die übrigen Rohre die Lage, sobald eines abgezogen
+          // wird (Übergang = Feuerpause)
+          const j = folgen ? lageVon(k) : 1;
+          // Neuer Raum, neue Lage (oder zurück aus Killzone/Zielfeuer): Übergang vom letzten Befehl aus (Befund Prüfer R9)
+          if ((kastenVor[i] !== g || lageVor[i] !== j) && kastenVor[i] !== -2) {
             const dx = b.punkt.x - m.x, dy = b.punkt.y - m.y, dz = b.punkt.z - m.z, r = L(dx, dy, dz) || 1; // von der Mündung
-            ueb[i] = 1; uG[i] = Math.atan2(dx, dz); uN[i] = Math.asin(klemme(dy / r, -1, 1)); uR[i] = r;
+            ueb[i] = 1; uOk[i] = 1; uG[i] = Math.atan2(dx, dz); uN[i] = Math.asin(klemme(dy / r, -1, 1)); uR[i] = r;
           }
-          kastenVor[i] = g;
+          kastenVor[i] = g; lageVor[i] = j;
           // WARUM Phase nach fester Turmnummer (nicht Platz im Schirm): sonst springt das Muster, wenn ein Turm in die
           // Killzone wechselt oder zurückkommt (Messung R7: Befehls-Sprünge bis 5900°/s)
-          streiche(b, m, v0, i, s, dt);
-          // Kasten: Feuer-Spielraum ≤ halbe kleinste Kastenseite (sonst fliegen die Granaten neben den Kasten);
+          streiche(b, m, v0, i, s, j, dt);
+          // Raum: Feuer-Spielraum ≤ halbe kleinste Raumseite (sonst fliegen die Granaten neben den Raum);
           // feste Wand: unverändert toleranzSperr
           b.toleranz = folgen ? klemme(0.5 * Math.min(s.breite, s.hoehe) / s.abstand, 0.015, K.toleranzSperr) : K.toleranzSperr;
-          // WARUM kein Feuer im Übergang: der Punkt liegt dann zwischen den Kästen — Granaten dort treffen nichts
-          b.zielId = null; b.feuer = frei && !ueb[i]; b.streuKugel = 0; // Kasten/Wand: Muster sättigt schon
+          // WARUM kein Feuer im Übergang: der Punkt liegt dann zwischen den Räumen — Granaten dort treffen nichts
+          b.zielId = null; b.feuer = frei && !ueb[i];
+          // Sättigungsraum: Sperr-Kugel quer + Lagendicke längs (R10); feste Wand bleibt eine Schale (R7, Test B)
+          b.streuKugel = folgen ? K.streuKugel.sperr : 0; b.streuTiefe = folgen ? K.streuKugel.sperrTiefe : 0;
         }
       }
     } else {
@@ -606,14 +701,14 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           b.zielId = ziele[cur].id;
           b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z;
           b.zuender = ab.t;
-          b.streuKugel = K.streuKugel.ziel;
-          b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0);
+          b.streuKugel = K.streuKugel.ziel; b.streuTiefe = K.streuKugel.zielTiefe;
+          b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0, b.leuchtspur);
           b.feuer = frei;
           if (zaehl[cur] > statistik.maxJeZiel) statistik.maxJeZiel = zaehl[cur];
         } else {
           // kein Ziel: Ruhestellung Sektormitte auf dem Schirm, nicht feuern
           if (b.zielId !== null) statistik.zwang[i]++;
-          b.zielId = null; b.feuer = false; b.toleranz = K.toleranzSperr; b.streuKugel = 0;
+          b.zielId = null; b.feuer = false; b.toleranz = K.toleranzSperr; b.streuKugel = 0; b.streuTiefe = 0;
           setzeAufSchale(b, m, v0, S.gierMitte, (S.nickMin + S.nickMax) / 2, R);
         }
       }
