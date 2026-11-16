@@ -170,12 +170,20 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   const ab = { t: 0, x: 0, y: 0, z: 0 }, abBest = { t: 0, x: 0, y: 0, z: 0 };
 
   // Räume (Vorrat MAXK Stück, lage.schirme zeigt 1–maxKaesten davon; Name „schirme“ bleibt für Seite/Tests)
-  const schirmVorrat = Array.from({ length: MAXK }, () => ({ mitte: { x: 0, y: 0, z: 0 }, abstand: 800, gierHalb: 0.3, nickHalb: 0.15, tuerme: [],
-    gier: 0, nick: 0.4, sollGier: 0, sollNick: 0.4, sollAbstand: 800,
-    breite: 150, hoehe: 80, tiefeHalb: 0, sollBreite: 150, sollHoehe: 80, sollTiefe: 0, gewicht: 0,
+  const schirmVorrat = Array.from({ length: MAXK }, () => ({ mitte: { x: 0, y: 0, z: 0 }, tuerme: [],
+    laengs: { x: 0, y: 0, z: 0 }, lagen: [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }] }));
+  /** Grundzustand eines Raums (Erzeugen UND zuruecksetzen). WARUM eine Stelle für beides (Befund Prüfer R10): festerSchirm
+   *  setzt schirmeBereit, dann überspringt folgeSchirme seinen Startblock — nach zuruecksetzen() → fest → folgen liefen
+   *  sonst alte Raumfelder (v*, tempo, laengs, lagenAbstand) weiter und die KI wich von einer frischen Instanz ab. */
+  function grundRaum(s) {
+    s.mitte.x = s.mitte.y = s.mitte.z = 0; s.abstand = 800; s.gierHalb = 0.3; s.nickHalb = 0.15; s.tuerme.length = 0;
+    s.gier = 0; s.nick = 0.4; s.sollGier = 0; s.sollNick = 0.4; s.sollAbstand = 800;
+    s.breite = 150; s.hoehe = 80; s.tiefeHalb = 0; s.sollBreite = 150; s.sollHoehe = 80; s.sollTiefe = 0; s.gewicht = 0;
     // R10 Tiefenlagen: geglättete Gruppengeschwindigkeit (v*, Soll sv*), mittleres Tempo, Einheitsrichtung „vor“
-    vx: 0, vy: 0, vz: 0, svx: 0, svy: 0, svz: 0, tempo: 130, sollTempo: 130,
-    laengs: { x: 0, y: 0, z: -1 }, lagenAbstand: 100, lagen: [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }] }));
+    s.vx = s.vy = s.vz = s.svx = s.svy = s.svz = 0; s.tempo = s.sollTempo = 130;
+    s.laengs.x = 0; s.laengs.y = 0; s.laengs.z = -1; s.lagenAbstand = 100;
+    for (const l of s.lagen) l.x = l.y = l.z = 0;
+  }
   const lage = { nahbereich: false, schirme: [], eindringlinge: [] };
   // Arbeitsfelder Folgen
   const bG = new Float64Array(MAXZ), bN = new Float64Array(MAXZ), bD = new Float64Array(MAXZ), bW = new Float64Array(MAXZ);
@@ -195,6 +203,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     phase0 = rnd(); // gemeinsamer Phasenversatz des Musters (nur Optik, deterministisch)
     takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false; warFest = false;
     Object.assign(fest, STANDARD_SEKTOR);
+    for (const s of schirmVorrat) grundRaum(s);
+    uG.fill(0); uN.fill(0); uR.fill(0);
     kastenVor.fill(-2); ueb.fill(0); uOk.fill(0); lageVor.fill(-1);
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
