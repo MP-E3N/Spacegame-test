@@ -33,6 +33,9 @@ export function erstelleReglerfeld({ wurzel, gruppen, schluessel = 'schwarmfront
       eingabe.value = ziel[e.feld];
       // WARUM keydown stoppen: sonst lösen Pfeiltasten/Leertaste im Regler zusätzlich die Labor-Tasten aus
       eingabe.addEventListener('keydown', (ev) => ev.stopPropagation());
+      // WARUM blur nach dem Ziehen: sonst bleibt der Fokus im Regler und schluckt danach alle Labor-Tasten (Befund Prüfer R11)
+      eingabe.addEventListener('pointerup', () => eingabe.blur());
+      eingabe.addEventListener('change', () => eingabe.blur());
       eingabe.addEventListener('input', () => { setzeWert(g, e, Number(eingabe.value)); merken(); aenderung(); });
       zeile.append(name, wert, eingabe);
       kasten.appendChild(zeile);
