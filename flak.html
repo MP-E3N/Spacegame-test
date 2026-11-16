@@ -41,11 +41,24 @@
         <div class="text"><b>V</b>nächste Stufe</div></div>
       <div class="gruppe"><span class="titel">Labor</span>
         <button data-taste="KeyN"><b>N</b>neue Drohnen</button>
-        <button data-taste="KeyP" id="k-pause"><b>P</b>Pause</button></div>
+        <button data-taste="KeyP" id="k-pause"><b>P</b>Pause</button>
+        <button data-taste="KeyR" id="k-regler"><b>R</b>Regler ein / aus</button></div>
       <div class="gruppe"><span class="titel">Kamera</span>
         <button data-taste="KeyC" id="k-kamera"><b>C</b>Prüfstand / Übersicht</button>
         <div class="text"><b>Maus ziehen</b>umsehen · <b>Rad</b>Zoom</div></div>
       <button data-taste="KeyH" class="zu"><b>H</b>Bedienung ausblenden</button>
+    </div>
+    <!-- Reglerfeld (Runde 11): Schieberegler zum Abstimmen, Werte als Konfig (src/labor/regler.js) -->
+    <div id="regler">
+      <div class="kopf">REGLER <span class="leise">— Werte gelten sofort</span></div>
+      <div id="regler-gruppen"></div>
+      <div id="regler-info"></div>
+      <div class="knoepfe">
+        <button id="regler-standard">Standard</button>
+        <button id="regler-kopieren">Konfig kopieren</button>
+        <button data-taste="KeyR">R ausblenden</button>
+      </div>
+      <textarea id="regler-konfig" readonly rows="4" class="versteckt"></textarea>
     </div>
     <button id="bedienung-auf" data-taste="KeyH" class="versteckt"><b>H</b>Bedienung zeigen</button>
     <div id="meldung"></div>

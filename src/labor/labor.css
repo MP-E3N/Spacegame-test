@@ -36,3 +36,23 @@
 #bedienung button.zu { margin-top: 4px; border-top: 1px solid var(--linie); color: var(--bern-matt); }
 #bedienung-auf { width: auto; padding: 4px 8px; }
 #bedienung.versteckt, #bedienung-auf.versteckt { display: none; }
+
+/* Reglerfeld (Runde 11, Nutzer: „Schieberegler … als Konfig“): links oben, klappt mit R ein/aus. */
+#regler { position: absolute; left: 18px; top: 16px; width: 260px; max-height: calc(100vh - 330px); overflow-y: auto;
+  pointer-events: auto; background: var(--grund); border: 1px solid var(--linie); padding: 8px 10px 10px; color: #c9a060; font-size: 12px; }
+#regler.versteckt { display: none; }
+#regler .kopf { font-size: 11px; letter-spacing: 0.15em; color: var(--bern-matt); border-bottom: 1px solid var(--linie);
+  padding-bottom: 5px; margin-bottom: 6px; }
+#regler .kopf .leise { letter-spacing: 0; }
+#regler .gruppe { margin-bottom: 6px; }
+#regler .titel { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bern-matt); margin-bottom: 2px; }
+#regler label.regler { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 2px 0; cursor: default; }
+#regler label.regler .wert { color: #f2c070; font-weight: normal; }
+#regler label.regler input { grid-column: 1 / 3; width: 100%; accent-color: #c9a060; margin: 1px 0 0; }
+#regler-info { color: var(--bern-matt); font-size: 11px; margin: 2px 0 6px; min-height: 1em; }
+#regler .knoepfe { display: flex; gap: 4px; flex-wrap: wrap; }
+#regler .knoepfe button { cursor: pointer; background: transparent; border: 1px solid var(--linie); color: inherit; font: inherit; padding: 2px 6px; }
+#regler .knoepfe button:hover { color: #f2c070; }
+#regler textarea { width: 100%; margin-top: 6px; background: rgba(0,0,0,0.4); color: #f2c070; border: 1px solid var(--linie);
+  font: 11px/1.3 monospace; resize: vertical; }
+#regler textarea.versteckt { display: none; }
