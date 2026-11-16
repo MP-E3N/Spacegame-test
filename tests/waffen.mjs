@@ -141,8 +141,12 @@ zeile('Rechenzeit Sim-Schritt (6 Türme, 10 Ziele)', '≤ 0,3 ms', a.ms.toFixed(
 
 // ---------- 7) Splitterwolke: Durchflug durch den Sperrfeuer-Schirm ----------
 // Schirm wie die Turm-KI: Lissajous-Streichen je Turm auf einer Kugelschale 800 m (Sperrgranaten, zielId null).
-{
-  let toedlich = 0, summe = 0, sofort = 0;
+// WARUM Bezugsläufe statt fester HP-Zahl (Prüfer R10): die Balance ändert FLAK.sorte[1] jede Runde. Der Schaden ist linear
+// in Sofortschaden und Splitter-HP/s (Treffer ändern weder Flak-Zufall noch Flugbahn) → zwei Läufe mit Einheitswerten liefern
+// je Durchflug a (HP je 1 HP Sofortschaden) und b (HP je 1 HP/s Splitter). Wächter: die Wand trifft überhaupt (a, b > 0), und
+// die echten Werte ergeben a · schaden + b · splitterDps (Sofort- und Splitterschaden addieren sich, nichts geht verloren).
+function durchflug() {
+  let toedlich = 0, summe = 0;
   const N = 12;
   for (let k = 0; k < N; k++) {
     const flak = erstelleFlak({ startwert: 70 + k });
@@ -161,14 +165,22 @@ zeile('Rechenzeit Sim-Schritt (6 Türme, 10 Ziele)', '≤ 0,3 ms', a.ms.toFixed(
     }
     summe += schaden; if (schaden >= 100) toedlich++;
   }
-  zeile('Durchflug Schirm 800 m: tödlich (≥ 100 HP)', 'Info (Ziel: guter Teil)', `${toedlich} / ${N}`, true, false);
-  // WARUM ≥ 1 statt ≥ 30 HP (R9-Balance, KI): die Sperrgranate ist 1 HP / 25 HP/s statt 14 / 500 — die Sperrkästen sitzen
-  // jetzt AUF den Drohnen (Labor: 60 Abschüsse in 5 min bei 1100 m/s, vorher 286). Diese breite Prüf-Wand zeigt nur noch,
-  // dass Durchflug Schaden macht; die Tödlichkeit misst das Labor.
-  // R10-Balance (KI): Sperrgranate 1,5 HP / 45 HP/s → 4,3 HP. Schwelle 60 % davon = 2,6 HP — WARUM 60 statt 50 %: eine
-  // halbierte Sperrgranate (0,75 / 22,5) läge bei ~2,2 HP und muss auffallen.
-  const SG = FLAK.sorte[1];
-  zeile(`Durchflug Schirm 800 m: mittlerer Schaden (Sperr ${SG.schaden} / ${SG.splitterDps} HP/s)`, '≥ 2,6 HP (Wächter, 60 % von R10 4,3)', (summe / N).toFixed(1) + ' HP', summe / N >= 2.6);
+  return { mittel: summe / N, toedlich, N };
+}
+{
+  // Die Tödlichkeit misst das Labor (Kästen sitzen auf den Drohnen); diese breite Prüf-Wand prüft nur die Mechanik.
+  const SG = FLAK.sorte[1], echt = { schaden: SG.schaden, dps: SG.splitterDps };
+  let a, b;
+  try {
+    SG.schaden = 1; SG.splitterDps = 0; a = durchflug().mittel;
+    SG.schaden = 0; SG.splitterDps = 1; b = durchflug().mittel;
+  } finally { SG.schaden = echt.schaden; SG.splitterDps = echt.dps; }
+  const r = durchflug(), soll = a * SG.schaden + b * SG.splitterDps;
+  zeile('Durchflug Schirm 800 m: tödlich (≥ 100 HP)', 'Info (Ziel: guter Teil)', `${r.toedlich} / ${r.N}`, true, false);
+  zeile('Durchflug Schirm 800 m: Bezug je Einheit (Sofort a / Splitter b)', 'a > 0, b > 0 (Wand trifft)',
+    `a ${a.toFixed(3)} HP je HP · b ${b.toFixed(3)} HP je HP/s`, a > 0 && b > 0);
+  zeile(`Durchflug Schirm 800 m: mittlerer Schaden (Sperr ${SG.schaden} / ${SG.splitterDps} HP/s)`, 'a · Sofort + b · Splitter ± 1 %',
+    `${r.mittel.toFixed(2)} / Soll ${soll.toFixed(2)} HP`, soll > 0 && Math.abs(r.mittel - soll) <= 0.01 * soll + 1e-6);
 }
 
 // ---------- 9) Leuchtspur nur auf Befehl ----------

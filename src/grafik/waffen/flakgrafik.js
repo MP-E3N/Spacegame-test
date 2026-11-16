@@ -33,7 +33,13 @@ const BLITZ_M = 2.5, BLITZ_S = 0.05, MRAUCH_JEDER = 3, MRAUCH_M = 2.5, MRAUCH_S 
 // ≤ 35 m) bleibt die Traube eng wie in R9, im Sättigungsraum (Kugel 140 m) füllt sie bis 51 m, ab 200 m bis 60 m.
 // WARUM höchstens 60 m: weiter weg wirkt die Zusatzwolke wie eine eigene Granate ohne Schaden (ehrliche Optik).
 const ZUSATZ = { anzahl: 4, versatz: [20, 30, 60], versatzJeStreu: 0.15, verzoegerung: [0.06, 0.12, 0.18, 0.26], verzoegerungStreu: 0.05,
-  kern: [6, 8], kernDauer: 0.25, kernKraft: 0.8, wolke: [0.5, 0.65], leben: 2.0 };
+  kern: [4, 6], kernDauer: 0.12, kernKraft: 0.3, glut: 0.25, wolke: [0.5, 0.65], leben: 2.0 };
+// Glut (R10-Testrunde, Bildprüfer: „überstrahlter Ballen aus Glutkernen statt Wolkenfeld“): der Rauch trägt das Feld, Glut
+// blitzt nur kurz. Zusatz-Kerne 0,3 Kraft / 0,12 s (vorher 0,8 / 0,25), Zusatz-Wolken mit 25 % Innenglut, Hauptkern 0,22 s.
+// KERN_BUDGET: Summe der Kraft aller Granaten-Kerne (art 1) im Bild — darüber werden alle gleichmäßig gedämpft (Wert des
+// Vorbilds, 1 Bild Verzug). WARUM: viele Detonationen auf einem Fleck addieren sich (additiv) zur weißen Fläche.
+// Abschuss-Explosionen (art 2) zählen nicht und werden nie gedämpft — ein Abschuss soll knallen.
+const KERN_DAUER = 0.22, KERN_BUDGET = 16;
 const ZWEI_PI = Math.PI * 2;
 const umbruch = (w) => w - ZWEI_PI * Math.floor((w + Math.PI) / ZWEI_PI);
 
@@ -78,7 +84,7 @@ export function erstelleFlakGrafik(scene, camera) {
   effektNetz(scene, glueh.g, gluehMaterial(), 'flak-gluehen', 11);
   effektNetz(scene, spur.g, spurMaterial(), 'flak-spur', 12);
 
-  // Glühen: art 0 = Mündungsblitz, 1 = Detonationskern
+  // Glühen: art 0 = Mündungsblitz, 1 = Detonationskern (Granate), 2 = Abschuss-Kern (ohne Budget)
   const G = { pos: new Float32Array(MAX_GLUEH * 3), alter: new Float32Array(MAX_GLUEH).fill(99), dauer: new Float32Array(MAX_GLUEH).fill(1),
     groesse: new Float32Array(MAX_GLUEH), kraft: new Float32Array(MAX_GLUEH), art: new Uint8Array(MAX_GLUEH), zeiger: 0 };
   const W = { pos: new Float32Array(MAX_RAUCH * 3), vel: new Float32Array(MAX_RAUCH * 3), alter: new Float32Array(MAX_RAUCH).fill(99),
@@ -128,7 +134,7 @@ export function erstelleFlakGrafik(scene, camera) {
       rueck[s.turmId * 2 + s.rohr] = 0;
     }
     for (const d of e.detonationen) {
-      neuesGluehen(d.pos.x, d.pos.y, d.pos.z, d.art === 'nah' ? 13 : 11, 0.3, 1, 1);
+      neuesGluehen(d.pos.x, d.pos.y, d.pos.z, d.art === 'nah' ? 13 : 11, KERN_DAUER, 1, 1);
       neueWolke(d.pos.x, d.pos.y, d.pos.z, 6, WOLKE_R, 2.8); // Sichtgröße ≈ Splitter-Wirkradius (Runde 7)
       zusatzExplosionen(d.pos, d.streu || 0);
     }
@@ -144,15 +150,15 @@ export function erstelleFlakGrafik(scene, camera) {
       const x = p.x + r * sz * Math.cos(phi), y = p.y + r * sz * Math.sin(phi), z = p.z + r * cz;
       const warte = Z.verzoegerung[k % Z.verzoegerung.length] + rnd() * Z.verzoegerungStreu;
       neuesGluehen(x, y, z, Z.kern[0] + rnd() * (Z.kern[1] - Z.kern[0]), Z.kernDauer, Z.kernKraft, 1, warte);
-      neueWolke(x, y, z, 3, WOLKE_R * (Z.wolke[0] + rnd() * (Z.wolke[1] - Z.wolke[0])), Z.leben, 0, 0, 0, 1, WOLKE_DECKKRAFT, warte, false);
+      neueWolke(x, y, z, 3, WOLKE_R * (Z.wolke[0] + rnd() * (Z.wolke[1] - Z.wolke[0])), Z.leben, 0, 0, 0, Z.glut, WOLKE_DECKKRAFT, warte, false);
     }
   }
 
   /** Große Detonation (Drohnen-Abschuss): Kern + Nachblitze + mehrere Rauchballen, die auseinandertreiben. */
   function explosion(pos, groesse = 1) {
     const g = groesse;
-    neuesGluehen(pos.x, pos.y, pos.z, 34 * g, 0.55, 1.6, 1);
-    for (let k = 0; k < 3; k++) neuesGluehen(pos.x + (rnd() - 0.5) * 14 * g, pos.y + (rnd() - 0.5) * 14 * g, pos.z + (rnd() - 0.5) * 14 * g, 14 * g, 0.4 + rnd() * 0.3, 1, 1);
+    neuesGluehen(pos.x, pos.y, pos.z, 34 * g, 0.55, 1.6, 2);
+    for (let k = 0; k < 3; k++) neuesGluehen(pos.x + (rnd() - 0.5) * 14 * g, pos.y + (rnd() - 0.5) * 14 * g, pos.z + (rnd() - 0.5) * 14 * g, 14 * g, 0.4 + rnd() * 0.3, 1, 2);
     for (let k = 0; k < 7; k++) {
       const vx = rnd() - 0.5, vy = rnd() - 0.5, vz = rnd() - 0.5, l = Math.hypot(vx, vy, vz) || 1, v = (10 + rnd() * 12) * g;
       neueWolke(pos.x + vx / l * 5 * g, pos.y + vy / l * 5 * g, pos.z + vz / l * 5 * g, 8 * g, 46 * g, 4 + rnd() * 1.5, vx / l * v, vy / l * v, vz / l * v);
@@ -162,6 +168,7 @@ export function erstelleFlakGrafik(scene, camera) {
   // ---------- pro Bild ----------
   const kamPos = new THREE.Vector3(), kamDir = new THREE.Vector3();
   const tiefe = new Float32Array(MAX_RAUCH), reihe = [];
+  let kernKraftVorher = 0; // Summe Kraft der Granaten-Kerne im letzten Bild (KERN_BUDGET)
   const hintenZuerst = (p, q) => tiefe[q] - tiefe[p]; // einmal angelegt (keine Closure pro Bild)
 
   function aktualisiere(flak, alpha, dt) {
@@ -203,6 +210,8 @@ export function erstelleFlakGrafik(scene, camera) {
     // Glühen altern lassen
     const GP = glueh.puffer.aPos.array, GG = glueh.puffer.aGroesse.array, GF = glueh.puffer.aFarbe.array;
     n = 0;
+    const budget = kernKraftVorher > KERN_BUDGET ? KERN_BUDGET / kernKraftVorher : 1;
+    kernKraftVorher = 0;
     for (let i = 0; i < MAX_GLUEH; i++) {
       const a = (G.alter[i] += dt), u = a / G.dauer[i];
       if (a < 0 || u >= 1) continue; // a < 0: Zusatz-Explosion wartet noch
@@ -214,6 +223,7 @@ export function erstelleFlakGrafik(scene, camera) {
         gr = G.groesse[i] * (0.35 + 0.65 * Math.sqrt(Math.min(1, a / 0.12)));
       }
       k *= G.kraft[i];
+      if (G.art[i] === 1) { kernKraftVorher += G.kraft[i]; k *= budget; }
       GP[n * 3] = G.pos[i * 3]; GP[n * 3 + 1] = G.pos[i * 3 + 1]; GP[n * 3 + 2] = G.pos[i * 3 + 2];
       // Nahe der Kamera: Größe auf Bildschirm-Pixel deckeln, Helligkeit dämpfen (sonst füllt Bloom das halbe Bild)
       const ex = G.pos[i * 3] - kamPos.x, ey = G.pos[i * 3 + 1] - kamPos.y, ez = G.pos[i * 3 + 2] - kamPos.z;
