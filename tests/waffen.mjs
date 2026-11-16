@@ -9,7 +9,7 @@
 //   13) Flächenschaden an zwei Drohnen, abfallend · 14) v0-Wechsel im Flug · 15) Zielfeuer mit Streukugel gegen Flieger.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
-import { erstelleFlak, FLAK } from '../src/sim/waffen/flak.js';
+import { erstelleFlak, FLAK, WAFFEN_REGLER } from '../src/sim/waffen/flak.js';
 import { LAFETTEN } from '../src/sim/waffen/lafetten.js';
 
 const DT = 1 / 60;
@@ -232,11 +232,12 @@ function zuenderLauf(zuender) {
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 /** Ein Turm (Nr. 1) richtet auf einen festen Punkt in Entfernung d (Nick 0,5), danach feuert er `schritte` lang.
  *  rein = true: Turmstreuung und Zünderstreuung aus (misst nur Kugel/Zünder). Liefert Detonationen + Treffer je Schritt. */
-function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 99, v0 = FLAK.v0, schritte = 600, rein = true, ziele = [], einSchuss = false, startwert = 11 }) {
+function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 99, v0 = FLAK.v0, schritte = 600, rein = true, ziele = [], einSchuss = false, startwert = 11, waffe }) {
   const alt = { k: FLAK.zuenderStreuKugel, z: FLAK.zuenderStreu };
   if (rein) { FLAK.zuenderStreuKugel = 0; FLAK.zuenderStreu = 0; }
   try {
     const flak = erstelleFlak({ startwert });
+    if (waffe !== undefined) flak.einstellen(waffe);
     const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1], b = befehle[1];
     t.v0 = v0; if (rein) t.streuung = 0;
     const p = { x: l.x, y: l.y + l.zapfen.y + d * Math.sin(0.5), z: l.z + d * Math.cos(0.5) };
@@ -398,6 +399,42 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
   const g1 = lauf(21), g2 = lauf(21), g3 = lauf(22);
   zeile('Gleichlauf Ellipsoid + Leuchtspur-Wechsel (2400 Schritte)', 'gleich, anderer Startwert anders',
     `${g1.h} / ${g2.h} / ${g3.h} (${g1.g} gedeckelt)`, g1.h === g2.h && g1.g === g2.g && g1.h !== g3.h);
+}
+
+// ---------- 17) R11: Deckel-Regler der Waffe (flak.einstellen) ----------
+{
+  // Querdeckel 0,40 bei 300 m: Kugel 150 → quer bis 0,40 · ~291 m ≈ 116 m; mit Leuchtspur bleibt 0,10 fest
+  const ohne = punktLauf({ d: 300, streuKugel: 150, streuTiefe: 0, schritte: 1200, waffe: { deckelQuer: 0.4 } });
+  const mit = punktLauf({ d: 300, streuKugel: 150, streuTiefe: 0, schritte: 1200, waffe: { deckelQuer: 0.4 }, leuchtspur: true });
+  const soll = 0.4 * ohne.el, mq = Math.max(...ohne.quer), ml = Math.max(...mit.quer);
+  zeile('Regler deckelQuer 0,40 bei 300 m: größter Querversatz ohne / mit Leuchtspur', `≈ ${soll.toFixed(0)} / ≤ ${(0.1 * mit.el + 1).toFixed(0)} m`,
+    `${mq.toFixed(1)} / ${ml.toFixed(1)} m`, mq <= soll + 1.5 && mq >= soll - 8 && ml <= 0.1 * mit.el + 1);
+  const tief = punktLauf({ d: 1000, streuKugel: 10, streuTiefe: 600, schritte: 1200, waffe: { deckelTiefe: 0.5 } });
+  const lt = Math.max(...tief.laengs), sl = 0.5 * tief.el;
+  zeile('Regler deckelTiefe 0,50 bei 1000 m (Wunsch 600): größter Längsversatz', `≈ ${sl.toFixed(0)} m`, lt.toFixed(1) + ' m', lt <= sl + 1.5 && lt >= sl - 25);
+  // Klemmen / Standard
+  const f = erstelleFlak({ startwert: 1 });
+  f.einstellen({ deckelQuer: 5, deckelTiefe: NaN }); const a = { ...f.einstellung };
+  f.einstellen(undefined); const b = { ...f.einstellung };
+  zeile('einstellen: 5 → max, NaN/fehlt → Standard', `${WAFFEN_REGLER.deckelQuer.max} / ${FLAK.deckelTiefe} / ${FLAK.deckelQuer}`,
+    `${a.deckelQuer} / ${a.deckelTiefe} / ${b.deckelQuer}`,
+    a.deckelQuer === WAFFEN_REGLER.deckelQuer.max && a.deckelTiefe === FLAK.deckelTiefe && b.deckelQuer === FLAK.deckelQuer && b.deckelTiefe === FLAK.deckelTiefe);
+  // Gleichlauf: ohne einstellen() = einstellen(undefined) (bitgleich zu R10); Wechsel mitten im Lauf in zwei Läufen gleich
+  const lauf = (modus) => {
+    const flak = erstelleFlak({ startwert: 31 });
+    const befehle = leererBefehl();
+    befehle.forEach((b, k) => { b.punkt = { x: 200 * k - 500, y: 600, z: 1400 }; b.feuer = true; b.toleranz = 0.03; b.zielId = null; b.streuKugel = 300; b.streuTiefe = 500; });
+    for (let i = 0; i < 2400; i++) {
+      if (modus === 'leer') flak.einstellen(undefined);
+      if (modus === 'wechsel') flak.einstellen(i < 1200 ? undefined : { deckelQuer: 0.45, deckelTiefe: 0.6 });
+      flak.schritt(DT, befehle, []);
+    }
+    return { h: flak.pruefsumme(), g: flak.geschosse.gedeckelt };
+  };
+  const roh = lauf('ohne'), leer = lauf('leer'), w1 = lauf('wechsel'), w2 = lauf('wechsel');
+  zeile('Gleichlauf Deckel-Regler: ohne = Standard, Wechsel in 2 Läufen gleich, Wechsel wirkt', 'gleich / gleich / anders',
+    `${roh.h} / ${leer.h} · ${w1.h} / ${w2.h} (gedeckelt ${roh.g} → ${w1.g})`,
+    roh.h === leer.h && roh.g === leer.g && w1.h === w2.h && w1.h !== roh.h && w1.g < roh.g);
 }
 
 // ---------- Ausgabe ----------
