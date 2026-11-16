@@ -165,7 +165,7 @@ function zaehleGranaten() { return labor.flak.geschosse.anzahlAktiv; }
 let zeit = 0, rest = 0, zuletzt = performance.now(), pause = false, gelesen = 0;
 function bedienen() {
   if (einmal.has('Space')) { befehl.feuerFrei = !befehl.feuerFrei; meldung(befehl.feuerFrei ? 'Feuer frei' : 'Feuer halt'); }
-  if (einmal.has('Digit1') || einmal.has('Numpad1')) { befehl.modus = 'sperrfeuer'; meldung('Sperrfeuer — Flak-Schirm auf ' + befehl.schirmAbstand + ' m'); }
+  if (einmal.has('Digit1') || einmal.has('Numpad1')) { befehl.modus = 'sperrfeuer'; meldung(befehl.folgen ? 'Sperrfeuer — Raum vor und um die Drohnengruppen sättigen' : 'Sperrfeuer — Flak-Schirm fest auf ' + befehl.schirmAbstand + ' m'); }
   if (einmal.has('Digit2') || einmal.has('Numpad2')) { befehl.modus = 'zielfeuer'; meldung('Zielfeuer — Türme wählen Ziele, Zünder nach Vorhalt'); }
   const plus = einmal.has('Equal') || einmal.has('NumpadAdd') || einmal.has('BracketRight');
   const minus = einmal.has('Minus') || einmal.has('NumpadSubtract') || einmal.has('Slash');

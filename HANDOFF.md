@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 8+9 nur lokal committet).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 8–10 nur lokal committet).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -49,10 +49,19 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   (2) **Standard 1100 m/s**; (3) **Sperrkästen:** Sperrfeuer legt bis zu 3 Kästen direkt auf die Drohnengruppen
   (Größe aus der Gruppenstreuung) statt einer Wand auf festem Radius → Median 260 → 100 m. Balance 1100 m/s, 5 min:
   Sperr 60 Abschüsse / 5 von 14 Vorstößen überlebt, Ziel 44 / 5 von 14. Protokoll `…/2026-11-15-runde9.md`.
-- **Nutzer-Urteil zu Runde 9 offen.** Offene Fragen: Rauchfahnen der Detonationen (lange braune Bänder je Kasten);
-  Station unten links verdeckt die linken Türme. Stellschrauben: Sorten-Tabelle in `FLAK.sorte` (Ziel 1,6 HP / 7 HP/s,
-  Sperr 1 HP / 25 HP/s — Skala unhandlich), `DROHNEN.vorstoss.panzer` 0,28, Kugel/Kästen in `TURMKI`. Offen (Kann):
-  Schadensskala neu ordnen (Drohnen-HP ×10), Messung mit mehreren Startwerten, Turmteile 30 Draw-Calls.
+- Nutzer zu R9 („noch viel weiter streuen; in Richtung der Gefahr den Raum sättigen, wenig gezieltes Feuer“) →
+  **Runde 10 (2026-11-16, umgesetzt, lokal committet, nicht gepusht):** Recherche im Protokoll (Kasten-/Tiefensperrfeuer,
+  Manöverraum füllen). **Sättigungsräume:** je Drohnengruppe ein Raum in Flugrichtungs-Achsen mit **3 Tiefenlagen**
+  vor / auf / hinter der Gruppe (Abstand ≥ 120 m, Vorlauf gegen Nachhinken), Lagen fest je Turm. **Streu-Ellipsoid:**
+  `streuKugel` quer + neu `streuTiefe` längs über den Zünder (Deckel in `FLAK`: quer 0,10·d mit / 0,18·d ohne
+  Leuchtspur, längs 0,35·d). Zielfeuer 140 m. **4 Zusatz-Explosionen** (20–60 m, mit der Streuung wachsend), Glut
+  gedämpft + `KERN_BUDGET` (kein weißer Ballen). Sperrfeuer: Median 163 m, **73 % der Detonationen vor der Drohne**
+  (vorher 9 %); Zielfeuer Median 110 m. Balance 1100, 3 Startwerte: Sperr 46–54 Abschüsse / 36–50 % Vorstöße überlebt,
+  Ziel 31–32 / 33–43 %. Protokoll `…/2026-11-16-runde10.md`.
+- **Nutzer-Urteil zu Runde 10 offen.** Offene Frage: Für eine wirklich dichte Sättigung um JEDE Drohne reichen 60 Schuss/s
+  nicht (Drohnen in 7–9 Grüppchen) — Hebel wäre die Feuerrate (mehr Türme/Rohre). Station unten links verdeckt die
+  linken Türme. Stellschrauben: `FLAK.sorte` (Ziel 3 HP / 42 m · 15 HP/s, Sperr 1,5 HP / 45 HP/s), `DROHNEN.vorstoss.panzer`
+  0,18 (steil!), Räume in `TURMKI`. Offen (Kann): Schadensskala neu ordnen, Turmteile 30 Draw-Calls.
 - **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
@@ -113,6 +122,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 10** (2026-11-16, mit Team): Sättigungsfeuer — Räume mit 3 Tiefenlagen, Streu-Ellipsoid, 4 Zusatz-Explosionen,
+  Glut-Budget, Balance mit 3 Startwerten. Lokal committet.
 - **Runde 9** (Nutzer-Rückmeldung zu R8, mit Team): Streukugel 60 m, Zusatz-Explosionen, Standard 1100 m/s, Sperrkästen
   auf den Drohnengruppen, Balance bei 1100. Lokal committet.
 - **Runde 8** (Nutzer-Rückmeldung zu R7, mit Team): Streukugel + Flächenschaden statt Annäherungszünder, v0-Stufen

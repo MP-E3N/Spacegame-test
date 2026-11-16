@@ -27,3 +27,7 @@
   selbst ausblenden (setTimeout), findet der Nutzer nicht → Bedienung dauerhaft sichtbar und klickbar.
 - 2026-11-15 Runde 9 — Ganze Runde ohne neue Agenten (nur SendMessage) — Kontext aus R8 trägt. Befunde der Testrunde
   vor dem Weitergeben selbst nachmessen (Bildprüfer-Muss war Artefakt). Messziele vorher auf Verträglichkeit prüfen.
+- 2026-11-16 Runde 10 — Nutzer bat um Recherche („schau dir an, wie Flakfelder aufgebaut sind“): kurze Textrecherche
+  vor dem Kickoff ins Protokoll → beide Experten bauten darauf. Videos kann ich nicht ansehen — das offen sagen. Messziele
+  vorher überschlagen (Detonationen/s × Volumen), sonst Widerspruch wie „≥ 8 Wolken je Drohne“ vs. „weit streuen“.
+  Nach einem Sitzungswechsel sind die alten Agenten weg → neue Frühwarnung, die Lernbücher tragen den Kontext.

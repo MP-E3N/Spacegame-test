@@ -33,3 +33,6 @@
   dieselben 3 Zufallszahlen, rq = rt ergibt die alte Kugel. Zähler gedeckelt macht stumme Kürzungen sichtbar. Lehre:
   Deckel und Testerwartung auf dieselbe Bezugsstrecke rechnen (Mündung statt Zapfen, sonst 1,5 % Fehler); Leuchtspur vor
   der Streuung festlegen, wenn sie einen Deckel bestimmt. Vorrat 1024/384 bei 60 Det./s: 686/108 belegt, 0 überschrieben.
+- 2026-11-16 R10-Fix — Additive Glutkerne vieler Detonationen auf einem Fleck werden zum weißen Ballen. Zusatzeffekte
+  nur kurz glimmen lassen, ein Kraft-Budget je Bild (KERN_BUDGET) einbauen und Abschüsse davon ausnehmen. Test-Wächter
+  nicht mit fester Zahl, sondern aus Bezugsläufen mit Einheitswerten ableiten (Schaden ist linear).
