@@ -29,3 +29,7 @@
 - 2026-11-15 Runde 9 — Effekt-Ring mit gemischten Lebensdauern (kurz/lang) ersetzt schon bei halb vollem Vorrat lebende
   Wolken → nächster freier Platz ab dem Zeiger + Zähler ueberschrieben (277 → 0 in 120 s). Verzögerte Effekte über
   negatives Alter, alle Schleifen müssen a < 0 überspringen.
+- 2026-11-16 Runde 10 — Kugel → Ellipsoid (quer 0,18·d bzw. 0,10·d mit Leuchtspur, längs 0,35·d über den Zünder),
+  dieselben 3 Zufallszahlen, rq = rt ergibt die alte Kugel. Zähler gedeckelt macht stumme Kürzungen sichtbar. Lehre:
+  Deckel und Testerwartung auf dieselbe Bezugsstrecke rechnen (Mündung statt Zapfen, sonst 1,5 % Fehler); Leuchtspur vor
+  der Streuung festlegen, wenn sie einen Deckel bestimmt. Vorrat 1024/384 bei 60 Det./s: 686/108 belegt, 0 überschrieben.

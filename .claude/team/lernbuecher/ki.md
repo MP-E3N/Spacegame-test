@@ -26,3 +26,9 @@
   einem Muster, das den ganzen Sektor streicht. Sperrkästen auf dem dichten Kern je Gruppe (Lücken in Metern, Drohnen
   bleiben ihrem Kasten zugeordnet) → 100 m. Neuverteilen jedes Takts ließ Kästen 125 m danebenhängen. Zenit: Nachführen
   je Achse statt Großkreis (sonst 181°/s Gier). Richttempo-Messung immer mit Winkel-Umbruch.
+- 2026-11-16 Runde 10 — Sättigungsräume (3 Tiefenlagen längs der Flugrichtung, Ellipsoid 70/40, Ziel 140): Abstand
+  101 → 163 m, „vor der Drohne“ 9 → 35 %, Abdeckung (≥ 8 Det./150 m/2 s) blieb 19 %. Ursache: Drohnen in 7–9 getrennten
+  Grüppchen, 3 Räume fassen ~50 %; 60 Det./s reichen nicht für „weit streuen“ UND „8 je Drohne“ (14 Varianten 11–22 %).
+  Lehre: Messziele vor dem Bau gegeneinander überschlagen (Detonationen/s × Kugelvolumen), Gruppenstruktur messen.
+  Glättung τ hinkt um v·τ → Lagen brauchen Vorlauf. Lagen-Schwenk + Nachführen + Muster summieren sich → Dauer-Tempobremse
+  am Befehl statt Einzeldeckel.
