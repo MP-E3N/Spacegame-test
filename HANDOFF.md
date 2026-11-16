@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 8–10 nur lokal committet).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`, Stand gepusht).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -33,7 +33,7 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   (4) **Vorstöße**: alle ~20 s fliegt eine Drohne bis ~250 m heran und zieht sich auf 1600–1900 m zurück (gepanzert im
   Vorstoß → ~50 % überleben); Kreiser „atmen“ 900 ↔ 1500 m. Labor 5 min: 61 Abschüsse, 7/14 Vorstöße überlebt,
   Nahbereich 30 % der Zeit. Protokoll `…/2026-11-15-runde7.md`.
-- Nutzer zu R7: „schon besser, aber …“ → **Runde 8 (umgesetzt, lokal committet, nicht gepusht):**
+- Nutzer zu R7: „schon besser, aber …“ → **Runde 8 (umgesetzt, gepusht e22a475):**
   (1) **Streukugel + Flächenschaden:** kein Annäherungszünder mehr (`FLAK.annaeherung = false`), jede Zielgranate fliegt
   auf einen eigenen Punkt in einer unsichtbaren Kugel um den Vorhaltepunkt (Zielfeuer 20 m, Nahbereich min(12, 0,05·d),
   `befehle[i].streuKugel`, KI entscheidet), Zeitzünder dorthin; Schaden nur als Fläche an allen Drohnen im Radius.
@@ -43,14 +43,14 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   oben, dauerhaft, klickbar, aktive Schalter hervorgehoben (H blendet aus). (4) Leuchtspur 0,35 m / 25 m. (5) Mündungsrauch
   nur jeder 3. Schuss, klein und kurz. Labor 5 min bei 1000 m/s: Sperrfeuer 58 Abschüsse / 8 von 14 Vorstößen überlebt,
   Zielfeuer 71 / 3 von 14 (620: 41, 1100: 76). Protokoll `…/2026-11-15-runde8.md`.
-- Nutzer zu R8 → **Runde 9 (umgesetzt, lokal committet, nicht gepusht):** (1) **Streukugel 60 m** im Zielfeuer
+- Nutzer zu R8 → **Runde 9 (umgesetzt, gepusht e22a475):** (1) **Streukugel 60 m** im Zielfeuer
   (Waffen-Deckel 0,10·d, Nahbereich bewusst min(20, 0,06·d), damit die Leuchtspur gerade aus dem Rohr kommt) → Median
   50 m um das Ziel; **3 Zusatz-Explosionen je Detonation** (nur Grafik, versetzt 15–30 m, verzögert 0,06–0,27 s);
   (2) **Standard 1100 m/s**; (3) **Sperrkästen:** Sperrfeuer legt bis zu 3 Kästen direkt auf die Drohnengruppen
   (Größe aus der Gruppenstreuung) statt einer Wand auf festem Radius → Median 260 → 100 m. Balance 1100 m/s, 5 min:
   Sperr 60 Abschüsse / 5 von 14 Vorstößen überlebt, Ziel 44 / 5 von 14. Protokoll `…/2026-11-15-runde9.md`.
 - Nutzer zu R9 („noch viel weiter streuen; in Richtung der Gefahr den Raum sättigen, wenig gezieltes Feuer“) →
-  **Runde 10 (2026-11-16, umgesetzt, lokal committet, nicht gepusht):** Recherche im Protokoll (Kasten-/Tiefensperrfeuer,
+  **Runde 10 (2026-11-16, umgesetzt, gepusht e22a475):** Recherche im Protokoll (Kasten-/Tiefensperrfeuer,
   Manöverraum füllen). **Sättigungsräume:** je Drohnengruppe ein Raum in Flugrichtungs-Achsen mit **3 Tiefenlagen**
   vor / auf / hinter der Gruppe (Abstand ≥ 120 m, Vorlauf gegen Nachhinken), Lagen fest je Turm. **Streu-Ellipsoid:**
   `streuKugel` quer + neu `streuTiefe` längs über den Zünder (Deckel in `FLAK`: quer 0,10·d mit / 0,18·d ohne
@@ -123,7 +123,7 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
 
 ## Verlauf
 - **Runde 10** (2026-11-16, mit Team): Sättigungsfeuer — Räume mit 3 Tiefenlagen, Streu-Ellipsoid, 4 Zusatz-Explosionen,
-  Glut-Budget, Balance mit 3 Startwerten. Lokal committet.
+  Glut-Budget, Balance mit 3 Startwerten. Gepusht e22a475 (mit R8+R9).
 - **Runde 9** (Nutzer-Rückmeldung zu R8, mit Team): Streukugel 60 m, Zusatz-Explosionen, Standard 1100 m/s, Sperrkästen
   auf den Drohnengruppen, Balance bei 1100. Lokal committet.
 - **Runde 8** (Nutzer-Rückmeldung zu R7, mit Team): Streukugel + Flächenschaden statt Annäherungszünder, v0-Stufen
