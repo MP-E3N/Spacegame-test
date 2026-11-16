@@ -14,7 +14,7 @@
 //        · Killzone (beide Betriebsarten): Drohne < 500 m → Eindringling (aus erst > 600 m); die 2–3 nächsten Türme
 //          schießen Zielgranaten auf ihn; solange der Nahbereich aktiv ist (+0,5 s Nachlauf) → leuchtspur für ALLE Türme.
 // LIEFERT: erstelleTurmKi({ startwert }) → { befehle, lage, schritt(dt, befehl, ziele, turmZustand) → befehle,
-//          zuruecksetzen(), statistik } · TURMKI (Werte) · abfangen(m, pos, vel, v0, aus) (für Tests)
+//          zuruecksetzen(), statistik } · TURMKI (Werte) · STREU_REGLER · streuWert(streu, feld) · abfangen(m, pos, vel, v0, aus) (für Tests)
 //          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
 //          streuKugel (m, 0 = aus), streuTiefe (m) }
 //        · streuKugel / streuTiefe (R8/R10, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“, R10: „das Areal um
@@ -25,6 +25,10 @@
 //          lage = { nahbereich (bool), schirme: [{ mitte{x,y,z}, abstand, gierHalb, nickHalb, tuerme[], gier, nick,
 //          sollGier, sollNick, sollAbstand, breite, hoehe, tiefeHalb (m, halbe Kastenmaße), laengs{x,y,z} (Einheit,
 //          „vor“), lagenAbstand (m), lagen[{x,y,z}] (Mitten vor/auf/hinter, Welt) }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
+//        · befehl.streu (R11, Nutzer: „Schieberegler, mit denen ich anpassen kann, wie weit die Explosionen auseinander
+//          sein sollen … mit Werten, damit wir diese als Konfig nehmen können“): { sperrQuer, sperrTiefe, raumZuschlag,
+//          ziel, nahMax, lagenAnteil } — Bereiche/Standard in STREU_REGLER (eine Quelle für Seite und KI); fehlt/NaN →
+//          Standard, sonst geklammert. Ohne streu bzw. mit Standardwerten bitgleich zu R10.
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
 //        Simulation: kein DOM, kein Math.random, fester Schritt; keine neuen Objekte im Schritt.
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
@@ -44,7 +48,7 @@ export const TURMKI = {
   // tief — Messung Frühwarnung: Kugel 130 mit Deckel 0,10 nur Median 73 m, mit 0,18 98 m. Nahbereich min(35, 0,10·d):
   // mit Leuchtspur deckelt die Waffe ohnehin auf 0,10·d (Spur verlässt das Rohr sonst sichtbar schief).
   // Sperr 70/40: die Kugel füllt das Volumen um den Musterpunkt, ohne das Richttempo zu belasten; 40 m = Lagendicke.
-  streuKugel: { ziel: 140, zielTiefe: 140, nahMax: 35, nahAnteil: 0.10, sperr: 70, sperrTiefe: 40 },
+  streuKugel: { ziel: 140, nahMax: 35, nahAnteil: 0.10, sperr: 70, sperrTiefe: 40 },
   // toleranz = min(max(Kugel, toleranzMin), Deckel·d) / d, mindestens toleranzRadMin. WARUM unter dem Deckel: die Waffe
   // deckelt den Querversatz (DECKEL.querHell/querDunkel) — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
   toleranzMin: 8, toleranzRadMin: 0.008,
@@ -116,6 +120,21 @@ export const TURMKI = {
   // Killzone (R7, Entscheidung 3): Hysterese ein < 500 m, aus > 600 m um BATTERIE_MITTE, Alarm-Nachlauf 0,5 s
   killzone: { ein: 500, aus: 600, nachlauf: 0.5, tuermeEiner: 3, tuermeJe: 2 },
 };
+
+/** Regler der Streuung (R11): m bzw. Faktor; Standard = TURMKI (R10). Die Seite baut ihre Schieberegler hieraus. */
+export const STREU_REGLER = {
+  sperrQuer: { min: 0, max: 200, standard: TURMKI.streuKugel.sperr },        // Sperr-Kugel quer zur Schusslinie
+  sperrTiefe: { min: 0, max: 200, standard: TURMKI.streuKugel.sperrTiefe },  // Lagendicke längs
+  raumZuschlag: { min: 0, max: 250, standard: TURMKI.folgen.quer[0] },       // halbe Raumbreite/-höhe = Streuung + Zuschlag
+  ziel: { min: 20, max: 300, standard: TURMKI.streuKugel.ziel },             // Zielfeuer quer = tief
+  nahMax: { min: 5, max: 60, standard: TURMKI.streuKugel.nahMax },           // Nahbereich min(nahMax, 0,10·d)
+  lagenAnteil: { min: 0.3, max: 1.2, standard: TURMKI.folgen.lagen.anteil }, // Lagenabstand = Anteil · Tempo · Flugzeit
+};
+/** Wirksamer Reglerwert: fehlt/keine Zahl → Standard, sonst auf [min, max] geklammert. */
+export function streuWert(streu, feld) {
+  const R = STREU_REGLER[feld], v = streu?.[feld];
+  return typeof v === 'number' && Number.isFinite(v) ? (v < R.min ? R.min : v > R.max ? R.max : v) : R.standard;
+}
 
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const dreieck = (u) => 1 - 4 * Math.abs(u - Math.floor(u) - 0.5); // −1 … 1 … −1, Periode 1
@@ -197,6 +216,9 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAFETTEN.map((l, i) => i).sort((a, b) => LAFETTEN[a].x - LAFETTEN[b].x || a - b);
   let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
   const fest = { gierMitte: 0, gierHalb: 0, nickMin: 0, nickMax: 0 }; // gemerkter fester Sektor
+  // Wirksame Regler (R11), je Takt aus befehl.streu gelesen — festes Objekt, keine neuen Objekte im Takt
+  const W = { sperrQuer: 0, sperrTiefe: 0, raumZuschlag: 0, ziel: 0, nahMax: 0, lagenAnteil: 0 };
+  function leseStreu(streu) { for (const f in W) W[f] = streuWert(streu, f); }
 
   function zuruecksetzen() {
     const rnd = zufall(startwert);
@@ -322,7 +344,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z; b.zuender = Math.max(ab.t, K.zuenderStrecke / v0);
     } else { b.punkt.x = z.pos.x; b.punkt.y = z.pos.y; b.punkt.z = z.pos.z; b.zuender = K.zuenderStrecke / v0; }
     const d = L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) || 1;
-    b.streuKugel = b.streuTiefe = Math.min(K.streuKugel.nahMax, K.streuKugel.nahAnteil * d);
+    b.streuKugel = b.streuTiefe = Math.min(W.nahMax, K.streuKugel.nahAnteil * d);
     b.toleranz = kugelToleranz(b.streuKugel, d, b.leuchtspur);
     b.feuer = frei;
   }
@@ -381,10 +403,13 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       const dg = winkelDiff(bG[a], s.sollGier) * Math.cos(bN[a]) * bD[a], dn = (bN[a] - s.sollNick) * bD[a], dr = bD[a] - mD;
       vg += bK[a] * dg * dg; vn += bK[a] * dn * dn; vr += bK[a] * dr * dr;
     }
-    const A = s.sollAbstand, Q = F.quer, T = F.tiefe;
+    const A = s.sollAbstand, T = F.tiefe;
+    // Regler raumZuschlag (R11): Untergrenze max(20, Zuschlag + 20) — WARUM gekoppelt: die feste Klammer 120 m verschluckte
+    // kleine Zuschläge; Standard 100 → 120–250 wie R10. Obergrenze wächst mit, falls der Zuschlag sie überholt.
+    const Z = W.raumZuschlag, qMin = Math.max(20, Z + 20), qMax = Math.max(F.quer[2], qMin);
     // WARUM Deckel in rad zusätzlich: Muster-Tempo 4·halb/Periode + Nachführen muss unter dem Richttempo bleiben
-    s.sollBreite = Math.min(klemme(Math.sqrt(vg / sw) + Q[0], Q[1], Q[2]), F.gierHalbMax * A);
-    s.sollHoehe = Math.min(klemme(Math.sqrt(vn / sw) + Q[0], Q[1], Q[2]), F.nickHalbMax * A);
+    s.sollBreite = Math.min(klemme(Math.sqrt(vg / sw) + Z, qMin, qMax), F.gierHalbMax * A);
+    s.sollHoehe = Math.min(klemme(Math.sqrt(vn / sw) + Z, qMin, qMax), F.nickHalbMax * A);
     s.sollTiefe = klemme(Math.sqrt(vr / sw) + T[0], T[1], T[2]);
     let gw = 0; for (let a = 0; a < nb; a++) if (grp[a] === g) gw += bW[a];
     s.gewicht = gw;
@@ -534,7 +559,10 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       let ex = e.x + (tx - e.x) * f, ey = e.y + (ty - e.y) * f, ez = e.z + (tz - e.z) * f;
       const el = L(ex, ey, ez) || 1; e.x = ex / el; e.y = ey / el; e.z = ez / el;
     }
-    s.lagenAbstand = klemme(LA.anteil * s.tempo * s.abstand / v0, LA.min, LA.max);
+    // Regler lagenAnteil (R11): die Klammer 120–150 m skaliert mit — WARUM: sonst bliebe der Abstand fast immer an der
+    // Klammer (0,6 · 120 m/s · 1,15 s ≈ 83 → 120 m) und der Regler wirkte nicht. Standard 0,6 → Faktor 1 wie R10.
+    const fa = W.lagenAnteil / LA.anteil;
+    s.lagenAbstand = klemme(W.lagenAnteil * s.tempo * s.abstand / v0, LA.min * fa, LA.max * fa);
     const e = s.laengs, d = s.lagenAbstand;
     // WARUM + vorlauf·v·τ: die Glättung der Mitte (τ) hinkt einer bewegten Gruppe um v·τ hinterher (Messung R10: 30 %
     // der Detonationen hinter, 15 % vor der Drohne) — die Lagen bekommen diesen Rückstand zurück und etwas Vorlauf
@@ -629,6 +657,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const R = befehl?.schirmAbstand ?? 800, folgen = befehl?.folgen !== false, S = befehl?.sektor ?? fest;
     if (modus !== letzterModus) { zielSlot.fill(-1); halt.fill(0); letzterModus = modus; }
     const v0Std = turmZustand?.[0]?.v0 ?? K.v0;
+    leseStreu(befehl?.streu);
 
     zaehl.fill(0);
     killzone(dt, ziele, turmZustand);
@@ -661,7 +690,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           // WARUM kein Feuer im Übergang: der Punkt liegt dann zwischen den Räumen — Granaten dort treffen nichts
           b.zielId = null; b.feuer = frei && !ueb[i];
           // Sättigungsraum: Sperr-Kugel quer + Lagendicke längs (R10); feste Wand bleibt eine Schale (R7, Test B)
-          b.streuKugel = folgen ? K.streuKugel.sperr : 0; b.streuTiefe = folgen ? K.streuKugel.sperrTiefe : 0;
+          b.streuKugel = folgen ? W.sperrQuer : 0; b.streuTiefe = folgen ? W.sperrTiefe : 0;
         }
       }
     } else {
@@ -711,7 +740,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           b.zielId = ziele[cur].id;
           b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z;
           b.zuender = ab.t;
-          b.streuKugel = K.streuKugel.ziel; b.streuTiefe = K.streuKugel.zielTiefe;
+          b.streuKugel = W.ziel; b.streuTiefe = W.ziel; // R11: Regler „ziel“ gilt quer und tief (Standard 140/140 wie R10)
           b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0, b.leuchtspur);
           b.feuer = frei;
           if (zaehl[cur] > statistik.maxJeZiel) statistik.maxJeZiel = zaehl[cur];
