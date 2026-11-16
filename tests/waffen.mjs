@@ -218,7 +218,7 @@ function zuenderLauf(zuender) {
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 /** Ein Turm (Nr. 1) richtet auf einen festen Punkt in Entfernung d (Nick 0,5), danach feuert er `schritte` lang.
  *  rein = true: Turmstreuung und Zünderstreuung aus (misst nur Kugel/Zünder). Liefert Detonationen + Treffer je Schritt. */
-function punktLauf({ d = 1000, streuKugel = 0, v0 = FLAK.v0, schritte = 600, rein = true, ziele = [], einSchuss = false, startwert = 11 }) {
+function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 99, v0 = FLAK.v0, schritte = 600, rein = true, ziele = [], einSchuss = false, startwert = 11 }) {
   const alt = { k: FLAK.zuenderStreuKugel, z: FLAK.zuenderStreu };
   if (rein) { FLAK.zuenderStreuKugel = 0; FLAK.zuenderStreu = 0; }
   try {
@@ -226,20 +226,28 @@ function punktLauf({ d = 1000, streuKugel = 0, v0 = FLAK.v0, schritte = 600, rei
     const befehle = leererBefehl(), t = flak.tuerme[1], l = LAFETTEN[1], b = befehle[1];
     t.v0 = v0; if (rein) t.streuung = 0;
     const p = { x: l.x, y: l.y + l.zapfen.y + d * Math.sin(0.5), z: l.z + d * Math.cos(0.5) };
-    b.punkt = p; b.toleranz = 0.002; b.zielId = 99; b.streuKugel = streuKugel;
+    b.punkt = p; b.toleranz = 0.002; b.zielId = zielId; b.streuKugel = streuKugel;
+    if (streuTiefe != null) b.streuTiefe = streuTiefe;
+    if (leuchtspur != null) b.leuchtspur = leuchtspur;
     for (let i = 0; i < 120; i++) flak.schritt(DT, befehle, ziele);
     b.zuender = Math.hypot(p.x - t.muendung.x, p.y - t.muendung.y, p.z - t.muendung.z) / v0;
     b.feuer = true;
-    const ab = [], treffer = [];
+    const ab = [], laengs = [], quer = [], streu = [], treffer = [];
+    // Schusslinie Turmmündung → p: Abweichung längs (Zünder) und quer (Winkel) getrennt messen (R10)
+    const ex = p.x - t.muendung.x, ey = p.y - t.muendung.y, ez = p.z - t.muendung.z, el = Math.hypot(ex, ey, ez);
     let schuesse = 0;
     for (let i = 0; i < schritte; i++) {
       flak.schritt(DT, befehle, ziele);
       schuesse += flak.ereignisse.schuesse.length;
       if (einSchuss && schuesse > 0) b.feuer = false;
-      for (const e of flak.ereignisse.detonationen) ab.push(Math.hypot(e.pos.x - p.x, e.pos.y - p.y, e.pos.z - p.z));
+      for (const e of flak.ereignisse.detonationen) {
+        const vx = e.pos.x - p.x, vy = e.pos.y - p.y, vz = e.pos.z - p.z, a = Math.hypot(vx, vy, vz);
+        const l = (vx * ex + vy * ey + vz * ez) / el;
+        ab.push(a); laengs.push(Math.abs(l)); quer.push(Math.sqrt(Math.max(0, a * a - l * l))); streu.push(e.streu);
+      }
       treffer.push(flak.ereignisse.treffer.map((e) => ({ id: e.zielId, s: e.schaden, det: flak.ereignisse.detonationen.length })));
     }
-    return { ab, treffer, schuesse, p, flak };
+    return { ab, laengs, quer, streu, treffer, schuesse, p, flak, el };
   } finally { FLAK.zuenderStreuKugel = alt.k; FLAK.zuenderStreu = alt.z; }
 }
 
@@ -252,11 +260,14 @@ function punktLauf({ d = 1000, streuKugel = 0, v0 = FLAK.v0, schritte = 600, rei
   zeile(`Streukugel R ${R} m: größter Abstand`, `≤ ${R + 3} m`, mx.toFixed(2) + ' m', mx <= R + 3);
   const echt = punktLauf({ streuKugel: R, schritte: 3000, rein: false });
   zeile('Streukugel mit Turm-/Zünderstreuung: Median / max', 'Info', `${median(echt.ab).toFixed(1)} / ${Math.max(...echt.ab).toFixed(1)} m`, true, false);
-  // Deckel 0,10 · d (R9): Kugel 60 m wird bei 300 m auf 30 m, bei 600 m auf 60 m begrenzt (+ 0,8 m Rohrversatz)
-  for (const [d, max] of [[300, 31], [600, 61]]) {
-    const nah = punktLauf({ d, streuKugel: 60, schritte: 1200 });
-    const mx = nah.ab.length ? Math.max(...nah.ab) : Infinity;
-    zeile(`Streukugel 60 m bei ${d} m: Deckel 0,10 · d`, `≤ ${max} m`, mx.toFixed(2) + ' m', mx <= max);
+  // Deckel quer (R10): Kugel 60 m bei 300 m → quer 0,18 · d = 54 m ohne, 0,10 · d = 30 m mit Leuchtspur (+ 0,8 m Rohrversatz);
+  // längs 0,35 · d = 105 m → die 60 m bleiben
+  for (const [leuchtspur, max] of [[false, 55], [true, 31]]) {
+    const nah = punktLauf({ d: 300, streuKugel: 60, schritte: 1200, leuchtspur });
+    const mq = nah.quer.length ? Math.max(...nah.quer) : Infinity, ml = nah.laengs.length ? Math.max(...nah.laengs) : Infinity;
+    zeile(`Kugel 60 m bei 300 m ${leuchtspur ? 'mit' : 'ohne'} Leuchtspur: größter Versatz quer / längs`, `≤ ${max} / ≤ 61 m`,
+      `${mq.toFixed(1)} / ${ml.toFixed(1)} m (${nah.flak.geschosse.gedeckelt} gedeckelt)`,
+      mq <= max && mq >= max - 6 && ml <= 61 && ml >= 55 && nah.flak.geschosse.gedeckelt === nah.schuesse);
   }
 }
 
@@ -328,6 +339,51 @@ function punktLauf({ d = 1000, streuKugel = 0, v0 = FLAK.v0, schritte = 600, rei
   zeile('Zielfeuer R 20, 800 m: Median Detonation ↔ Drohne (Mitte)', '10–25 m', m.toFixed(1) + ' m', m >= 10 && m <= 25, false);
   zeile('Zielfeuer R 20: Anteil Detonationen < 4 m', '< 5 %', (unter4 * 100).toFixed(1) + ' %', unter4 < 0.05, false);
   zeile('Zielfeuer R 20: Zeit bis 100 HP (6 Türme, ohne Panzer)', 'Info', tot > 0 ? tot.toFixed(2) + ' s' : 'nie', true, false);
+}
+
+// ---------- 16) R10: Streu-Ellipsoid in großen Räumen (Sättigungsfeuer) ----------
+// Einheitskugel gleichverteilt: |längs| hat F(a) = (3a − a³)/2 → Median 0,347, P90 0,729; Querabstand
+// F(a) = 1 − (1 − a²)^1,5 → Median 0,608, P90 0,886 (jeweils × Halbachse).
+const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN; };
+{
+  let okAlle = true;
+  const werte = [];
+  for (const d of [600, 1200, 2000]) for (const R of [150, 250]) {
+    const r = punktLauf({ d, streuKugel: R, schritte: 12000 }); // ohne Leuchtspur → quer 0,18 · d
+    const rq = Math.min(R, FLAK.deckelQuer * r.el), rt = Math.min(R, FLAK.deckelTiefe * r.el); // WARUM r.el: der Deckel misst ab der Mündung (≈ 9 m vor dem Zapfen)
+    const mq = median(r.quer), pq = quantil(r.quer, 0.9), ml = median(r.laengs), pl = quantil(r.laengs, 0.9);
+    const nah = (w, soll) => Math.abs(w - soll) <= 0.08 * soll + 1; // ±8 % + 1 m Rohrversatz
+    const ok = r.ab.length >= 1500 && nah(mq, 0.608 * rq) && nah(pq, 0.886 * rq) && nah(ml, 0.347 * rt) && nah(pl, 0.729 * rt)
+      && Math.max(...r.quer) <= rq + 1.5 && Math.max(...r.laengs) <= rt + 1.5
+      && r.streu.every((s) => Math.abs(s - Math.max(rq, rt)) < 1) && (r.flak.geschosse.gedeckelt > 0) === (rq < R || rt < R);
+    okAlle = okAlle && ok;
+    werte.push(`${d}/${R}: q ${mq.toFixed(0)}|${pq.toFixed(0)} l ${ml.toFixed(0)}|${pl.toFixed(0)} ges ${median(r.ab).toFixed(0)}|${quantil(r.ab, 0.9).toFixed(0)}${ok ? '' : ' (!)'}`);
+  }
+  zeile('Ellipsoid 600/1200/2000 m × R 150/250: Median|P90 quer, längs, gesamt (m)', 'Soll aus Deckel ±8 %', werte.join(' · '), okAlle);
+
+  // streuTiefe getrennt: quer 50, längs 300 bei 1200 m (Tiefenlage einer Sättigungszone)
+  const t = punktLauf({ d: 1200, streuKugel: 50, streuTiefe: 300, schritte: 6000 });
+  const mq = Math.max(...t.quer), ml = Math.max(...t.laengs);
+  zeile('streuKugel 50 / streuTiefe 300 bei 1200 m: größter Versatz quer / längs', '≤ 51 / ≤ 301 m, längs ≥ 270',
+    `${mq.toFixed(1)} / ${ml.toFixed(1)} m`, mq <= 51 && ml <= 301 && ml >= 270 && t.flak.geschosse.gedeckelt === 0);
+
+  // Sperrgranate mit Kugel: Zünderstreuung ±1 % statt ±8 % (Entscheidung R10/1) — Kugel 1 m, 1000 m, Turmstreuung an
+  const s = punktLauf({ d: 1000, streuKugel: 1, zielId: null, schritte: 1200, rein: false });
+  const sl = Math.max(...s.laengs);
+  zeile('Sperrgranate mit Kugel 1 m, 1000 m: größter Längsversatz (Zünder ±1 %)', '≤ 13 m (±8 % wären ~80 m)', sl.toFixed(1) + ' m', s.ab.length > 0 && sl <= 13);
+
+  // Gleichlauf mit Ellipsoid und wechselnder Leuchtspur: zwei Läufe gleich, anderer Startwert anders
+  const lauf = (startwert) => {
+    const flak = erstelleFlak({ startwert });
+    const befehle = leererBefehl();
+    befehle.forEach((b, k) => { b.punkt = { x: 200 * k - 500, y: 600, z: 1400 }; b.feuer = true; b.toleranz = 0.03; b.zielId = k % 2 ? 99 : null;
+      b.streuKugel = 180; b.streuTiefe = 300; });
+    for (let i = 0; i < 2400; i++) { befehle.forEach((b, k) => { b.leuchtspur = ((i >> 5) + k) % 3 === 0; }); flak.schritt(DT, befehle, []); }
+    return { h: flak.pruefsumme(), g: flak.geschosse.gedeckelt };
+  };
+  const g1 = lauf(21), g2 = lauf(21), g3 = lauf(22);
+  zeile('Gleichlauf Ellipsoid + Leuchtspur-Wechsel (2400 Schritte)', 'gleich, anderer Startwert anders',
+    `${g1.h} / ${g2.h} / ${g3.h} (${g1.g} gedeckelt)`, g1.h === g2.h && g1.g === g2.g && g1.h !== g3.h);
 }
 
 // ---------- Ausgabe ----------

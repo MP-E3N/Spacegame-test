@@ -9,6 +9,9 @@
 //        (Seite/Labor schalten um), fliegende behalten ihr Tempo.
 //        befehle[i].streuKugel (m, fehlt/0 = aus): jede Granate fliegt auf einen eigenen Punkt, gleichverteilt in der
 //        Kugel um befehl.punkt, Zeitzünder auf genau diesen Punkt (Runde 8, Nutzer: „Luft sättigen statt treffen“).
+//        Seit R10 ein ELLIPSOID: streuKugel = Halbachse quer zur Schusslinie, befehle[i].streuTiefe = Halbachse längs
+//        (fehlt → = streuKugel). Deckel FLAK.deckelQuer/-QuerLeucht/-Tiefe · d; jede Kürzung zählt geschosse.gedeckelt.
+//        Detonations-Ereignis trägt `streu` (m) = größere benutzte Halbachse (Grafik streut die Zusatz-Explosionen damit).
 import { zufall } from '../zufall.js';
 import { LAFETTEN } from './lafetten.js';
 
@@ -19,10 +22,15 @@ export const FLAK = {
   streuung: 0.25 * Math.PI / 180, // rad, größte Abweichung je Achse (Dreiecksverteilung); seit R8 streut v. a. die Streukugel
   zuenderMinStrecke: 60, zuenderMax: 4.0, // m bzw. s — WARUM Strecke: bei 1100 m/s wären 0,1 s schon 110 m
   zuenderStreu: 0.04,         // ±4 % Zielgranaten ohne Streukugel
-  zuenderStreuKugel: 0.01,    // ±1 % mit Streukugel (die Kugel liefert die Tiefe, Entscheidung R8/2)
-  zuenderStreuSperr: 0.08,    // ±8 % Sperrgranaten → Schirm ~120 m tief bei 800 m: einzelne Wolken davor/dahinter (Runde 7)
-  streuKugelAnteil: 0.10,     // Kugelradius höchstens 0,10 · Entfernung (≈ 5,7°) — WARUM: darüber kommt die Granate sichtbar
-                              // schief aus dem Rohr; Leuchtspur nur im Nahbereich, dort hält die KI die Kugel klein (R9)
+  zuenderStreuKugel: 0.01,    // ±1 % sobald eine Kugel gesetzt ist, auch Sperrgranaten (die Kugel liefert die Tiefe, R8/2, R10/1)
+  zuenderStreuSperr: 0.08,    // ±8 % Sperrgranaten ohne Kugel → Schirm ~120 m tief bei 800 m (Runde 7)
+  // Deckel der Streuung (R10, Entscheidung 1) — die KI liest sie von HIER (nicht doppelt führen). Anteil der Entfernung d.
+  // quer: Seitenversatz kostet Winkel am Rohr. WARUM 0,10 mit Leuchtspur: darüber fliegt die Spur sichtbar schief aus dem
+  //       Rohr (≈ 5,7°). WARUM 0,18 ohne: ohne Spur sieht niemand den Abgangswinkel (≈ 10°), die KI braucht 0,18 (Messung R10).
+  // längs: Tiefe entsteht nur über die Zünderzeit (kein Winkel) → großzügig, Tiefenstaffel in Anflugrichtung.
+  deckelQuerLeucht: 0.10,
+  deckelQuer: 0.18,
+  deckelTiefe: 0.35,
   // Annäherungszünder (R8 aus, Code bleibt): er war der eigentliche „Direkttreffer“ — zündete bei r + 12 m an jedem Ziel.
   annaeherung: false,
   naheZuender: 12,            // m über dem Zielradius
@@ -77,6 +85,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   const N = FLAK.poolGeschosse;
   const geschosse = {
     max: N, anzahlAktiv: 0, verworfen: 0,
+    gedeckelt: 0, // Schüsse, deren Streuung (quer oder längs) der Deckel gekürzt hat (R10: stumme Kürzung sichtbar machen)
+    streu: new Float32Array(N), // benutzte Streuung je Granate (m), geht ans Detonations-Ereignis
     aktiv: new Uint8Array(N), turm: new Uint8Array(N), sperr: new Uint8Array(N), // sperr 1 = Sperrgranate
     leucht: new Uint8Array(N), // 1 = Leuchtspur-Granate (beim Abschuss festgelegt)
     anzahlLeucht: 0,
@@ -89,7 +99,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   };
   const ereignisse = {
     schuesse: ereignisListe(FLAK.vorratEreignisse, () => ({ turmId: 0, rohr: 0, pos: v3(), richtung: v3() })),
-    detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.sorte[1].wirkRadius, art: 'zeit' })),
+    detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.sorte[1].wirkRadius, art: 'zeit', streu: 0 })),
     treffer: ereignisListe(FLAK.vorratEreignisse, () => ({ zielId: 0, schaden: 0, pos: v3() })),
   };
   const tuerme = lafetten.map((l) => ({
@@ -125,6 +135,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
 
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
+    geschosse.gedeckelt = 0; geschosse.streu.fill(0);
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
@@ -150,10 +161,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   }
 
   // ---------- Detonation: Schaden mit Abfall auf alle aktiven Ziele ----------
-  function detoniere(x, y, z, art, ziele, sperr) {
+  function detoniere(x, y, z, art, ziele, sperr, streu) {
     const S = FLAK.sorte[sperr], W = S.wirkRadius, V = S.vollRadius;
     const d = ereignisse.detonationen.neu();
-    d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = W; d.art = art;
+    d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = W; d.art = art; d.streu = streu;
     for (let k = 0; k < ziele.length; k++) {
       const ziel = ziele[k];
       if (!ziel.aktiv) continue;
@@ -227,11 +238,11 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
       }
       if (bestZiel >= 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
-        detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sperr[i]);
+        detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sperr[i], geschosse.streu[i]);
       } else if (--rest[i] === 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
         const b = geschosse.bruch[i]; // genauer Zündort innerhalb des letzten Schritts
-        detoniere(x0 + dx * b, y0 + dy * b, z0 + dz * b, 'zeit', ziele, geschosse.sperr[i]);
+        detoniere(x0 + dx * b, y0 + dy * b, z0 + dz * b, 'zeit', ziele, geschosse.sperr[i], geschosse.streu[i]);
       }
     }
   }
@@ -290,15 +301,25 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     const rohr = t.rohr; t.rohr ^= 1; t.abklingen = FLAK.schussAbstand; t.bereit = false; t.schuesse++;
     muendungWelt(t, rohr, tmp);
     const v0 = t.v0;
-    // Streukugel (R8): Punkt gleichverteilt in der Kugel um p — genau 3 Zufallszahlen (Richtung + Kubikwurzel-Radius).
+    // Leuchtspur VOR der Streuung festlegen: sie bestimmt den Querdeckel (R10). Der Zähler nutzt keinen Zufall.
+    let leucht = b.leuchtspur;
+    if (leucht == null) { t.leuchtZaehler += FLAK.leuchtAnteil; leucht = t.leuchtZaehler >= 1; if (leucht) t.leuchtZaehler -= 1; }
+    // Streu-Ellipsoid (R8 Kugel, R10 Ellipsoid): Punkt gleichverteilt in der Einheitskugel — genau 3 Zufallszahlen
+    // (Richtung + Kubikwurzel-Radius) —, dann längs der Schusslinie mit rt, quer mit rq gestreckt. rq = rt → alte Kugel.
     // WARUM Versatz als Winkeldifferenz auf die Rohrrichtung: der Turm richtet nur auf p (Richttempo), jede Granate
     // bekommt ihren eigenen Punkt, der Richtfehler des Turms bleibt erhalten.
     let kG = 0, kN = 0, zuender, zStreu;
     const qx0 = p.x - tmp.x, qy0 = p.y - tmp.y, qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
-    const kugel = Math.min(b.streuKugel || 0, FLAK.streuKugelAnteil * dp);
-    if (kugel > 0) {
-      const cz = 2 * t.rnd() - 1, phi = ZWEI_PI * t.rnd(), r = kugel * Math.cbrt(t.rnd()), sz = Math.sqrt(1 - cz * cz);
-      const qx = qx0 + r * sz * Math.cos(phi), qy = qy0 + r * sz * Math.sin(phi), qz = qz0 + r * cz;
+    const wunschQ = b.streuKugel || 0, wunschT = b.streuTiefe ?? wunschQ;
+    const rq = Math.min(wunschQ, (leucht ? FLAK.deckelQuerLeucht : FLAK.deckelQuer) * dp);
+    const rt = Math.min(wunschT || 0, FLAK.deckelTiefe * dp);
+    if (rq < wunschQ || rt < wunschT) geschosse.gedeckelt++;
+    geschosse.streu[i] = Math.max(rq, rt);
+    if ((rq > 0 || rt > 0) && dp > 1e-6) {
+      const cz = 2 * t.rnd() - 1, phi = ZWEI_PI * t.rnd(), r = Math.cbrt(t.rnd()), sz = Math.sqrt(1 - cz * cz);
+      const ux = r * sz * Math.cos(phi), uy = r * sz * Math.sin(phi), uz = r * cz;
+      const ex = qx0 / dp, ey = qy0 / dp, ez = qz0 / dp, l = ux * ex + uy * ey + uz * ez; // Anteil längs der Schusslinie
+      const qx = qx0 + rq * (ux - l * ex) + rt * l * ex, qy = qy0 + rq * (uy - l * ey) + rt * l * ey, qz = qz0 + rq * (uz - l * ez) + rt * l * ez;
       kG = umbruch(Math.atan2(qx, qz) - Math.atan2(qx0, qz0));
       kN = Math.atan2(qy, Math.hypot(qx, qz)) - Math.atan2(qy0, Math.hypot(qx0, qz0));
       zuender = Math.hypot(qx, qy, qz) / v0; zStreu = FLAK.zuenderStreuKugel;
@@ -313,8 +334,6 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
     geschosse.sperr[i] = b.zielId == null ? 1 : 0;
-    let leucht = b.leuchtspur;
-    if (leucht == null) { t.leuchtZaehler += FLAK.leuchtAnteil; leucht = t.leuchtZaehler >= 1; if (leucht) t.leuchtZaehler -= 1; }
     geschosse.leucht[i] = leucht ? 1 : 0;
     if (leucht) geschosse.anzahlLeucht++;
     geschosse.pos[j] = geschosse.vorPos[j] = tmp.x;
