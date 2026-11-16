@@ -36,8 +36,8 @@ export const FLAK = {
   naheZuender: 12,            // m über dem Zielradius
   scharfStrecke: 60,          // m: WARUM: kein Annäherungszünder direkt vor dem Rohr
   // Zwei Granatsorten, gewählt nach dem Befehl, je eigener Hebel (Lehre R6: ein Hebel pro Modus):
-  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 1,6 / 30 m + Splitterwolke 30 m · 0,5 s · 7 HP/s (R9-Balance).
-  //   1 SPERRGRANATE (zielId null): Flächenschaden 1 / 25 m + Splitterwolke 45 m · 0,9 s · 25 HP/s (R9-Balance).
+  //   0 ZIELGRANATE (befehl.zielId gesetzt): Flächenschaden 3 / 30 m + Splitterwolke 42 m · 0,5 s · 15 HP/s (R10-Balance).
+  //   1 SPERRGRANATE (zielId null): Flächenschaden 1,5 / 25 m + Splitterwolke 45 m · 0,9 s · 45 HP/s (R10-Balance).
   // WARUM Splitter jetzt auch im Zielfeuer: ohne Annäherungszünder liegt die Detonation im Mittel ~16 m neben dem Ziel.
   // WARUM Sperr-Splitter stärker als R7 (40 m / 0,7 s / 350): die Werte waren MIT Annäherungszünder gemessen; ohne ihn
   //        fiel der Schirm-Durchflug von 75 auf 21 HP. Mit 45 / 0,9 / 500 → 46 HP (tests/waffen.mjs 7); Labor misst nach.
@@ -51,8 +51,14 @@ export const FLAK = {
     // (Ziel 40–80), im Zielfeuer 26 (Ziel 30–80). Zielgranate 1,6/7, Sperrgranate 1/25 → Sperr 60, Ziel 44 Abschüsse.
     // WARUM die Sperrgranate so schwach: die Kästen sitzen jetzt AUF den Drohnen (Median 100 statt 260 m) — dieselbe
     // Wolke trifft viel öfter; Radien bleiben, damit die Wand sichtbar gleich groß ist.
-    { wirkRadius: 30, vollRadius: 4, schaden: 1.6, splitterRadius: 30, splitterDauer: 30, splitterDps: 7 },
-    { wirkRadius: 25, vollRadius: 6, schaden: 1, splitterRadius: 45, splitterDauer: 54, splitterDps: 25 },
+    // R10 (KI, 1100 m/s, Sättigungsräume: Sperr-Detonation Median 165 m statt 100 m, Zielkugel 140 statt 60 m): mit den
+    // R9-Zahlen fielen nur 31 (Sperr) bzw. 18 (Ziel) Drohnen in 5 min, 13–14 von 14 Vorstößen überlebten. Ziel 3 / 15 HP/s,
+    // Sperr 1,5 / 45 HP/s (≈ Faktor 1,8–2: dieselbe Feuerrate verteilt sich auf ein ~10× größeres Volumen).
+    // WARUM Ziel-Splitter 42 statt 30 m: = sichtbare Hauptwolke (42 m); die weit gestreuten Zielgranaten (Median 105 m)
+    // treffen sonst kaum — 30 m: 19–30 Abschüsse, 42 m: 31–37 (2 Startwerte); nah (Kugel ≤ 35 m) ändert sich wenig.
+    // Labor (Panzer 0,18), Startwerte 101 / 7 / 202: Sperr 54 / 47 / 46, Ziel 32 / 31 / 32 Abschüsse.
+    { wirkRadius: 30, vollRadius: 4, schaden: 3, splitterRadius: 42, splitterDauer: 30, splitterDps: 15 },
+    { wirkRadius: 25, vollRadius: 6, schaden: 1.5, splitterRadius: 45, splitterDauer: 54, splitterDps: 45 },
   ],
   poolSplitter: 96,
   // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
