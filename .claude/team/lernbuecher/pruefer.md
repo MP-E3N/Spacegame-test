@@ -17,3 +17,6 @@
   kleinem d gegenrechnen. Beide Befunde in derselben Runde behoben.
 - 2026-11-15 Runde 9 — Kein Sprung der Kastenmitte heißt nicht kein Sprung der Rohre: Neuverteilung der Türme gesondert
   messen. Wächter, die nach einer Balance gelockert werden, an die Zahlentabelle koppeln statt an eine feste Zahl nahe null.
+- 2026-11-16 Runde 10 — Neue Zustandsfelder in einem Vorrat (schirmVorrat) brauchen den Reset in zuruecksetzen(), nicht
+  nur in einem „bereit“-Startblock: setzt ein anderer Pfad (feste Wand) das Flag, bleiben alte Werte stehen. Gleichlauf
+  auch als Reset → Modus A → Modus B gegen eine frische Instanz prüfen. Gegenprobe: alten Stand per git archive ins Scratchpad.

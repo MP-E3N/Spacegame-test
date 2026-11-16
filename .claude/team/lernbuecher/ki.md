@@ -32,3 +32,7 @@
   Lehre: Messziele vor dem Bau gegeneinander überschlagen (Detonationen/s × Kugelvolumen), Gruppenstruktur messen.
   Glättung τ hinkt um v·τ → Lagen brauchen Vorlauf. Lagen-Schwenk + Nachführen + Muster summieren sich → Dauer-Tempobremse
   am Befehl statt Einzeldeckel.
+- 2026-11-16 Runde 10 Balance — Sättigungsräume verteilen dieselbe Feuerrate auf ~10× Volumen: Schaden ×1,8–2 nötig.
+  Splitterradius (bis zur sichtbaren Wolke 42 m) ist der Hebel für weit gestreutes Zielfeuer. Panzer = getrennter Hebel für
+  das Überleben der Vorstöße, nach jeder Änderung an der Zielgranate neu suchen (steil: 0,14 → 80 %, 0,22 → 15 %).
+  Methode: 2 Startwerte × 2 Betriebsarten parallel, dritter Startwert zur Bestätigung (Läufe streuen ±10 Abschüsse).

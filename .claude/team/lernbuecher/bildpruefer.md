@@ -18,3 +18,6 @@
 - 2026-11-15 Runde 9 — Abstand der Detonationen längs/quer zur Drohnengeschwindigkeit zerlegen (negativ längs = Vorhalt
   fehlt). Nach Kamerawechsel bildzeit zweimal messen (erstes Bild = Kompilierzeit). FEHLER: Zielfeuer-Kugel während des
   Nahbereichs gemessen (dort bewusst klein) → falsches Muss. Messungen nach Lage trennen (ki.lage.nahbereich).
+- 2026-11-16 Runde 10 — Sperrfeuer-Sättigung: Abstand zur nächsten Drohne plus Längsanteil getrennt nach
+  ki.lage.nahbereich messen (fern: p50 163 m, 73 % vor der Drohne). Befehlsparameter (labor.ki.befehle[].streuKugel/
+  streuTiefe) direkt lesen statt Modus aus dem HUD ableiten. Nicht unbekannte Felder als Funktion aufrufen (bricht die Messung ab).
