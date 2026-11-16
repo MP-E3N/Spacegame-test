@@ -14,7 +14,7 @@
 //        · Killzone (beide Betriebsarten): Drohne < 500 m → Eindringling (aus erst > 600 m); die 2–3 nächsten Türme
 //          schießen Zielgranaten auf ihn; solange der Nahbereich aktiv ist (+0,5 s Nachlauf) → leuchtspur für ALLE Türme.
 // LIEFERT: erstelleTurmKi({ startwert }) → { befehle, lage, schritt(dt, befehl, ziele, turmZustand) → befehle,
-//          zuruecksetzen(), statistik } · TURMKI (Werte) · STREU_REGLER · streuWert(streu, feld) · abfangen(m, pos, vel, v0, aus) (für Tests)
+//          zuruecksetzen(), statistik } · TURMKI (Werte) · STREU_REGLER · streuWert(streu, feld) · waffeWert(waffe, feld) · abfangen(m, pos, vel, v0, aus) (für Tests)
 //          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
 //          streuKugel (m, 0 = aus), streuTiefe (m) }
 //        · streuKugel / streuTiefe (R8/R10, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“, R10: „das Areal um
@@ -34,7 +34,7 @@
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
 import { zufall } from '../zufall.js';
 import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR } from '../waffen/lafetten.js';
-import { FLAK } from '../waffen/flak.js';
+import { FLAK, WAFFEN_REGLER } from '../waffen/flak.js';
 
 // Deckel der Waffe (R10, Entscheidung 1): die KI liest sie aus FLAK, statt sie doppelt zu führen (· Entfernung ab Mündung).
 export const DECKEL = { querHell: FLAK.deckelQuerLeucht, querDunkel: FLAK.deckelQuer, laengs: FLAK.deckelTiefe };
@@ -139,12 +139,19 @@ export function streuWert(streu, feld) {
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const dreieck = (u) => 1 - 4 * Math.abs(u - Math.floor(u) - 0.5); // −1 … 1 … −1, Periode 1
 const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
-/** Querdeckel der Waffe (Anteil der Entfernung): mit Leuchtspur 0,10, ohne 0,18 (R10, Entscheidung 1). */
-export const querDeckel = (leucht) => (leucht ? DECKEL.querHell : DECKEL.querDunkel);
+/** Querdeckel der Waffe (Anteil der Entfernung): mit Leuchtspur 0,10, ohne der eingestellte (Standard 0,18; R10/R11). */
+export const querDeckel = (leucht, dunkel = DECKEL.querDunkel) => (leucht ? DECKEL.querHell : dunkel);
+/** Wirksamer Waffen-Regler wie flak.einstellen(): Zahl → in [min, max] aus WAFFEN_REGLER, sonst Standard. WARUM hier
+ *  nachgebildet (Befund Prüfer R11): die Toleranz muss denselben Deckel nehmen wie die Waffe — mit festem 0,18 feuerte der
+ *  Turm bei Regler 0,10 bis 140 m neben den Punkt, die Granate streute nur noch 100 m (bis ~240 m daneben). */
+export function waffeWert(waffe, feld) {
+  const R = WAFFEN_REGLER[feld], w = waffe ? waffe[feld] : undefined;
+  return Number.isFinite(w) ? Math.min(R.max, Math.max(R.min, w)) : R.standard;
+}
 /** Feuer-Spielraum (rad) zur Streukugel in Entfernung d: min(max(Kugel, 8 m), Querdeckel·d) / d, mindestens 0,008 rad.
  *  WARUM auch das 8-m-Mindestmaß unter dem Deckel: sonst feuert der Turm unter 160 m weiter neben den Punkt, als die
  *  Kugel der Waffe reicht (Befund Prüfer R8: bei 60 m 7,6° statt höchstens 2,9°). */
-const kugelToleranz = (kugel, d, leucht) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), querDeckel(leucht) * d) / d, TURMKI.toleranzRadMin);
+const kugelToleranz = (kugel, d, leucht, dunkel) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), querDeckel(leucht, dunkel) * d) / d, TURMKI.toleranzRadMin);
 const ZWEI_PI = 2 * Math.PI;
 // Höchstzahl der Räume (Vorrat; TURMKI.folgen.maxKaesten wählt, wie viele genutzt werden)
 const MAXK = 6;
@@ -219,6 +226,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   // Wirksame Regler (R11), je Takt aus befehl.streu gelesen — festes Objekt, keine neuen Objekte im Takt
   const W = { sperrQuer: 0, sperrTiefe: 0, raumZuschlag: 0, ziel: 0, nahMax: 0, lagenAnteil: 0 };
   function leseStreu(streu) { for (const f in W) W[f] = streuWert(streu, f); }
+  let deckelDunkel = DECKEL.querDunkel; // wirksamer Querdeckel ohne Leuchtspur (befehl.waffe, R11), je Takt gelesen
 
   function zuruecksetzen() {
     const rnd = zufall(startwert);
@@ -345,7 +353,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     } else { b.punkt.x = z.pos.x; b.punkt.y = z.pos.y; b.punkt.z = z.pos.z; b.zuender = K.zuenderStrecke / v0; }
     const d = L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) || 1;
     b.streuKugel = b.streuTiefe = Math.min(W.nahMax, K.streuKugel.nahAnteil * d);
-    b.toleranz = kugelToleranz(b.streuKugel, d, b.leuchtspur);
+    b.toleranz = kugelToleranz(b.streuKugel, d, b.leuchtspur, deckelDunkel);
     b.feuer = frei;
   }
 
@@ -657,7 +665,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const R = befehl?.schirmAbstand ?? 800, folgen = befehl?.folgen !== false, S = befehl?.sektor ?? fest;
     if (modus !== letzterModus) { zielSlot.fill(-1); halt.fill(0); letzterModus = modus; }
     const v0Std = turmZustand?.[0]?.v0 ?? K.v0;
-    leseStreu(befehl?.streu);
+    leseStreu(befehl?.streu); deckelDunkel = waffeWert(befehl?.waffe, 'deckelQuer');
 
     zaehl.fill(0);
     killzone(dt, ziele, turmZustand);
@@ -741,7 +749,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z;
           b.zuender = ab.t;
           b.streuKugel = W.ziel; b.streuTiefe = W.ziel; // R11: Regler „ziel“ gilt quer und tief (Standard 140/140 wie R10)
-          b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0, b.leuchtspur);
+          b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0, b.leuchtspur, deckelDunkel);
           b.feuer = frei;
           if (zaehl[cur] > statistik.maxJeZiel) statistik.maxJeZiel = zaehl[cur];
         } else {
