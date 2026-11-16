@@ -5,7 +5,9 @@
 //        Sim-Schritt und werden deshalb nach JEDEM Schritt an die Grafik gegeben (grafik.nachSchritt).
 import * as THREE from 'three';
 import { erstelleRenderer } from '../grafik/renderer.js';
-import { erstelleFlakGrafik } from '../grafik/waffen/flakgrafik.js';
+import { erstelleFlakGrafik, GRAFIK_REGLER } from '../grafik/waffen/flakgrafik.js';
+import { STREU_REGLER } from '../sim/ki/turmziel.js';
+import { erstelleReglerfeld } from './regler.js';
 import { erstelleFlakLabor } from '../sim/flaklabor.js';
 import { STANDARD_SEKTOR } from '../sim/waffen/lafetten.js';
 import { erstellePruefstand } from './pruefstand.js';
@@ -34,7 +36,9 @@ const drohnenGrafik = erstelleDrohnenGrafik(bild.scene, 16);
 const labor = erstelleFlakLabor();
 // folgen (Runde 7, Nutzerwunsch): Flak-Schirm zieht mit den Gegnern mit; +/− setzt einen festen Abstand (folgen aus), F schaltet um.
 // v0 (Runde 8): gilt für neu abgefeuerte Granaten; die KI rechnet den Vorhalt mit dem v0 der Türme.
-const befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, v0: V0_START, sektor: { ...STANDARD_SEKTOR } };
+// streu (Runde 11): Schieberegler für die Streuung — Standardwerte aus der KI-Tabelle (eine Quelle), Sim liest sie je Takt.
+const befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, v0: V0_START, sektor: { ...STANDARD_SEKTOR },
+  streu: Object.fromEntries(Object.entries(STREU_REGLER).map(([k, r]) => [k, r.standard])) };
 
 // ---------------- Kamera ----------------
 // batterie: steht hinter dem Prüfstand, Maus = umsehen, Rad = Zoom (Brennweite).
@@ -92,7 +96,7 @@ addEventListener('wheel', (e) => { if (e.target?.id === 'leinwand') maus.rad += 
 const $ = (id) => document.getElementById(id);
 const el = { modus: $('modus'), feuer: $('feuer'), schirm: $('schirm'), granaten: $('granaten'), wolken: $('wolken'), schussrate: $('schussrate'),
   treffer: $('treffer'), abschuesse: $('abschuesse'), nah: $('nahbereich'), spuren: $('spuren'), bildzeit: $('bildzeit'), meldung: $('meldung'), bedienung: $('bedienung'), bedienungAuf: $('bedienung-auf'),
-  kFeuer: $('k-feuer'), kSperr: $('k-sperr'), kZiel: $('k-ziel'), kFolgen: $('k-folgen'), kPause: $('k-pause'), kKamera: $('k-kamera'), kV0: $('k-v0') };
+  kFeuer: $('k-feuer'), kSperr: $('k-sperr'), kZiel: $('k-ziel'), kFolgen: $('k-folgen'), kPause: $('k-pause'), kRegler: $('k-regler'), kKamera: $('k-kamera'), kV0: $('k-v0') };
 // Stufen-Knöpfe der Mündungsgeschwindigkeit
 const v0Knoepfe = V0_STUFEN.map((s) => {
   const k = document.createElement('button');
@@ -101,6 +105,52 @@ const v0Knoepfe = V0_STUFEN.map((s) => {
   el.kV0.appendChild(k);
   return k;
 });
+// ---------------- Reglerfeld (Runde 11) ----------------
+// Nutzer: „Schieberegler … mit Werten, damit wir diese als Konfig nehmen können“. Bereiche/Standard kommen aus
+// STREU_REGLER (KI) und GRAFIK_REGLER (Grafik); hier stehen nur Anzeigename, Schrittweite, Einheit, Erklärung.
+const R_NAMEN = {
+  sperrQuer: ['Sperrfeuer: Streuung quer', 5, 'm', 'Radius quer zur Schusslinie um jeden Musterpunkt'],
+  sperrTiefe: ['Sperrfeuer: Lagendicke', 5, 'm', 'Streuung längs der Schusslinie (Tiefe jeder Lage)'],
+  raumZuschlag: ['Sperrfeuer: Raumgröße', 5, 'm', 'Zuschlag zur Gruppenstreuung → halbe Breite/Höhe des Raums'],
+  lagenAnteil: ['Sperrfeuer: Lagenabstand', 0.05, '×', 'Abstand der 3 Tiefenlagen (vor / auf / hinter)'],
+  ziel: ['Zielfeuer: Streuung', 5, 'm', 'Ellipsoid um den Vorhaltepunkt (quer = tief)'],
+  nahMax: ['Nahbereich: Streuung max.', 1, 'm', 'Obergrenze unter 500 m (min mit 0,10 · Entfernung)'],
+  fuellen: ['Füll-Flak (nur Optik)', 0.05, '×', 'Rein visuelle Wolken zwischen den Detonationen und in den Räumen'],
+  zusatzAnzahl: ['Zusatz-Explosionen', 1, '', 'Visuelle Explosionen je Detonation'],
+  zusatzWeite: ['Zusatz-Explosionen: Weite', 0.05, '×', 'Versatz der Zusatz-Explosionen'],
+  explosionDauer: ['Explosion: Dauer (Glut)', 0.05, '×', 'Wie lange der Glutkern leuchtet'],
+  lebenFaktor: ['Rauch: Lebensdauer', 0.05, '×', 'Wie lange die Rauchwolken stehen'],
+  rauchGroesse: ['Rauch: Größe', 0.05, '×', 'Größe der Rauchwolken'],
+  rauchDeckkraft: ['Rauch: Deckkraft', 0.05, '', 'Wie dicht der Rauch ist'],
+};
+const eintraegeAus = (tabelle) => Object.entries(tabelle).map(([feld, r]) => {
+  const [name, schritt, einheit, hilfe] = R_NAMEN[feld] ?? [feld, (r.max - r.min) / 100, '', ''];
+  return { feld, name, min: r.min, max: r.max, schritt, einheit, hilfe };
+});
+const reglerfeld = erstelleReglerfeld({
+  wurzel: document.getElementById('regler-gruppen'),
+  gruppen: [
+    { titel: 'Streuung (Simulation)', schluessel: 'streu', ziel: () => befehl.streu, eintraege: eintraegeAus(STREU_REGLER) },
+    { titel: 'Optik (nur Grafik)', schluessel: 'grafik', ziel: () => grafik.regler, eintraege: eintraegeAus(GRAFIK_REGLER) },
+  ],
+});
+document.getElementById('regler-standard').addEventListener('click', (e) => { reglerfeld.standard(); e.currentTarget.blur(); meldung('Regler auf Standard (Runde 10)'); });
+document.getElementById('regler-kopieren').addEventListener('click', (e) => {
+  const text = JSON.stringify({ ...reglerfeld.konfig(), v0: befehl.v0 }, null, 2);
+  const feld = document.getElementById('regler-konfig');
+  feld.value = text; feld.classList.remove('versteckt');
+  navigator.clipboard?.writeText(text).then(() => meldung('Konfig in die Zwischenablage kopiert'), () => meldung('Konfig steht unten im Feld — bitte selbst kopieren'));
+  e.currentTarget.blur();
+});
+const reglerInfo = document.getElementById('regler-info');
+/** Kennzahlen unter den Reglern: Vorrat, gedeckelte Granaten (Waffen-Deckel kürzt die Streuung), verworfene Füllwolken. */
+function reglerZahlen() {
+  const z = grafik.zaehler, g = labor.flak.geschosse;
+  const anteil = labor.zaehler.schuesse ? Math.round((100 * (g.gedeckelt ?? 0)) / labor.zaehler.schuesse) : 0;
+  reglerInfo.textContent = 'Wolken ' + (z.belegt ?? z.wolken) + ' / ' + (grafik.maxWolken ?? '–') + ' · gedeckelt ' + anteil + ' % · Füllung verworfen '
+    + (z.fuellVerworfen ?? 0) + ' · überschrieben ' + (z.ueberschrieben ?? 0) + ' · Balance gilt für die Standardwerte';
+}
+
 /** Knopf-Zustände (an/aus) und Beschriftungen nachziehen. */
 function knoepfe() {
   el.kFeuer.classList.toggle('an', befehl.feuerFrei);
@@ -110,6 +160,7 @@ function knoepfe() {
   el.kFolgen.classList.toggle('an', befehl.folgen);
   el.kFolgen.lastChild.textContent = befehl.folgen ? 'folgt den Zielen' : 'fest (F = wieder folgen)';
   el.kPause.classList.toggle('an', pause);
+  el.kRegler.classList.toggle('an', !document.getElementById('regler').classList.contains('versteckt'));
   el.kKamera.lastChild.textContent = kam.modus === 'batterie' ? 'Kamera Prüfstand (→ Übersicht)' : 'Kamera Übersicht (→ Prüfstand)';
   V0_STUFEN.forEach((s, i) => v0Knoepfe[i].classList.toggle('an', s.v === befehl.v0));
 }
@@ -125,7 +176,7 @@ function hud(dt) {
   bildMittel += (dt * 1000 - bildMittel) * 0.05;
   if ((hudUhr += dt) < 0.2) return;
   hudUhr = 0;
-  knoepfe();
+  knoepfe(); reglerZahlen();
   setze('modus', befehl.modus === 'sperrfeuer' ? 'SPERRFEUER' : 'ZIELFEUER');
   setze('feuer', befehl.feuerFrei ? 'FEUER FREI' : 'FEUER HALT');
   el.feuer.classList.toggle('halt', !befehl.feuerFrei);
@@ -189,6 +240,7 @@ function bedienen() {
     setzeV0(V0_STUFEN[(i + 1) % V0_STUFEN.length]);
   }
   for (const s of V0_STUFEN) if (einmal.has('V0:' + s.v)) setzeV0(s);
+  if (einmal.has('KeyR')) document.getElementById('regler').classList.toggle('versteckt');
   if (einmal.has('KeyH')) { el.bedienung.classList.toggle('versteckt'); el.bedienungAuf.classList.toggle('versteckt'); }
   if (einmal.size) hudUhr = 1; // Knöpfe sofort nachziehen
   einmal.clear();
@@ -220,7 +272,7 @@ function frame(jetzt) {
   }
   const alpha = pause ? 1 : rest / SCHRITT;
   kameraSetzen(maus); maus.dx = maus.dy = maus.rad = 0;
-  grafik.aktualisiere(labor.flak, alpha, pause ? 0 : dt, zeit);
+  grafik.aktualisiere(labor.flak, alpha, pause ? 0 : dt, zeit, labor.ki.lage);
   drohnenGrafik.aktualisiere(labor.drohnen.ziele, alpha, zeit, bild.camera);
   bild.zeichnen();
   hud(dt);
@@ -239,7 +291,7 @@ window.spiel = {
     for (let i = 0; i < n; i++) {
       simSchritt(); zeit += SCHRITT;
       kameraSetzen({ dx: 0, dy: 0, rad: 0 });
-      grafik.aktualisiere(labor.flak, 1, SCHRITT, zeit);
+      grafik.aktualisiere(labor.flak, 1, SCHRITT, zeit, labor.ki.lage);
       drohnenGrafik.aktualisiere(labor.drohnen.ziele, 1, zeit, bild.camera);
     }
     bild.zeichnen(); hud(SCHRITT * n);
@@ -249,6 +301,8 @@ window.spiel = {
   kamera(name) { kam.modus = name; return name; },
   /** Taste/Knopf auslösen wie vom Nutzer (Code wie KeyboardEvent.code oder 'V0:1000'); wirkt beim nächsten bilder()/Bild. */
   taste(code) { einmal.add(code); return code; },
+  /** Reglerfeld: konfig() lesen, setze({ streu: {…}, grafik: {…} }), standard(). */
+  regler: reglerfeld,
   pause(an = true) { pause = an; return pause; },
   /** Bildzeit messen: n Bilder direkt hintereinander zeichnen (Median/Max ms). */
   bildzeit(n = 60) {
