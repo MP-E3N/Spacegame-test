@@ -2,7 +2,9 @@
 //        Wechsel feuern, Streuung mit festem Startwert, Streukugel je Granate (Runde 8), Geschoss-Pool, Zeitzünder
 //        (Annäherungszünder abschaltbar), Flächenschaden + Splitterwolke an ALLEN Zielen im Wirkradius.
 // LIEFERT: FLAK (Zahlen) · erstelleFlak({ startwert, lafetten }) → { tuerme, geschosse, splitter, ereignisse, schritt(dt, befehle, ziele),
-//          zuruecksetzen(), pruefsumme() } — Felder siehe Protokoll Runde 6, Entscheidung 3.
+//          zuruecksetzen(), pruefsumme(), einstellen(waffe), einstellung } — Felder siehe Protokoll Runde 6, Entscheidung 3.
+//          WAFFEN_REGLER (Export, R11): { deckelQuer, deckelTiefe: { min, max, standard, schritt, text } } — die Seite setzt
+//          befehl.waffe, flaklabor.js ruft je Takt flak.einstellen(befehl.waffe) (fehlt/NaN → Standard aus FLAK, geklemmt).
 // REGEL: fester Schritt 1/60 s, kein Math.random (zufall je Turm), keine neuen Objekte im Schritt (Pools, Ereignis-Vorrat).
 //        Winkel wie turm.js: gier 0 = Rohr nach Welt +Z, gier > 0 zu +X; nick > 0 = nach oben (Turm-Rahmen = Welt-Rahmen).
 //        Die HP zieht das Drohnen-Modul ab — hier entstehen nur Ereignisse. Neue Granaten fliegen mit turm.v0
@@ -69,6 +71,15 @@ export const FLAK = {
   leuchtAnteil: 0,
   poolGeschosse: 256,
   vorratEreignisse: 128,
+};
+
+// Regler der Waffe (R11, Nutzer: „die Area frei vergrößern“). Nur der Deckel OHNE Leuchtspur und der Längsdeckel —
+// WARUM nicht deckelQuerLeucht: die Leuchtspur muss gerade aus dem Rohr kommen (0,10 · d bleibt fest).
+// WARUM höchstens 0,6 quer (≈ 31°) / 0,8 längs: darüber schießt der Turm sichtbar in eine andere Richtung bzw. zündet kurz
+// vor dem Rohr (der Mindestzünder 60 m fängt das ab, sieht aber wie ein Fehlschuss aus).
+export const WAFFEN_REGLER = {
+  deckelQuer:  { min: 0.10, max: 0.60, standard: FLAK.deckelQuer,  schritt: 0.01, text: 'Deckel quer ohne Leuchtspur (× Entfernung)' },
+  deckelTiefe: { min: 0.10, max: 0.80, standard: FLAK.deckelTiefe, schritt: 0.01, text: 'Deckel längs (× Entfernung)' },
 };
 
 const ZWEI_PI = Math.PI * 2;
@@ -138,10 +149,21 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     return m;
   }
   const MITTE = []; // Mitte zwischen den Rohren je Lafette (einmal angelegt)
+  // Eingestellte Deckel (R11). WARUM an der Instanz statt in FLAK: zwei Flak-Instanzen (Tests, später Koop) dürfen sich nicht
+  // gegenseitig umstellen; ohne einstellen() gelten die FLAK-Werte (bitgleich zu R10).
+  const einstellung = { deckelQuer: FLAK.deckelQuer, deckelTiefe: FLAK.deckelTiefe };
+  /** Regler übernehmen (je Takt erlaubt, keine neuen Objekte): fehlt/NaN → Standard, sonst in [min, max] geklemmt. */
+  function einstellen(waffe) {
+    for (const k in WAFFEN_REGLER) {
+      const R = WAFFEN_REGLER[k], w = waffe ? waffe[k] : undefined;
+      einstellung[k] = Number.isFinite(w) ? Math.min(R.max, Math.max(R.min, w)) : R.standard;
+    }
+  }
 
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
     geschosse.gedeckelt = 0; geschosse.streu.fill(0);
+    einstellung.deckelQuer = FLAK.deckelQuer; einstellung.deckelTiefe = FLAK.deckelTiefe; // Umschalter mit zurücksetzen (Lehre R8)
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
@@ -317,8 +339,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     let kG = 0, kN = 0, zuender, zStreu;
     const qx0 = p.x - tmp.x, qy0 = p.y - tmp.y, qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
     const wunschQ = b.streuKugel || 0, wunschT = b.streuTiefe ?? wunschQ;
-    const rq = Math.min(wunschQ, (leucht ? FLAK.deckelQuerLeucht : FLAK.deckelQuer) * dp);
-    const rt = Math.min(wunschT || 0, FLAK.deckelTiefe * dp);
+    const rq = Math.min(wunschQ, (leucht ? FLAK.deckelQuerLeucht : einstellung.deckelQuer) * dp);
+    const rt = Math.min(wunschT || 0, einstellung.deckelTiefe * dp);
     if (rq < wunschQ || rt < wunschT) geschosse.gedeckelt++;
     geschosse.streu[i] = Math.max(rq, rt);
     if ((rq > 0 || rt > 0) && dp > 1e-6) {
@@ -376,5 +398,5 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   }
 
   zuruecksetzen();
-  return { tuerme, geschosse, splitter, ereignisse, schritt, zuruecksetzen, pruefsumme, get schrittNr() { return schrittNr; } };
+  return { tuerme, geschosse, splitter, ereignisse, schritt, zuruecksetzen, pruefsumme, einstellen, einstellung, get schrittNr() { return schrittNr; } };
 }
