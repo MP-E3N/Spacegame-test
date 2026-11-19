@@ -111,6 +111,7 @@ const v0Knoepfe = V0_STUFEN.map((s) => {
 // Nutzer: „Schieberegler … mit Werten, damit wir diese als Konfig nehmen können“. Bereiche/Standard kommen aus
 // STREU_REGLER (KI) und GRAFIK_REGLER (Grafik); hier stehen nur Anzeigename, Schrittweite, Einheit, Erklärung.
 const R_NAMEN = {
+  faktor: ['Streuung gesamt ×', 0.1, '×', 'Vergrößert alle Streuungen und Räume gemeinsam (Sperr- und Zielfeuer, nicht den Nahbereich)'],
   sperrQuer: ['Sperrfeuer: Streuung quer', 5, 'm', 'Radius quer zur Schusslinie um jeden Musterpunkt'],
   sperrTiefe: ['Sperrfeuer: Lagendicke', 5, 'm', 'Streuung längs der Schusslinie (Tiefe jeder Lage)'],
   raumZuschlag: ['Sperrfeuer: Raumgröße', 5, 'm', 'Zuschlag zur Gruppenstreuung → halbe Breite/Höhe des Raums'],
@@ -127,7 +128,8 @@ const R_NAMEN = {
   rauchGroesse: ['Rauch: Größe', 0.05, '×', 'Größe der Rauchwolken'],
   rauchDeckkraft: ['Rauch: Deckkraft', 0.05, '', 'Wie dicht der Rauch ist'],
 };
-const eintraegeAus = (tabelle) => Object.entries(tabelle).map(([feld, r]) => {
+// Gesamtregler (Runde 12) zuerst, dann die Einzelregler in Tabellen-Reihenfolge
+const eintraegeAus = (tabelle) => Object.entries(tabelle).sort(([a], [b]) => (b === 'faktor') - (a === 'faktor')).map(([feld, r]) => {
   const [name, schritt, einheit, hilfe] = R_NAMEN[feld] ?? [feld, (r.max - r.min) / 100, '', ''];
   return { feld, name, min: r.min, max: r.max, schritt, einheit, hilfe };
 });
