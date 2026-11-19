@@ -46,7 +46,11 @@ export const DROHNEN = {
     // R10 (Zielgranate 3 / 42 m / 15, Sperrgranate 1,5 / 45, 1100 m/s, Startwerte 101 / 7): 0,14 → Sperr 79 / 80 %,
     // Ziel 64 / 86 %; 0,16 → 64 / 43 %, 64 / 64 %; 0,18 → Sperr 50 / 36 %, Ziel 43 / 43 % (Startwert 202: 43 / 33 %);
     // 0,22 → 21 / 14 %, 7 / 21 %. WARUM tiefer als R9: die Zielgranate (auch im Nahbereich) trifft jetzt fast doppelt so hart.
-    panzer: 0.18,
+    // R12 (Zielgranate 5,5 / 42 m / 18, Sperrgranate 1,5 / 60 m / 90, Räume 270 m, 1100 m/s, Startwerte 101 / 7 / 202):
+    // 0,13 → Sperr 64 / 64 / 50 %, Ziel 36 / 50 / 57 %; 0,14 → Sperr 20 / 29 / 29 %, Ziel 33 / 36 / 53 %;
+    // 0,16 (Zielgranate 4,5) → Sperr 43 / 29 / 21 %. WARUM 0,13: der Rohschaden je Vorstoß ist eng verteilt (Lehre R7) —
+    // ab 0,14 sterben die Vorstöße im Sperrfeuer schon unter 30 %; Ziel-Abschüsse liegen dafür 4–8 unter 30.
+    panzer: 0.13,
     weichMin: 230, hoeheWeich: 110,   // im Vorstoß: weiche Grenzen tiefer, harte Klammer bleibt 200 m / 80 m
   },
   atmen: { mitte: 1200, hub: 300, periode: 60 }, // Kreis-/Schlangen-Mitte pendelt 900 ↔ 1500 m
