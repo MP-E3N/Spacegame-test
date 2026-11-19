@@ -7,6 +7,7 @@
 //   9) Leuchtspur nur auf Befehl (ohne → 0, mit → alle) · 10) Mindest-Zeitzünder 60 m, Zünder wirkt bei 150 m (Runde 7/8).
 //   Runde 8: 11) Streukugel gleichverteilt (Median 0,79 R) · 12) R = 0 → Detonation am Punkt bei jeder v0-Stufe
 //   13) Flächenschaden an zwei Drohnen, abfallend · 14) v0-Wechsel im Flug · 15) Zielfeuer mit Streukugel gegen Flieger.
+//   Runde 10–12: 16) Ellipsoid · 17) Deckel-Regler · 18) Sperr-Schutz versetzter Granaten, keine Detonation vor der Batterie.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
 import { erstelleFlak, FLAK, WAFFEN_REGLER } from '../src/sim/waffen/flak.js';
@@ -247,7 +248,7 @@ function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 
     for (let i = 0; i < 120; i++) flak.schritt(DT, befehle, ziele);
     b.zuender = Math.hypot(p.x - t.muendung.x, p.y - t.muendung.y, p.z - t.muendung.z) / v0;
     b.feuer = true;
-    const ab = [], laengs = [], quer = [], streu = [], treffer = [];
+    const ab = [], laengs = [], laengsVz = [], quer = [], streu = [], treffer = []; // laengsVz: mit Vorzeichen, > 0 = hinter dem Punkt (R12)
     // Schusslinie Turmmündung → p: Abweichung längs (Zünder) und quer (Winkel) getrennt messen (R10)
     const ex = p.x - t.muendung.x, ey = p.y - t.muendung.y, ez = p.z - t.muendung.z, el = Math.hypot(ex, ey, ez);
     let schuesse = 0;
@@ -258,11 +259,11 @@ function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 
       for (const e of flak.ereignisse.detonationen) {
         const vx = e.pos.x - p.x, vy = e.pos.y - p.y, vz = e.pos.z - p.z, a = Math.hypot(vx, vy, vz);
         const l = (vx * ex + vy * ey + vz * ez) / el;
-        ab.push(a); laengs.push(Math.abs(l)); quer.push(Math.sqrt(Math.max(0, a * a - l * l))); streu.push(e.streu);
+        ab.push(a); laengs.push(Math.abs(l)); laengsVz.push(l); quer.push(Math.sqrt(Math.max(0, a * a - l * l))); streu.push(e.streu);
       }
       treffer.push(flak.ereignisse.treffer.map((e) => ({ id: e.zielId, s: e.schaden, det: flak.ereignisse.detonationen.length })));
     }
-    return { ab, laengs, quer, streu, treffer, schuesse, p, flak, el };
+    return { ab, laengs, laengsVz, quer, streu, treffer, schuesse, p, flak, el };
   } finally { FLAK.zuenderStreuKugel = alt.k; FLAK.zuenderStreu = alt.z; }
 }
 
@@ -275,14 +276,16 @@ function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 
   zeile(`Streukugel R ${R} m: größter Abstand`, `≤ ${R + 3} m`, mx.toFixed(2) + ' m', mx <= R + 3);
   const echt = punktLauf({ streuKugel: R, schritte: 3000, rein: false });
   zeile('Streukugel mit Turm-/Zünderstreuung: Median / max', 'Info', `${median(echt.ab).toFixed(1)} / ${Math.max(...echt.ab).toFixed(1)} m`, true, false);
-  // Deckel quer (R10): Kugel 60 m bei 300 m → quer 0,18 · d = 54 m ohne, 0,10 · d = 30 m mit Leuchtspur (+ 0,8 m Rohrversatz);
-  // längs 0,35 · d = 105 m → die 60 m bleiben
-  for (const [leuchtspur, max] of [[false, 55], [true, 31]]) {
-    const nah = punktLauf({ d: 300, streuKugel: 60, schritte: 1200, leuchtspur });
+  // Deckel quer (R10, Werte R12): mit Leuchtspur Kugel 60 m bei 300 m → quer 0,10 · d ≈ 30 m, längs bleiben 60 m.
+  // Ohne Leuchtspur Kugel 250 m bei 300 m → quer deckelQuer · d (0,60 → ≈ 175 m), längs deckelTiefe · d (0,80 → ≈ 233 m).
+  // WARUM die Sollwerte aus FLAK und el: Deckel messen ab der Mündung (Lehre R10), Standard darf sich ändern.
+  for (const [leuchtspur, R] of [[false, 250], [true, 60]]) {
+    const nah = punktLauf({ d: 300, streuKugel: R, schritte: 3000, leuchtspur });
     const mq = nah.quer.length ? Math.max(...nah.quer) : Infinity, ml = nah.laengs.length ? Math.max(...nah.laengs) : Infinity;
-    zeile(`Kugel 60 m bei 300 m ${leuchtspur ? 'mit' : 'ohne'} Leuchtspur: größter Versatz quer / längs`, `≤ ${max} / ≤ 61 m`,
+    const sq = (leuchtspur ? FLAK.deckelQuerLeucht : FLAK.deckelQuer) * nah.el, sl = Math.min(R, FLAK.deckelTiefe * nah.el);
+    zeile(`Kugel ${R} m bei 300 m ${leuchtspur ? 'mit' : 'ohne'} Leuchtspur: größter Versatz quer / längs`, `≈ ${sq.toFixed(0)} / ≈ ${sl.toFixed(0)} m`,
       `${mq.toFixed(1)} / ${ml.toFixed(1)} m (${nah.flak.geschosse.gedeckelt} gedeckelt)`,
-      mq <= max && mq >= max - 6 && ml <= 61 && ml >= 55 && nah.flak.geschosse.gedeckelt === nah.schuesse);
+      mq <= sq + 1.5 && mq >= sq - 8 && ml <= sl + 1.5 && ml >= sl - 0.08 * sl && nah.flak.geschosse.gedeckelt === nah.schuesse);
   }
 }
 
@@ -423,10 +426,12 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
   const lauf = (modus) => {
     const flak = erstelleFlak({ startwert: 31 });
     const befehle = leererBefehl();
-    befehle.forEach((b, k) => { b.punkt = { x: 200 * k - 500, y: 600, z: 1400 }; b.feuer = true; b.toleranz = 0.03; b.zielId = null; b.streuKugel = 300; b.streuTiefe = 500; });
+    // WARUM so große Kugeln (R12): bei ~1550 m deckelt der Standard (0,60 / 0,80) erst ab ~930 / ~1240 m — der Wechsel auf
+    // die Obergrenzen muss die Kürzung sichtbar senken.
+    befehle.forEach((b, k) => { b.punkt = { x: 200 * k - 500, y: 600, z: 1400 }; b.feuer = true; b.toleranz = 0.03; b.zielId = null; b.streuKugel = 1000; b.streuTiefe = 1300; });
     for (let i = 0; i < 2400; i++) {
       if (modus === 'leer') flak.einstellen(undefined);
-      if (modus === 'wechsel') flak.einstellen(i < 1200 ? undefined : { deckelQuer: 0.45, deckelTiefe: 0.6 });
+      if (modus === 'wechsel') flak.einstellen(i < 1200 ? undefined : { deckelQuer: WAFFEN_REGLER.deckelQuer.max, deckelTiefe: WAFFEN_REGLER.deckelTiefe.max });
       flak.schritt(DT, befehle, []);
     }
     return { h: flak.pruefsumme(), g: flak.geschosse.gedeckelt };
@@ -435,6 +440,50 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
   zeile('Gleichlauf Deckel-Regler: ohne = Standard, Wechsel in 2 Läufen gleich, Wechsel wirkt', 'gleich / gleich / anders',
     `${roh.h} / ${leer.h} · ${w1.h} / ${w2.h} (gedeckelt ${roh.g} → ${w1.g})`,
     roh.h === leer.h && roh.g === leer.g && w1.h === w2.h && w1.h !== roh.h && w1.g < roh.g);
+}
+
+// ---------- 18) R12: Sperr-Schutz der versetzten Granaten, keine Detonation direkt vor der Batterie ----------
+{
+  // Turm 4 knapp über der Sperre nach +Z (Turm 1 steht davor), Kugel 600 m bei 1000 m: der Versatz drückt viele Granaten
+  // nach unten — keine darf unter den Mindest-Nick der Sperrzone fliegen (geprüft an der Abgangsrichtung).
+  const flak = erstelleFlak({ startwert: 12 }), befehle = leererBefehl(), t = flak.tuerme[4], l = LAFETTEN[4], b = befehle[4];
+  const zone = t.sperrzonen.find((z) => Math.abs(z.gier) < 0.2);
+  const n0 = (zone ? zone.nickMin : 0) + 0.04;
+  b.punkt = { x: l.x, y: l.y + l.zapfen.y + 1000 * Math.sin(n0), z: l.z + 1000 * Math.cos(n0) };
+  b.feuer = true; b.toleranz = 0.01; b.zielId = 99; b.streuKugel = 600; b.streuTiefe = 0; b.leuchtspur = false;
+  const umb = (w) => w - 2 * Math.PI * Math.floor((w + Math.PI) / (2 * Math.PI));
+  let schuesse = 0, darunter = 0, tiefst = Infinity;
+  for (let i = 0; i < 1800; i++) {
+    flak.schritt(DT, befehle, []);
+    for (const s of flak.ereignisse.schuesse) {
+      if (s.turmId !== 4) continue;
+      schuesse++;
+      const g = Math.atan2(s.richtung.x, s.richtung.z), n = Math.asin(Math.max(-1, Math.min(1, s.richtung.y)));
+      let m = -Infinity;
+      for (const z of t.sperrzonen) if (Math.abs(umb(g - z.gier)) < z.halb && z.nickMin > m) m = z.nickMin;
+      if (n < m - 1e-9) darunter++;
+      if (Number.isFinite(m)) tiefst = Math.min(tiefst, n - m);
+    }
+  }
+  zeile('Sperr-Schutz: Turm 4 knapp über der Sperre, Kugel 600 m — Granaten unter der Sperre / angehoben',
+    '0 / > 0', `${darunter} / ${flak.geschosse.unterSperre} von ${schuesse} (Abstand min ${Number.isFinite(tiefst) ? tiefst.toFixed(4) : '-'} rad)`,
+    !!zone && schuesse > 50 && darunter === 0 && flak.geschosse.unterSperre > 0);
+
+  // Zielkugel 320/320 (Standard der KI R12) bei 600 / 400 m: Detonationen < 150 m vor der Mündung.
+  // WARUM 600 hart, 400 Info: mit Längsdeckel 0,80 reicht die Tiefe bei 400 m bis 80 m an die Mündung (Grenzfall).
+  const nahe = [];
+  let okNah = true;
+  for (const d of [600, 400]) {
+    const r = punktLauf({ d, streuKugel: 320, streuTiefe: 320, schritte: 3000, rein: false });
+    let unter = 0;
+    for (let k = 0; k < r.ab.length; k++) {
+      const vor = r.el + r.laengsVz[k]; // Abstand zur Mündung längs der Schusslinie, dazu der Querversatz
+      if (Math.hypot(vor, r.quer[k]) < 150) unter++;
+    }
+    nahe.push(`${d} m: ${unter} von ${r.ab.length}`);
+    if (d === 600) okNah = okNah && r.ab.length > 200 && unter === 0;
+  }
+  zeile('Zielkugel 320/320: Detonationen < 150 m vor der Mündung (600 m hart / 400 m Info)', '0 / Info', nahe.join(' · '), okNah);
 }
 
 // ---------- Ausgabe ----------
