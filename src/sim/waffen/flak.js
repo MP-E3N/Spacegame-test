@@ -375,7 +375,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     let n = t.nick + kN + (t.rnd() + t.rnd() - 1) * t.streuung;
     // Sperr-Schutz (R12): der Ellipsoid-Versatz lenkt die Granate bis zu 45° vom Rohr ab, die Sperre prüft aber nur das
     // Rohr. WARUM: sonst fliegt eine nach unten versetzte Granate durch den Nachbarturm. Kein Zufall → Folge bleibt gleich.
-    if (kN < 0) { const m = sperrNick(t, g); if (n < m) { n = m; geschosse.unterSperre++; } }
+    // WARUM immer (Prüfer R12, vorher nur bei kN < 0): auch der Gier-Versatz kG und die Rohrstreuung legen die Granate
+    // seitlich in die Sperrzone des Nachbarn — maßgeblich ist die tatsächliche Gier g der Granate, nicht die des Rohrs.
+    const sperrMin = sperrNick(t, g);
+    if (n < sperrMin) { n = sperrMin; geschosse.unterSperre++; }
     const cn = Math.cos(n), rx = Math.sin(g) * cn, ry = Math.sin(n), rz = Math.cos(g) * cn;
     zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMinStrecke / v0, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * zStreu);
     const j = i * 3;

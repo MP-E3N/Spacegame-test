@@ -367,7 +367,7 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
   let okAlle = true;
   const werte = [];
   for (const d of [600, 1200, 2000]) for (const R of [150, 250]) {
-    const r = punktLauf({ d, streuKugel: R, schritte: 12000 }); // ohne Leuchtspur → quer 0,18 · d
+    const r = punktLauf({ d, streuKugel: R, schritte: 12000 }); // ohne Leuchtspur → quer FLAK.deckelQuer · d (R12: 0,60)
     const rq = Math.min(R, FLAK.deckelQuer * r.el), rt = Math.min(R, FLAK.deckelTiefe * r.el); // WARUM r.el: der Deckel misst ab der Mündung (≈ 9 m vor dem Zapfen)
     const mq = median(r.quer), pq = quantil(r.quer, 0.9), ml = median(r.laengs), pl = quantil(r.laengs, 0.9);
     const nah = (w, soll) => Math.abs(w - soll) <= 0.08 * soll + 1; // ±8 % + 1 m Rohrversatz
@@ -444,30 +444,40 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
 
 // ---------- 18) R12: Sperr-Schutz der versetzten Granaten, keine Detonation direkt vor der Batterie ----------
 {
-  // Turm 4 knapp über der Sperre nach +Z (Turm 1 steht davor), Kugel 600 m bei 1000 m: der Versatz drückt viele Granaten
-  // nach unten — keine darf unter den Mindest-Nick der Sperrzone fliegen (geprüft an der Abgangsrichtung).
-  const flak = erstelleFlak({ startwert: 12 }), befehle = leererBefehl(), t = flak.tuerme[4], l = LAFETTEN[4], b = befehle[4];
-  const zone = t.sperrzonen.find((z) => Math.abs(z.gier) < 0.2);
-  const n0 = (zone ? zone.nickMin : 0) + 0.04;
-  b.punkt = { x: l.x, y: l.y + l.zapfen.y + 1000 * Math.sin(n0), z: l.z + 1000 * Math.cos(n0) };
-  b.feuer = true; b.toleranz = 0.01; b.zielId = 99; b.streuKugel = 600; b.streuTiefe = 0; b.leuchtspur = false;
+  // Prüft an der Abgangsrichtung jeder Granate von Turm 4: keine darf unter den Mindest-Nick einer Sperrzone fliegen.
   const umb = (w) => w - 2 * Math.PI * Math.floor((w + Math.PI) / (2 * Math.PI));
-  let schuesse = 0, darunter = 0, tiefst = Infinity;
-  for (let i = 0; i < 1800; i++) {
-    flak.schritt(DT, befehle, []);
-    for (const s of flak.ereignisse.schuesse) {
-      if (s.turmId !== 4) continue;
-      schuesse++;
-      const g = Math.atan2(s.richtung.x, s.richtung.z), n = Math.asin(Math.max(-1, Math.min(1, s.richtung.y)));
-      let m = -Infinity;
-      for (const z of t.sperrzonen) if (Math.abs(umb(g - z.gier)) < z.halb && z.nickMin > m) m = z.nickMin;
-      if (n < m - 1e-9) darunter++;
-      if (Number.isFinite(m)) tiefst = Math.min(tiefst, n - m);
+  const sperrLauf = (gier, nick) => {
+    const flak = erstelleFlak({ startwert: 12 }), befehle = leererBefehl(), t = flak.tuerme[4], l = LAFETTEN[4], b = befehle[4];
+    b.punkt = { x: l.x + 1000 * Math.cos(nick) * Math.sin(gier), y: l.y + l.zapfen.y + 1000 * Math.sin(nick), z: l.z + 1000 * Math.cos(nick) * Math.cos(gier) };
+    b.feuer = true; b.toleranz = 0.01; b.zielId = 99; b.streuKugel = 600; b.streuTiefe = 0; b.leuchtspur = false;
+    let schuesse = 0, darunter = 0, inZone = 0;
+    for (let i = 0; i < 1800; i++) {
+      flak.schritt(DT, befehle, []);
+      for (const s of flak.ereignisse.schuesse) {
+        if (s.turmId !== 4) continue;
+        schuesse++;
+        const g = Math.atan2(s.richtung.x, s.richtung.z), n = Math.asin(Math.max(-1, Math.min(1, s.richtung.y)));
+        let m = -Infinity;
+        for (const z of t.sperrzonen) if (Math.abs(umb(g - z.gier)) < z.halb && z.nickMin > m) m = z.nickMin;
+        if (Number.isFinite(m)) inZone++;
+        if (n < m - 1e-9) darunter++;
+      }
     }
-  }
-  zeile('Sperr-Schutz: Turm 4 knapp über der Sperre, Kugel 600 m — Granaten unter der Sperre / angehoben',
-    '0 / > 0', `${darunter} / ${flak.geschosse.unterSperre} von ${schuesse} (Abstand min ${Number.isFinite(tiefst) ? tiefst.toFixed(4) : '-'} rad)`,
-    !!zone && schuesse > 50 && darunter === 0 && flak.geschosse.unterSperre > 0);
+    return { schuesse, darunter, inZone, angehoben: flak.geschosse.unterSperre };
+  };
+  const zonen = erstelleFlak().tuerme[4].sperrzonen;
+  const vorn = zonen.find((z) => Math.abs(z.gier) < 0.2), schraeg = zonen.find((z) => Math.abs(z.gier - Math.PI / 4) < 0.2);
+  // a) Rohr knapp über der Sperre nach +Z (Turm 1 davor): der Versatz drückt Granaten nach unten (kN < 0).
+  const a = sperrLauf(0, (vorn ? vorn.nickMin : 0) + 0.04);
+  zeile('Sperr-Schutz a) Turm 4 knapp über der Sperre nach +Z, Kugel 600 m — unter der Sperre / angehoben',
+    '0 / > 0', `${a.darunter} / ${a.angehoben} von ${a.schuesse}`, !!vorn && a.schuesse > 50 && a.darunter === 0 && a.angehoben > 0);
+  // b) seitlich (Prüfer R12): Rohr flach (Nick 0,02) in der Lücke zwischen zwei Sperrzonen — das Rohr ist frei, erst der
+  //    Gier-Versatz kG legt Granaten in die Zonen, auch mit kN ≥ 0 noch unter deren Mindest-Nick.
+  const luecke = vorn && schraeg ? (vorn.gier + vorn.halb + schraeg.gier - schraeg.halb) / 2 : 0.43;
+  const s = sperrLauf(luecke, 0.02);
+  zeile('Sperr-Schutz b) seitlich: Rohr flach zwischen zwei Sperrzonen, Kugel 600 m — unter der Sperre / in Zonen / angehoben',
+    '0 / > 0 / > 0', `${s.darunter} / ${s.inZone} / ${s.angehoben} von ${s.schuesse}`,
+    !!vorn && !!schraeg && s.schuesse > 50 && s.inZone > 0 && s.darunter === 0 && s.angehoben > 0);
 
   // Zielkugel 320/320 (Standard der KI R12) bei 600 / 400 m: Detonationen < 150 m vor der Mündung.
   // WARUM 600 hart, 400 Info: mit Längsdeckel 0,80 reicht die Tiefe bei 400 m bis 80 m an die Mündung (Grenzfall).
