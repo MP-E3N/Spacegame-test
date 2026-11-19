@@ -51,6 +51,13 @@
     <!-- Reglerfeld (Runde 11): Schieberegler zum Abstimmen, Werte als Konfig (src/labor/regler.js) -->
     <div id="regler">
       <div class="kopf">REGLER <span class="leise">— Werte gelten sofort</span></div>
+      <!-- Runde 12: Konfig unter Namen als Datei speichern (konfig/flak/<name>.json) und wieder laden -->
+      <div class="ablage">
+        <div class="zeile"><input id="konfig-name" type="text" maxlength="40" placeholder="Name der Konfig">
+          <button id="konfig-speichern">Speichern</button></div>
+        <div class="zeile"><select id="konfig-liste"><option value="">— gespeicherte Konfig —</option></select>
+          <button id="konfig-laden">Laden</button></div>
+      </div>
       <div id="regler-gruppen"></div>
       <div id="regler-info"></div>
       <div class="knoepfe">

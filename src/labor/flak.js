@@ -141,12 +141,62 @@ const reglerfeld = erstelleReglerfeld({
 });
 document.getElementById('regler-standard').addEventListener('click', (e) => { reglerfeld.standard(); e.currentTarget.blur(); meldung('Regler auf Standard (Runde 10)'); });
 document.getElementById('regler-kopieren').addEventListener('click', (e) => {
-  const text = JSON.stringify({ ...reglerfeld.konfig(), v0: befehl.v0 }, null, 2);
+  const text = JSON.stringify(ganzeKonfig(), null, 2);
   const feld = document.getElementById('regler-konfig');
   feld.value = text; feld.classList.remove('versteckt');
   navigator.clipboard?.writeText(text).then(() => meldung('Konfig in die Zwischenablage kopiert'), () => meldung('Konfig steht unten im Feld — bitte selbst kopieren'));
   e.currentTarget.blur();
 });
+// ---- Konfig-Ablage (Runde 12, Nutzer: „speichern mit Benennung, damit du sie direkt abrufen kannst“) ----
+// Speichert über den Dev-Server als Datei konfig/flak/<name>.json (vite.config.js) — so kann die KI sie lesen.
+const ablage = { name: $('konfig-name'), liste: $('konfig-liste') };
+const NAME_OK = /^[\p{L}\p{N} _-]{1,40}$/u; // wie im Server
+/** Komplette Konfig: Regler + Mündungsgeschwindigkeit. */
+const ganzeKonfig = () => ({ ...reglerfeld.konfig(), v0: befehl.v0 });
+/** Konfig übernehmen, inkl. v0 (nur bekannte Stufen). */
+function ladeKonfig(k) {
+  reglerfeld.setze(k);
+  const s = V0_STUFEN.find((x) => x.v === k?.v0);
+  if (s) befehl.v0 = s.v;
+  hudUhr = 1;
+}
+async function listeLaden(wahl) {
+  try {
+    const namen = await (await fetch('/api/flak-konfig')).json();
+    ablage.liste.length = 1;
+    for (const n of namen) ablage.liste.add(new Option(n, n));
+    if (wahl) ablage.liste.value = wahl;
+  } catch { /* ohne Dev-Server (Build) gibt es keine Ablage */ }
+}
+$('konfig-speichern').addEventListener('click', async (e) => {
+  e.currentTarget.blur();
+  const name = ablage.name.value.trim();
+  if (!NAME_OK.test(name)) { meldung('Name: Buchstaben, Ziffern, Leerzeichen, - und _ (max. 40)'); return; }
+  try {
+    const r = await fetch('/api/flak-konfig/' + encodeURIComponent(name), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ganzeKonfig()) });
+    const a = await r.json();
+    if (!r.ok) throw new Error(a.fehler);
+    meldung('Gespeichert: ' + a.datei);
+    listeLaden(name.replace(/\s+/g, ' '));
+  } catch (f) { meldung('Speichern fehlgeschlagen: ' + f.message); }
+});
+$('konfig-laden').addEventListener('click', async (e) => {
+  e.currentTarget.blur();
+  const name = ablage.liste.value;
+  if (!name) { meldung('Erst eine gespeicherte Konfig wählen'); return; }
+  try {
+    const r = await fetch('/api/flak-konfig/' + encodeURIComponent(name));
+    const k = await r.json();
+    if (!r.ok) throw new Error(k.fehler);
+    ladeKonfig(k); ablage.name.value = name;
+    meldung('Geladen: ' + name);
+  } catch (f) { meldung('Laden fehlgeschlagen: ' + f.message); }
+});
+// WARUM: Tippen im Namensfeld darf keine Labor-Tasten auslösen (N, P, F …)
+ablage.name.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') $('konfig-speichern').click(); });
+ablage.liste.addEventListener('keydown', (e) => e.stopPropagation());
+listeLaden();
+
 const reglerInfo = document.getElementById('regler-info');
 /** Kennzahlen unter den Reglern: Vorrat, gedeckelte Granaten (Waffen-Deckel kürzt die Streuung), verworfene Füllwolken. */
 function reglerZahlen() {
