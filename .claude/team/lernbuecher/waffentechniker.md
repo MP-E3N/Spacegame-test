@@ -39,3 +39,7 @@
 - 2026-11-16 Runde 11 — Reine Füll-Effekte brauchen eine Reserve im Vorrat, sonst verdrängen sie die echten (2806
   überschrieben). Regler multiplizieren nur und ändern die Zahl der Zufallsaufrufe nicht → Standard bleibt bitgleich.
   Vergleich reihenfolgefrei, weil ein größerer Vorrat die Plätze und damit die Zeichenreihenfolge ändert.
+- 2026-11-19 Runde 12 — Deckel 0,60/0,80, Sperr-Schutz, Zusatz bis 120 m. Zielfeuer 21,5 % gedeckelt trotz Querdeckel
+  0,60: Ursache Leuchtspur-Granaten (Deckel 0,10) mit Zielkugel 320 m — per Gegenlauf (Leucht-Deckel 1 → 3,7 %)
+  zugeordnet. Lehre: Kürzung erst per Gegenlauf einer Ursache zuordnen, dann den Besitzer nennen. Sperren, die nur das
+  Rohr prüfen, gelten nicht für Granaten mit Versatz: im Schuss nachziehen, ohne Zufall.
