@@ -2,10 +2,13 @@
 //        Granate zündet und ob sie Leuchtspur trägt.
 //        · sperrfeuer, folgen (Standard, R10 „Sättigungsräume“, Nutzer: „In Richtung der Gefahr wird einfach der Raum
 //          gesättigt, es gibt recht wenig gezieltes Feuer“): die Drohnen werden in bis zu 3 Gruppen geteilt (Lücken in
-//          Metern), je Gruppe ein Raum auf der vorausgesagten Lage, halbe Breite/Höhe = Streuung + 100 m (120–250 m),
+//          Metern), je Gruppe ein Raum auf der vorausgesagten Lage, halbe Breite/Höhe = Streuung + 340 m (360–450 m),
 //          gestaffelt in 3 TIEFENLAGEN längs der geglätteten Flugrichtung der Gruppe (vor / auf / hinter, Abstand
 //          0,6·Tempo·Flugzeit, 80–150 m). Jedes Rohr hat eine feste Lage (vordere zuerst) und streicht sie im
-//          Dreieck-Lissajous-Muster (Gier, Nick, Abstand); jede Granate fliegt in eine Sperr-Kugel 70 m quer / 40 m tief.
+//          Dreieck-Lissajous-Muster (Gier, Nick, Abstand); jede Granate fliegt in eine Sperr-Kugel 120 m quer / 80 m tief.
+//          R12 (Nutzer: „Die Flak-Explosionen viel mehr verteilen, also die Area um die feindlichen Objekte größer
+//          machen — gern auch als konfigurierbaren Slider“): Raum nur noch geometrisch begrenzt (0,8 / 0,45 rad);
+//          größerer Raum → LANGSAMERES Muster (Periode wächst), nicht kleinerer Raum; Musterphase je Raum aufintegriert.
 //        · sperrfeuer, folgen === false: fester Sektor + befehl.schirmAbstand. Der Sektor ist der beim Umschalten
 //          gemerkte (Mitte + Breite des größten Schirms, „Wand bleibt, wo sie ist“), ohne Schirm STANDARD_SEKTOR;
 //          befehl.sektor überschreibt ihn ausdrücklich. Abstand gleitet mit ≤ 150 m/s; Umschalten in beide
@@ -20,15 +23,18 @@
 //        · streuKugel / streuTiefe (R8/R10, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“, R10: „das Areal um
 //          ein Ziel noch viel weiter gestreut sättigen“): Ellipsoid um `punkt` — streuKugel quer zur Schusslinie,
 //          streuTiefe längs (über den Zünder). Die Waffe schießt jede Granate auf einen eigenen Punkt darin und deckelt
-//          (quer 0,10·d mit / 0,18·d ohne Leuchtspur, längs 0,35·d; Werte in FLAK). Zielfeuer 140/140 m, Nahbereich
-//          min(35, 0,10·d), Sperrraum 70/40 m, feste Wand/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0.
+//          (quer 0,10·d mit / deckelQuer·d ohne Leuchtspur, längs deckelTiefe·d; Werte in FLAK/WAFFEN_REGLER).
+//          Zielfeuer 320/320 m, Nahbereich min(35, 0,10·d), Sperrraum 120/80 m, feste Wand/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0.
 //          lage = { nahbereich (bool), schirme: [{ mitte{x,y,z}, abstand, gierHalb, nickHalb, tuerme[], gier, nick,
 //          sollGier, sollNick, sollAbstand, breite, hoehe, tiefeHalb (m, halbe Kastenmaße), laengs{x,y,z} (Einheit,
 //          „vor“), lagenAbstand (m), lagen[{x,y,z}] (Mitten vor/auf/hinter, Welt) }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
 //        · befehl.streu (R11, Nutzer: „Schieberegler, mit denen ich anpassen kann, wie weit die Explosionen auseinander
-//          sein sollen … mit Werten, damit wir diese als Konfig nehmen können“): { sperrQuer, sperrTiefe, raumZuschlag,
-//          ziel, nahMax, lagenAnteil } — Bereiche/Standard in STREU_REGLER (eine Quelle für Seite und KI); fehlt/NaN →
-//          Standard, sonst geklammert. Ohne streu bzw. mit Standardwerten bitgleich zu R10.
+//          sein sollen … mit Werten, damit wir diese als Konfig nehmen können“): { faktor, sperrQuer, sperrTiefe,
+//          raumZuschlag, ziel, nahMax, lagenAnteil } — Bereiche/Standard in STREU_REGLER (eine Quelle für Seite und KI);
+//          fehlt/NaN → Standard, sonst geklammert. Ohne streu = mit Standardwerten (bitgleich).
+//          faktor (R12, Gesamtregler „Streuung ×“): multipliziert sperrQuer, sperrTiefe, raumZuschlag, ziel und die
+//          Raum-Obergrenzen (quer 450 m, Tiefe 120 m); NICHT nahMax (Leuchtspur-Deckel 0,10·d) und lagenAnteil (Tempo ×
+//          Flugzeit ist Physik, keine Streuung).
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
 //        Simulation: kein DOM, kein Math.random, fester Schritt; keine neuen Objekte im Schritt.
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
@@ -48,12 +54,16 @@ export const TURMKI = {
   // tief — Messung Frühwarnung: Kugel 130 mit Deckel 0,10 nur Median 73 m, mit 0,18 98 m. Nahbereich min(35, 0,10·d):
   // mit Leuchtspur deckelt die Waffe ohnehin auf 0,10·d (Spur verlässt das Rohr sonst sichtbar schief).
   // Sperr 70/40: die Kugel füllt das Volumen um den Musterpunkt, ohne das Richttempo zu belasten; 40 m = Lagendicke.
-  streuKugel: { ziel: 140, nahMax: 35, nahAnteil: 0.10, sperr: 70, sperrTiefe: 40 },
+  // R12 (Nutzer: „viel mehr verteilen“): Zielfeuer 140 → 320, Sperr 70/40 → 120/80 m. Messung Frühwarnung (Labor,
+  // unverwundbar, 1100 m/s, Deckel 0,6/0,8): Zielfeuer 320 → Median 234 m, Sperr 120/80 + Zuschlag 300 → 254 m (nach dem Bau mit 340: 261–269 m, 3 Startwerte).
+  // WARUM Deckel 0,6 nötig: Zielfeuer 300 mit 0,18·d war zu 74 % gedeckelt (152 m), mit 0,6 zu 21 % (214 m).
+  streuKugel: { ziel: 320, nahMax: 35, nahAnteil: 0.10, sperr: 120, sperrTiefe: 80 },
   // toleranz = min(max(Kugel, toleranzMin), Deckel·d) / d, mindestens toleranzRadMin. WARUM unter dem Deckel: die Waffe
   // deckelt den Querversatz (DECKEL.querHell/querDunkel) — ein größerer Feuer-Spielraum würde neben die Kugel schießen.
   toleranzMin: 8, toleranzRadMin: 0.008,
   // Sperrfeuer: Gier-Dreieck 4 s, Nick-Dreieck 4/1,5 s, Abstands-Dreieck 4/1,25 s (R9). Spitzentempo bei gierHalb 0,52:
   // 4·0,52/4 = 0,52 rad/s (30°/s) < 60°/s Gier; Nick 4·0,31/2,67 = 0,47 rad/s (27°/s) < 50°/s.
+  // R12 Folgen: Periode je Achse = Grundperiode · max(1, halb / folgen.musterBezug) — s. dort.
   periodeGier: 4, verhaeltnis: 1.5, verhaeltnisTiefe: 1.25,
   toleranzSperr: 0.06,
   gewichte: { naehe: 1.0, annaeherung: 0.8, angriff: 0.5, winkel: 0.3 },
@@ -82,10 +92,14 @@ export const TURMKI = {
     maxAbstandTempo: 300,       // m/s
     // WARUM σ + 100 (R10, vorher σ + 25, 50–200): Sättigung des Manöverraums statt Treffen. WARUM höchstens 250: nur
     // 60 Detonationen/s — ab ~210 Mio. m³ gesättigtem Raum (alle Gruppen) fällt die Abdeckung wieder (Frühwarnung R10)
-    quer: [100, 120, 250],      // m: halbe Breite/Höhe = Streuung der Gruppe + 100, geklammert 120–250
+    // R12: Zuschlag 100 → 340, Obergrenze 250 → 450 (× faktor). Die Untergrenze ist Zuschlag + 20 (R11, s. folgeSchirme).
+    // WARUM 340 statt 300 (Messung nach dem Bau, Deckel 0,6/0,8): 300 → Sperr-Median 244 m, 360 → 278 m (Ziel ≥ 250).
+    // WARUM die 210-Mio.-m³-Grenze (R10) nicht mehr gilt: der Nutzer will ausdrücklich weite Streuung statt Abdeckung;
+    // Abdeckung (≥ 8 Det. in 150 m) fällt dabei von ~20 % auf ~5 % (Frühwarnung R12) — Ausgleich über Splitter/Schaden.
+    quer: [340, 360, 450],      // m: [Zuschlag-Standard, (frei), Obergrenze] der halben Breite/Höhe
     // WARUM ohne Zuschlag: die Tiefe kommt jetzt aus den Lagen (längs) und der Sperr-Streutiefe; das Abstands-Muster
     // deckt nur noch die radiale Streuung der Gruppe
-    tiefe: [0, 0, 120],         // m: halbe Tiefe des Abstands-Musters = radiale Streuung, höchstens 120
+    tiefe: [0, 0, 120],         // m: halbe Tiefe des Abstands-Musters = radiale Streuung, höchstens 120 (× faktor, R12)
     // Tiefenlagen (R10, Recherche: Sperrfeuer „gestaffelt in die Tiefe … auf den wahrscheinlichen Anfluglinien“):
     // Lage 0 = vor der Gruppe (Flugrichtung), 1 = auf ihr, 2 = dahinter; Abstand = anteil · Tempo · Flugzeit.
     // Richtung = geglättete mittlere Geschwindigkeit (τ 1 s) + zuBatterie m/s zur Batterie hin (WARUM: Kreiser einer
@@ -97,9 +111,15 @@ export const TURMKI = {
     // vorlauf 2 = Glättungsrückstand v·τ zurück + noch einmal v·τ (≈ 35 m) nach vorn, „in Richtung der Gefahr“.
     lagen: { anteil: 0.6, min: 120, max: 150, tau: 1.0, zuBatterie: 60, maxDreh: 20 * Math.PI / 180, vorlauf: 2 },
     nickMax: 1.2,               // rad: Kastenmitte höchstens so hoch
-    // WARUM 0,28 (Befund Prüfer R9): Muster 4·0,28/4 = 16°/s + Nachführen 35°/s + Größenänderung ≤ 7°/s < 60°/s Gier um
-    // BATTERIE_MITTE (mit 0,35 bis 67°/s)
-    gierHalbMax: 0.28, nickHalbMax: 0.15, // rad: Deckel fürs Richttempo (s. maxDreh)
+    // R12: nur noch GEOMETRISCHE Grenze (Raum bleibt im Sektor über der Batterie). WARUM nicht mehr 0,28 / 0,15 wie R9:
+    // der Deckel fürs Richttempo schnitt den Raum bei 1200 m auf 340 × 180 m — das Muster wird jetzt stattdessen
+    // langsamer (musterBezug), das Spitzentempo des Musters bleibt so wie mit dem alten Deckel.
+    gierHalbMax: 0.8, nickHalbMax: 0.45, // rad
+    // Bezugsgrößen der Musterperiode (R12): bis hierher läuft das Muster mit der Grundperiode (4 / 2,67 / 3,2 s), darüber
+    // wächst die Periode im gleichen Verhältnis → Spitzentempo höchstens 4·0,28/4 = 16°/s Gier, 4·0,15/2,67 = 13°/s Nick,
+    // 4·120/3,2 = 150 m/s Abstand wie R9/R10 (+ Nachführen 35/25°/s < 60/50°/s). Kehrseite: bei faktor 3 bestreicht
+    // ein Rohr seine Fläche nur noch alle ~12 s (dafür streuen die Kugeln selbst mit).
+    musterBezug: { gier: 0.28, nick: 0.15, tiefe: 120 },
     // m: Lücke quer (Bogen), hoch (Bogen) oder radial > 300 → neuer Kasten, < 220 → wieder zusammen (Hysterese).
     // WARUM in Metern und 3 Achsen statt Gier-Lücke 0,6 rad: bei 1500 m sind 0,6 rad 900 m — zwei Drohnen 500 m
     // auseinander teilten sich einen Kasten, nur 15 % der Drohnen lagen darin (Messung R9).
@@ -122,12 +142,14 @@ export const TURMKI = {
 };
 
 /** Regler der Streuung (R11): m bzw. Faktor; Standard = TURMKI (R10). Die Seite baut ihre Schieberegler hieraus. */
+// R12: faktor (Gesamtregler „Streuung ×“) zuerst, Bereiche erweitert (Nutzer: „viel mehr verteilen … als Slider“).
 export const STREU_REGLER = {
-  sperrQuer: { min: 0, max: 200, standard: TURMKI.streuKugel.sperr },        // Sperr-Kugel quer zur Schusslinie
-  sperrTiefe: { min: 0, max: 200, standard: TURMKI.streuKugel.sperrTiefe },  // Lagendicke längs
-  raumZuschlag: { min: 0, max: 250, standard: TURMKI.folgen.quer[0] },       // halbe Raumbreite/-höhe = Streuung + Zuschlag
-  ziel: { min: 20, max: 300, standard: TURMKI.streuKugel.ziel },             // Zielfeuer quer = tief
-  nahMax: { min: 5, max: 60, standard: TURMKI.streuKugel.nahMax },           // Nahbereich min(nahMax, 0,10·d)
+  faktor: { min: 0.5, max: 3, standard: 1 },                                 // × sperrQuer/sperrTiefe/raumZuschlag/ziel/Raum-Obergrenzen
+  sperrQuer: { min: 0, max: 400, standard: TURMKI.streuKugel.sperr },        // Sperr-Kugel quer zur Schusslinie
+  sperrTiefe: { min: 0, max: 400, standard: TURMKI.streuKugel.sperrTiefe },  // Lagendicke längs
+  raumZuschlag: { min: 0, max: 600, standard: TURMKI.folgen.quer[0] },       // halbe Raumbreite/-höhe = Streuung + Zuschlag
+  ziel: { min: 20, max: 700, standard: TURMKI.streuKugel.ziel },             // Zielfeuer quer = tief
+  nahMax: { min: 5, max: 60, standard: TURMKI.streuKugel.nahMax },           // Nahbereich min(nahMax, 0,10·d), ohne faktor
   lagenAnteil: { min: 0.3, max: 1.2, standard: TURMKI.folgen.lagen.anteil }, // Lagenabstand = Anteil · Tempo · Flugzeit
 };
 /** Wirksamer Reglerwert: fehlt/keine Zahl → Standard, sonst auf [min, max] geklammert. */
@@ -152,6 +174,9 @@ export function waffeWert(waffe, feld) {
  *  WARUM auch das 8-m-Mindestmaß unter dem Deckel: sonst feuert der Turm unter 160 m weiter neben den Punkt, als die
  *  Kugel der Waffe reicht (Befund Prüfer R8: bei 60 m 7,6° statt höchstens 2,9°). */
 const kugelToleranz = (kugel, d, leucht, dunkel) => Math.max(Math.min(Math.max(kugel, TURMKI.toleranzMin), querDeckel(leucht, dunkel) * d) / d, TURMKI.toleranzRadMin);
+/** Querkugel mit Leuchtspur (R12): höchstens 0,98 · querHell · d. WARUM 0,98: die Waffe misst d von der Mündung im
+ *  Schuss-Takt (Rohr hat sich weitergedreht) — ohne Rand zählte jede Rundung als „gedeckelt“. */
+const spurKugel = (kugel, d) => Math.min(kugel, 0.98 * DECKEL.querHell * d);
 const ZWEI_PI = 2 * Math.PI;
 // Höchstzahl der Räume (Vorrat; TURMKI.folgen.maxKaesten wählt, wie viele genutzt werden)
 const MAXK = 6;
@@ -205,6 +230,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     s.mitte.x = s.mitte.y = s.mitte.z = 0; s.abstand = 800; s.gierHalb = 0.3; s.nickHalb = 0.15; s.tuerme.length = 0;
     s.gier = 0; s.nick = 0.4; s.sollGier = 0; s.sollNick = 0.4; s.sollAbstand = 800;
     s.breite = 150; s.hoehe = 80; s.tiefeHalb = 0; s.sollBreite = 150; s.sollHoehe = 80; s.sollTiefe = 0; s.gewicht = 0;
+    s.phG = s.phN = s.phR = 0; // R12: aufintegrierte Musterphasen (Perioden)
     // R10 Tiefenlagen: geglättete Gruppengeschwindigkeit (v*, Soll sv*), mittleres Tempo, Einheitsrichtung „vor“
     s.vx = s.vy = s.vz = s.svx = s.svy = s.svz = 0; s.tempo = s.sollTempo = 130;
     s.laengs.x = 0; s.laengs.y = 0; s.laengs.z = -1; s.lagenAbstand = 100;
@@ -224,8 +250,17 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
   const fest = { gierMitte: 0, gierHalb: 0, nickMin: 0, nickMax: 0 }; // gemerkter fester Sektor
   // Wirksame Regler (R11), je Takt aus befehl.streu gelesen — festes Objekt, keine neuen Objekte im Takt
-  const W = { sperrQuer: 0, sperrTiefe: 0, raumZuschlag: 0, ziel: 0, nahMax: 0, lagenAnteil: 0 };
-  function leseStreu(streu) { for (const f in W) W[f] = streuWert(streu, f); }
+  // querMax/tiefeMax (R12) = Raum-Obergrenzen × faktor; sperrQuer/sperrTiefe/raumZuschlag/ziel stehen hier schon × faktor
+  const W = { faktor: 1, sperrQuer: 0, sperrTiefe: 0, raumZuschlag: 0, ziel: 0, nahMax: 0, lagenAnteil: 0, querMax: 0, tiefeMax: 0 };
+  function leseStreu(streu) {
+    for (const f in STREU_REGLER) W[f] = streuWert(streu, f);
+    const a = W.faktor;
+    W.sperrQuer *= a; W.sperrTiefe *= a; W.raumZuschlag *= a; W.ziel *= a;
+    W.querMax = TURMKI.folgen.quer[2] * a; W.tiefeMax = TURMKI.folgen.tiefe[2] * a;
+  }
+  // Befehlsrichtung je Ziel-Rohr (R12 Zenit-Bremse): Gier, Nick von der Mündung; nOk 0 frisch, 1 frei, 2 bremst
+  const nG = new Float64Array(n), nN = new Float64Array(n), nOk = new Uint8Array(n);
+  let nahDt = 1 / 60; // Schrittweite für die Zenit-Bremse (R12), je Takt gesetzt
   let deckelDunkel = DECKEL.querDunkel; // wirksamer Querdeckel ohne Leuchtspur (befehl.waffe, R11), je Takt gelesen
 
   function zuruecksetzen() {
@@ -234,7 +269,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false; warFest = false;
     Object.assign(fest, STANDARD_SEKTOR);
     for (const s of schirmVorrat) grundRaum(s);
-    uG.fill(0); uN.fill(0); uR.fill(0);
+    uG.fill(0); uN.fill(0); uR.fill(0); nG.fill(0); nN.fill(0); nOk.fill(0);
     kastenVor.fill(-2); ueb.fill(0); uOk.fill(0); lageVor.fill(-1);
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
@@ -268,17 +303,30 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     b.zuender = Math.min(Math.max(t, K.zuenderStrecke / v0), K.zuender[1]);
   }
 
+  /** Musterphasen des Raums s um dt weiterzählen (R12). dehnen (Folgen): Periode = Grundperiode · max(1, halb / Bezug),
+   *  d. h. ein größerer Raum wird langsamer gestrichen statt kleiner gekappt; feste Wand: Grundperiode wie R9 (der
+   *  Sektor ist vorgegeben und mit 0,52 rad gemessen). */
+  function musterTakt(s, dt, dehnen) {
+    const B = F.musterBezug, Tg = K.periodeGier;
+    const fg = dehnen ? Math.max(1, s.gierHalb / B.gier) : 1, fn = dehnen ? Math.max(1, s.nickHalb / B.nick) : 1;
+    const fr = dehnen ? Math.max(1, s.tiefeHalb / B.tiefe) : 1;
+    s.phG += dt / (Tg * fg); s.phN += dt * K.verhaeltnis / (Tg * fn); s.phR += dt * K.verhaeltnisTiefe / (Tg * fr);
+    // WARUM auf [0, 1) zurückführen: dreieck() ist periodisch 1; so bleibt die Genauigkeit über Stunden gleich
+    s.phG -= Math.floor(s.phG); s.phN -= Math.floor(s.phN); s.phR -= Math.floor(s.phR);
+  }
+
   /** Lissajous-Punkt für Turm k in Lage j des Raums s (Gier ± gierHalb, Nick ± nickHalb, Abstand ± tiefeHalb um die
    *  Lagenmitte). */
   function streiche(b, m, v0, k, s, j, dt) {
-    const Tg = K.periodeGier, Tn = Tg / K.verhaeltnis, Tr = Tg / K.verhaeltnisTiefe;
     const c = s.lagen[j], cx = c.x - M.x, cy = c.y - M.y, cz = c.z - M.z, cr = L(cx, cy, cz) || 1;
     const lg = Math.atan2(cx, cz), ln = Math.min(Math.asin(klemme(cy / cr, -1, 1)), F.nickMax);
     // WARUM eigene Phasen je Achse: sonst laufen alle Türme zeitversetzt dieselbe geschlossene Kurve ab → Linie statt
     // Fläche. Gier-Phase k·0,382 (goldener Schnitt, R9): je zwei Türme eines Kastens liegen weit auseinander.
-    const gier = lg + s.gierHalb * dreieck(zeit / Tg + k * 0.381966 + phase0);
-    const nick = ln + s.nickHalb * dreieck(zeit / Tn + (k * 5 % 12) / 12 + phase0 * 0.37);
-    const R = cr + s.tiefeHalb * dreieck(zeit / Tr + (k * 7 % 11) / 11 + phase0 * 0.71);
+    // R12: Phasen je Raum aufintegriert (musterTakt) statt zeit / Periode — WARUM: die Periode wächst mit der Raumgröße;
+    // zeit / T(t) spränge bei jeder Größenänderung (bei zeit 600 s und 1 % Periodenänderung um 1,5 Perioden, Lehre R7)
+    const gier = lg + s.gierHalb * dreieck(s.phG + k * 0.381966 + phase0);
+    const nick = ln + s.nickHalb * dreieck(s.phN + (k * 5 % 12) / 12 + phase0 * 0.37);
+    const R = cr + s.tiefeHalb * dreieck(s.phR + (k * 7 % 11) / 11 + phase0 * 0.71);
     setzeAufSchale(b, m, v0, gier, nick, R);
     // Übergang (ueb) bzw. Tempobremse: vom letzten Befehl mit begrenztem Tempo zum Musterpunkt, gerechnet in Winkeln
     // VON DER MÜNDUNG aus. WARUM von der Mündung (nicht von BATTERIE_MITTE): steil über der Batterie dreht die Gier eines
@@ -351,10 +399,33 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     if (abfangen(m, z.pos, z.vel, v0, ab) && ab.t <= K.zuender[1]) {
       b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z; b.zuender = Math.max(ab.t, K.zuenderStrecke / v0);
     } else { b.punkt.x = z.pos.x; b.punkt.y = z.pos.y; b.punkt.z = z.pos.z; b.zuender = K.zuenderStrecke / v0; }
-    const d = L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) || 1;
+    const px = b.punkt.x - m.x, py = b.punkt.y - m.y, pz = b.punkt.z - m.z, d = L(px, py, pz) || 1;
     b.streuKugel = b.streuTiefe = Math.min(W.nahMax, K.streuKugel.nahAnteil * d);
     b.toleranz = kugelToleranz(b.streuKugel, d, b.leuchtspur, deckelDunkel);
     b.feuer = frei;
+    zenitBremse(i, b, m);
+  }
+
+  /** Zenit-Bremse für Ziel-Befehle (Nahbereich UND Zielfeuer, R12; Ausreißer 552°/s Gier): eine Drohne fast senkrecht
+   *  über der Batterie (Nick 88°) dreht die Gier-Achse beliebig schnell (Großkreis / cos Nick). Der Turm schafft
+   *  60/50°/s — der Befehl läuft deshalb mit höchstens folgen.bremse von der Mündung aus; solange er hinterherläuft,
+   *  zeigt er neben die Drohne → kein Feuer. WARUM auch im Zielfeuer (Messung R12, faktor 2: 7205°/s): verlässt die
+   *  Drohne die Killzone, während der Befehl gebremst hinterherläuft, übernimmt das Zielfeuer dasselbe Ziel — ohne
+   *  Bremse spränge der Befehl im selben Takt aufs Ziel. Zustand frei bei Sperr-/Ruhe-Befehl (Ende von schritt). */
+  function zenitBremse(i, b, m) {
+    const px = b.punkt.x - m.x, py = b.punkt.y - m.y, pz = b.punkt.z - m.z, d = L(px, py, pz) || 1;
+    // Nur am Zenit (Nick > folgen.nickMax 69°) bzw. bis der gebremste Befehl wieder aufs Ziel aufgeholt hat (nOk 2).
+    // WARUM nicht immer: der Vorhalt soll im v0-Umschalt-Takt sofort stimmen (Test I) — darunter ist die Gier-Rate
+    // ≤ Großkreis / cos 69° (Drohne 150 m/s in 500 m → ≤ 48°/s) und der Turm folgt.
+    // Frisch zugeteilt (nOk 0): Befehl direkt aufs Ziel (das Einschwenken übernimmt das Richten des Turms wie R7).
+    const pg = Math.atan2(px, pz), pn = Math.asin(klemme(py / d, -1, 1));
+    if (nOk[i] === 0 || (nOk[i] === 1 && pn <= F.nickMax && nN[i] <= F.nickMax)) { nOk[i] = 1; nG[i] = pg; nN[i] = pn; return; }
+    const U = F.bremse, mg = U.gier * nahDt, mn = U.nick * nahDt, dg = winkelDiff(pg, nG[i]), dn = pn - nN[i];
+    if (Math.abs(dg) <= mg && Math.abs(dn) <= mn) { nOk[i] = 1; nG[i] = pg; nN[i] = pn; return; }
+    nOk[i] = 2; nG[i] = winkelDiff(nG[i] + klemme(dg, -mg, mg), 0); nN[i] += klemme(dn, -mn, mn);
+    const cn = Math.cos(nN[i]);
+    b.punkt.x = m.x + Math.sin(nG[i]) * cn * d; b.punkt.y = m.y + Math.sin(nN[i]) * d; b.punkt.z = m.z + Math.cos(nG[i]) * cn * d;
+    b.feuer = false;
   }
 
   // ---------- Folgen: Sperrkästen auf der Bedrohung (R9) ----------
@@ -414,11 +485,12 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const A = s.sollAbstand, T = F.tiefe;
     // Regler raumZuschlag (R11): Untergrenze max(20, Zuschlag + 20) — WARUM gekoppelt: die feste Klammer 120 m verschluckte
     // kleine Zuschläge; Standard 100 → 120–250 wie R10. Obergrenze wächst mit, falls der Zuschlag sie überholt.
-    const Z = W.raumZuschlag, qMin = Math.max(20, Z + 20), qMax = Math.max(F.quer[2], qMin);
-    // WARUM Deckel in rad zusätzlich: Muster-Tempo 4·halb/Periode + Nachführen muss unter dem Richttempo bleiben
+    // R12: Obergrenze = quer[2] · faktor (W.querMax)
+    const Z = W.raumZuschlag, qMin = Math.max(20, Z + 20), qMax = Math.max(W.querMax, qMin);
+    // Deckel in rad zusätzlich (R12 nur noch geometrisch, das Tempo regelt musterTakt)
     s.sollBreite = Math.min(klemme(Math.sqrt(vg / sw) + Z, qMin, qMax), F.gierHalbMax * A);
     s.sollHoehe = Math.min(klemme(Math.sqrt(vn / sw) + Z, qMin, qMax), F.nickHalbMax * A);
-    s.sollTiefe = klemme(Math.sqrt(vr / sw) + T[0], T[1], T[2]);
+    s.sollTiefe = klemme(Math.sqrt(vr / sw) + T[0], T[1], W.tiefeMax);
     let gw = 0; for (let a = 0; a < nb; a++) if (grp[a] === g) gw += bW[a];
     s.gewicht = gw;
     // Tiefenlagen (R10): mittlere Geschwindigkeit (Richtung) und mittleres Tempo (Lagenabstand), kern-gewichtet
@@ -432,6 +504,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     b.gier = a.gier; b.nick = a.nick; b.abstand = a.abstand; b.breite = a.breite; b.hoehe = a.hoehe; b.tiefeHalb = a.tiefeHalb;
     b.sollGier = a.sollGier; b.sollNick = a.sollNick; b.sollAbstand = a.sollAbstand;
     b.sollBreite = a.breite; b.sollHoehe = a.hoehe; b.sollTiefe = a.tiefeHalb; b.gewicht = 0;
+    b.phG = a.phG; b.phN = a.phN; b.phR = a.phR; // R12: Muster läuft ohne Sprung weiter
     b.vx = a.vx; b.vy = a.vy; b.vz = a.vz; b.svx = a.svx; b.svy = a.svy; b.svz = a.svz; b.tempo = a.tempo; b.sollTempo = a.sollTempo;
     b.laengs.x = a.laengs.x; b.laengs.y = a.laengs.y; b.laengs.z = a.laengs.z; b.lagenAbstand = a.lagenAbstand;
   }
@@ -665,7 +738,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const R = befehl?.schirmAbstand ?? 800, folgen = befehl?.folgen !== false, S = befehl?.sektor ?? fest;
     if (modus !== letzterModus) { zielSlot.fill(-1); halt.fill(0); letzterModus = modus; }
     const v0Std = turmZustand?.[0]?.v0 ?? K.v0;
-    leseStreu(befehl?.streu); deckelDunkel = waffeWert(befehl?.waffe, 'deckelQuer');
+    leseStreu(befehl?.streu); deckelDunkel = waffeWert(befehl?.waffe, 'deckelQuer'); nahDt = dt;
 
     zaehl.fill(0);
     killzone(dt, ziele, turmZustand);
@@ -673,6 +746,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
 
     if (modus === 'sperrfeuer') {
       if (folgen) { warFest = false; folgeSchirme(dt, ziele, v0Std); } else festerSchirm(dt, R, befehl?.sektor);
+      for (let g = 0; g < lage.schirme.length; g++) musterTakt(lage.schirme[g], dt, folgen);
       for (let g = 0; g < lage.schirme.length; g++) {
         const s = lage.schirme[g], T = s.tuerme;
         for (let k = 0; k < T.length; k++) {
@@ -698,7 +772,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           // WARUM kein Feuer im Übergang: der Punkt liegt dann zwischen den Räumen — Granaten dort treffen nichts
           b.zielId = null; b.feuer = frei && !ueb[i];
           // Sättigungsraum: Sperr-Kugel quer + Lagendicke längs (R10); feste Wand bleibt eine Schale (R7, Test B)
-          b.streuKugel = folgen ? W.sperrQuer : 0; b.streuTiefe = folgen ? W.sperrTiefe : 0;
+          b.streuKugel = folgen ? (leucht ? spurKugel(W.sperrQuer, L(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z)) : W.sperrQuer) : 0;
+          b.streuTiefe = folgen ? W.sperrTiefe : 0;
         }
       }
     } else {
@@ -748,9 +823,12 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
           b.zielId = ziele[cur].id;
           b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z;
           b.zuender = ab.t;
-          b.streuKugel = W.ziel; b.streuTiefe = W.ziel; // R11: Regler „ziel“ gilt quer und tief (Standard 140/140 wie R10)
+          // R11: Regler „ziel“ gilt quer und tief. R12 (Befund Waffentechniker): mit Leuchtspur quer selbst auf
+          // spurKugel begrenzen — sonst kürzt die Waffe 21 % der Zielfeuer-Schüsse stumm (Nahbereich: alle Türme mit Spur)
+          b.streuKugel = b.leuchtspur ? spurKugel(W.ziel, ab.t * v0) : W.ziel; b.streuTiefe = W.ziel;
           b.toleranz = kugelToleranz(b.streuKugel, ab.t * v0, b.leuchtspur, deckelDunkel);
           b.feuer = frei;
+          zenitBremse(i, b, m);
           if (zaehl[cur] > statistik.maxJeZiel) statistik.maxJeZiel = zaehl[cur];
         } else {
           // kein Ziel: Ruhestellung Sektormitte auf dem Schirm, nicht feuern
@@ -760,6 +838,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
         }
       }
     }
+    // Zenit-Bremse frei, sobald ein Rohr kein Ziel mehr hat (Sperr/Ruhe) → nächstes Ziel beginnt frisch
+    for (let i = 0; i < n; i++) if (befehle[i].zielId === null) nOk[i] = 0;
     takt++; zeit += dt;
     return befehle;
   }

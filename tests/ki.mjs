@@ -80,7 +80,7 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12, modell = 'r7') {
         let qx = b.punkt.x, qy = b.punkt.y, qz = b.punkt.z;
         const dp = L(qx - m.x, qy - m.y, qz - m.z);
         // Streu-Ellipsoid (wie die Waffe, R10 Entscheidung 1): Punkt gleichverteilt im Ellipsoid um `punkt` — quer
-        // ≤ Querdeckel·d (0,10 mit / 0,18 ohne Leuchtspur), längs zur Schusslinie streuTiefe ≤ deckelTiefe·d; genau 3
+        // ≤ Querdeckel·d (0,10 mit / deckelQuer ohne Leuchtspur, R12: 0,60), längs zur Schusslinie streuTiefe ≤ deckelTiefe·d; genau 3
         // Zufallszahlen (Gleichlauf); Zeitzünder auf diesen Punkt.
         const R = Math.min(b.streuKugel ?? 0, querDeckel(b.leuchtspur) * dp), RT = Math.min(b.streuTiefe ?? b.streuKugel ?? 0, FLAK.deckelTiefe * dp);
         let zuender = b.zuender;
@@ -322,7 +322,9 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
     bef.forEach((b, i) => {
       const mu = tuerme[i].muendung, d = L(b.punkt.x - mu.x, b.punkt.y - mu.y, b.punkt.z - mu.z);
       const nah = b.zielId !== null && ki.lage.eindringlinge.includes(b.zielId);
-      const soll = b.zielId === null ? (folgt ? SK.sperr : 0) : nah ? Math.min(SK.nahMax, SK.nahAnteil * d) : SK.ziel;
+      // R12: Zielkugel mit Leuchtspur quer ≤ 0,98 · 0,10 · d (Befund Waffentechniker: sonst kürzt die Waffe stumm)
+      const zielQ = b.leuchtspur ? Math.min(SK.ziel, 0.98 * querDeckel(true) * d) : SK.ziel;
+      const soll = b.zielId === null ? (folgt ? SK.sperr : 0) : nah ? Math.min(SK.nahMax, SK.nahAnteil * d) : zielQ;
       const sollT = b.zielId === null ? (folgt ? SK.sperrTiefe : 0) : nah ? soll : SK.ziel;
       const sc = ki.lage.schirme.find((q) => q.tuerme.includes(i));
       const tolSperr = folgt && sc ? Math.min(Math.max(0.5 * Math.min(sc.breite, sc.hoehe) / sc.abstand, 0.015), TURMKI.toleranzSperr) : TURMKI.toleranzSperr;
@@ -409,8 +411,8 @@ const FOLGEN = { modus: 'sperrfeuer', feuerFrei: true, schirmAbstand: 800 }; // 
   zeile('F Abstands-Nachführung (max)', `≤ ${FG.maxAbstandTempo} m/s`, f1(m.abstandTempoMax) + ' m/s', m.abstandTempoMax <= FG.maxAbstandTempo + 1e-6);
   const ds = m.detSperr.slice().sort((a, b) => a - b);
   // WARUM weich: Ersatz-Flak (Zünder exakt, Drohnen sterben) — die Labor-Messung mit unverwundbaren Drohnen ist maßgeblich
-  // R10: Sättigungsraum statt Kasten auf der Drohne → 150–250 m (Protokoll R10, Messgrößen)
-  zeile('F Sperrfeuer: Detonation ↔ nächste Drohne (Median, Ersatz-Flak)', '150–250 m', `${f1(ds[ds.length >> 1] ?? NaN)} m (n = ${ds.length})`, ds.length > 0 && ds[ds.length >> 1] >= 150 && ds[ds.length >> 1] <= 250, false);
+  // R10: Sättigungsraum statt Kasten auf der Drohne → 150–250 m; R12 (Nutzer: „viel mehr verteilen“) → 220–400 m
+  zeile('F Sperrfeuer: Detonation ↔ nächste Drohne (Median, Ersatz-Flak)', '220–400 m', `${f1(ds[ds.length >> 1] ?? NaN)} m (n = ${ds.length})`, ds.length > 0 && ds[ds.length >> 1] >= 220 && ds[ds.length >> 1] <= 400, false);
   zeile('F Drohnen streng im Kasten (Gier, Nick, Tiefe)', 'Info', f1(100 * m.imKasten / Math.max(1, m.bedrohung)) + ' %', true, false);
   zeile('F Richttempo der Sperr-Rohre Gier / Nick (Befehl, max)', '< 60 / 50°/s', `${f1(m.richtG / GRAD)} / ${f1(m.richtN / GRAD)}°/s`, m.richtG < 60 * GRAD && m.richtN < 50 * GRAD);
   zeile('F Anteil Zeit mit ≥ 2 Kästen / Gruppenwechsel / Rohr wechselt Kasten', 'Info', `${f1(100 * m.zweiSchirme / m.folgTakte)} % / ${ki.statistik.gruppenWechsel} / ${m.schirmWechselRohr ?? 0}`, true, false);
@@ -509,7 +511,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
   const dr = erstelleZieldrohnen({ startwert: 101 }), ki = erstelleTurmKi({ startwert: 202 }), tuerme = ersatzTuerme(620);
   const flak = erstelleErsatzFlak(303, 6);
   const wd = (a, b) => { const d = a - b; return d - 2 * Math.PI * Math.floor((d + Math.PI) / (2 * Math.PI)); };
-  let rateG = 0, rateN = 0, nan = 0, geprueft = 0, vorhaltMax = 0, sprungU = 0, sprungN = 0, zielWechselU = 0, nachrichtMax = 0;
+  let gebremstU = 0, rateG = 0, rateN = 0, nan = 0, geprueft = 0, vorhaltMax = 0, sprungU = 0, sprungN = 0, zielWechselU = 0, nachrichtMax = 0;
   const vorBef = tuerme.map(() => null), warte = tuerme.map(() => -1);
   for (let k = 0; k < 80 * 60; k++) {
     const nv = V0_PLAN.get(k);
@@ -540,8 +542,10 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
       // Wieder ausgerichtet nach dem Umschalten (gleiches Ziel): Takte zählen
       if (nv && warAus && !t.ausgerichtet && b.zielId !== null) warte[i] = k;
       if (warte[i] >= 0 && (t.ausgerichtet || b.zielId === null)) { nachrichtMax = Math.max(nachrichtMax, k - warte[i]); warte[i] = -1; }
-      // Vorhalt im Umschalt-Takt mit dem NEUEN v0: Granate (gerade, v0) und Ziel treffen sich in punkt
-      if (nv && b.zielId !== null) {
+      // Vorhalt im Umschalt-Takt mit dem NEUEN v0: Granate (gerade, v0) und Ziel treffen sich in punkt.
+      // R12: Befehle, die die Zenit-Bremse hält (feuer aus, Punkt läuft gebremst nach), sind keine Schusslösung → gezählt, nicht geprüft
+      if (nv && b.zielId !== null && !b.feuer) gebremstU++;
+      if (nv && b.zielId !== null && b.feuer) {
         const z = dr.ziele.find((q) => q.id === b.zielId), ab = {};
         if (z && abfangen(mu, z.pos, z.vel, t.v0, ab) && ab.t * t.v0 >= TURMKI.zuenderStrecke && ab.t <= 4) {
           const tt = b.zuender;
@@ -554,7 +558,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
   }
   zeile(`I ${name}: v0 620→1100→620→1100→1000, NaN in Befehl/Turm`, '0', String(nan), nan === 0);
   zeile(`I ${name}: Turm-Ist-Winkel Gier / Nick (max)`, '≤ 60 / 50°/s', `${f1(rateG / GRAD)} / ${f1(rateN / GRAD)}°/s`, rateG <= 60 * GRAD + 1e-9 && rateN <= 50 * GRAD + 1e-9);
-  if (name === 'Zielfeuer') zeile(`I ${name}: Vorhalt im Umschalt-Takt mit neuem v0 (${geprueft} Befehle)`, '< 1 m', f2(vorhaltMax) + ' m', geprueft > 0 && vorhaltMax < 1);
+  if (name === 'Zielfeuer') zeile(`I ${name}: Vorhalt im Umschalt-Takt mit neuem v0 (${geprueft} Befehle, ${gebremstU} von der Zenit-Bremse gehalten)`, '< 1 m', f2(vorhaltMax) + ' m', geprueft > 0 && vorhaltMax < 1);
   zeile(`I ${name}: Befehls-Sprung im Umschalt-Takt / sonst (max, gleiches Ziel ≠ null)`, 'Info', `${f2(sprungU / GRAD)}° / ${f2(sprungN / GRAD)}°`, true, false);
   zeile(`I ${name}: Zielwechsel im Umschalt-Takt / wieder ausgerichtet nach`, '0 / ≤ 0,5 s', `${zielWechselU} / ${f2(nachrichtMax * DT)} s`, zielWechselU === 0 && nachrichtMax * DT <= 0.5, false);
 }
@@ -618,7 +622,8 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
   const sa = abst.slice().sort((a, b) => a - b), medA = sa[sa.length >> 1] ?? NaN;
   // WARUM weich: Ersatz-Flak (exakter Zünder, Turm sofort ausgerichtet) — maßgeblich ist die Labor-Messung (Protokoll R10)
   zeile('K Sperr-Detonationen vor (> +75 m) / hinter (< −75 m) der nächsten Drohne, längs ihrer Flugrichtung', '≥ 25 % / > 0 (Ersatz-Flak)', `${f1(vor)} % / ${f1(hinter)} % (n = ${laengs.length})`, vor >= 25 && hinter > 0, false);
-  zeile('K Sperr: Detonation ↔ nächste Drohne (Median, unverwundbar, Ersatz-Flak)', '150–250 m', f1(medA) + ' m', medA >= 150 && medA <= 250, false);
+  // R12 (Nutzer: „viel mehr verteilen“): Ziel ≥ 250 m im Labor; Ersatz-Flak liegt ähnlich (R10: 150–250)
+  zeile('K Sperr: Detonation ↔ nächste Drohne (Median, unverwundbar, Ersatz-Flak)', '220–400 m', f1(medA) + ' m', medA >= 220 && medA <= 400, false);
 }
 
 // ---------- L) Regler befehl.streu (R11) ----------
@@ -630,19 +635,21 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
     if (streuWert(undefined, f) !== r.standard || streuWert({ [f]: NaN }, f) !== r.standard || streuWert({ [f]: '50' }, f) !== r.standard
       || streuWert({ [f]: r.min - 1 }, f) !== r.min || streuWert({ [f]: r.max + 1 }, f) !== r.max) klammerOk = false;
   }
-  zeile('L streuWert: fehlt/NaN/Text → Standard, außerhalb → Grenze (alle 6 Regler)', 'ja', klammerOk ? 'ja' : 'nein', klammerOk);
+  zeile(`L streuWert: fehlt/NaN/Text → Standard, außerhalb → Grenze (alle ${Object.keys(STREU_REGLER).length} Regler)`, 'ja', klammerOk ? 'ja' : 'nein', klammerOk);
   // Standard-streu bitgleich zu ohne streu (= R10), Sperrfeuer folgt und Zielfeuer
   const ZF = { modus: 'zielfeuer', feuerFrei: true, schirmAbstand: 800 };
   const h0 = lauf(3600, false, FOLGEN).h, h1 = lauf(3600, false, { ...FOLGEN, streu: STD }).h, h2 = lauf(3600, false, { ...FOLGEN, streu: { sperrQuer: NaN } }).h;
   const z0 = lauf(3600, false, ZF).h, z1 = lauf(3600, false, { ...ZF, streu: STD }).h;
   zeile('L Standard-streu / streu mit NaN = ohne streu (Sperr folgt, Ziel; 3600 Takte)', 'gleich', `${h0.toString(16)} / ${h1.toString(16)} / ${h2.toString(16)} · ${z0.toString(16)} / ${z1.toString(16)}`, h0 === h1 && h0 === h2 && z0 === z1);
   // Reglerplan mitten im Lauf: zwei Läufe gleich, anders als ohne Plan; Befehls-Richttempo der Sperr-Rohre auch im Umschalt-Takt
-  const plan = new Map([[600, { sperrQuer: 150, raumZuschlag: 250 }], [1200, { raumZuschlag: 0, lagenAnteil: 1.2, sperrTiefe: 200 }],
-    [1800, { lagenAnteil: 0.3, ziel: 300, nahMax: 5 }], [2400, { sperrQuer: 0, raumZuschlag: 250, lagenAnteil: 1.2 }], [3000, {}]]);
-  const planLauf = () => {
+  const plan0 = new Map([[600, { sperrQuer: 150, raumZuschlag: 250 }], [1200, { raumZuschlag: 0, lagenAnteil: 1.2, sperrTiefe: 200 }],
+    [1800, { lagenAnteil: 0.3, ziel: 300, nahMax: 5, faktor: 3 }], [2400, { sperrQuer: 0, raumZuschlag: 600, lagenAnteil: 1.2, faktor: 0.5 }], [3000, {}]]);
+  // R12 Gesamtregler: 1 → 3 → 0,5 → 3 mit vollen Einzelreglern (größter Raum) und zurück auf Standard
+  const planF = new Map([[900, { faktor: 3 }], [1800, { faktor: 0.5 }], [2700, { faktor: 3, sperrQuer: 400, sperrTiefe: 400, raumZuschlag: 600 }], [3300, {}]]);
+  const planLauf = (plan = plan0) => {
     const d = erstelleZieldrohnen({ startwert: 101 }), ki = erstelleTurmKi({ startwert: 202 }), t = ersatzTuerme(1100), fl = erstelleErsatzFlak(303, 6);
     const b = { ...FOLGEN }, vor = t.map(() => null);
-    let hh = 0x811c9dc5, rG = 0, rN = 0, rGU = 0, rNU = 0; const f = new Float64Array(1), u = new Uint32Array(f.buffer);
+    let hh = 0x811c9dc5, rG = 0, rN = 0, rGU = 0, rNU = 0, breit = 0; const f = new Float64Array(1), u = new Uint32Array(f.buffer);
     const wd = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
     for (let k = 0; k < 3600; k++) {
       const p = plan.get(k); if (p) b.streu = p;
@@ -658,14 +665,22 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
         }
         vor[i] = { g, n, sperr: q.zielId === null };
       });
+      for (const s of ki.lage.schirme) breit = Math.max(breit, s.breite);
     }
-    return { h: hh >>> 0, rG, rN, rGU, rNU };
+    return { h: hh >>> 0, rG, rN, rGU, rNU, breit };
   };
   const pa = planLauf(), pb = planLauf();
   zeile('L Reglerplan (5 Wechsel) mitten im Lauf: zwei Läufe gleich', 'gleich', `${pa.h.toString(16)} / ${pb.h.toString(16)}`, pa.h === pb.h);
   const B = TURMKI.folgen.bremse, gB = B.gier / GRAD + 1e-6, nB = B.nick / GRAD + 1e-6;
   zeile('L Befehls-Richttempo Sperr-Rohre im Umschalt-Takt / sonst (Gier, Nick, max)', `≤ ${f1(gB)} / ${f1(nB)}°/s`, `${f1(pa.rGU / GRAD)} / ${f1(pa.rNU / GRAD)} · ${f1(pa.rG / GRAD)} / ${f1(pa.rN / GRAD)}°/s`,
     pa.rGU / GRAD <= gB && pa.rNU / GRAD <= nB && pa.rG / GRAD <= gB && pa.rN / GRAD <= nB);
+  // R12: Gesamtregler faktor 1 → 3 → 0,5 → 3 (alle Einzelregler voll) — Umschalt-Takt springt nicht weiter als ein
+  // normaler Schritt (Lehre R7), Richttempo unter der Bremse, Raum wird wirklich groß (nicht mehr bei 0,28 rad gekappt)
+  const fa = planLauf(planF), fb = planLauf(planF);
+  zeile('L faktor 1 → 3 → 0,5 → 3 (voll): zwei Läufe gleich', 'gleich', `${fa.h.toString(16)} / ${fb.h.toString(16)}`, fa.h === fb.h);
+  zeile('L faktor-Wechsel: Befehls-Richttempo Sperr-Rohre im Umschalt-Takt / sonst (Gier, Nick, max)', `≤ ${f1(gB)} / ${f1(nB)}°/s`, `${f1(fa.rGU / GRAD)} / ${f1(fa.rNU / GRAD)} · ${f1(fa.rG / GRAD)} / ${f1(fa.rN / GRAD)}°/s`,
+    fa.rGU / GRAD <= gB && fa.rNU / GRAD <= nB && fa.rG / GRAD <= gB && fa.rN / GRAD <= nB);
+  zeile('L faktor 3 (voll): größte halbe Raumbreite', '> 450 m (R11-Deckel 0,28 rad ≈ 340 m bei 1200 m)', f1(fa.breit) + ' m', fa.breit > 450);
   // Wirkung (Ersatz-Flak, unverwundbar): Sperr-Median steigt mit sperrQuer 70 → 150
   const medSperr = (streu) => {
     const d = erstelleZieldrohnen({ startwert: 101 }), ki = erstelleTurmKi({ startwert: 202 }), t = ersatzTuerme(1100), fl = erstelleErsatzFlak(303, 6), a = [];
@@ -676,14 +691,18 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
     }
     a.sort((x, y) => x - y); return a[a.length >> 1];
   };
-  const m70 = medSperr({ sperrQuer: 70 }), m150 = medSperr({ sperrQuer: 150 });
-  zeile('L Wirkung: Sperr Detonation ↔ Drohne Median bei sperrQuer 70 → 150 (Ersatz-Flak, unverwundbar)', 'steigt', `${f1(m70)} → ${f1(m150)} m`, m150 > m70);
+  // R12: Gesamtregler muss sichtbar wirken (Median folgt ungefähr); sperrQuer allein wirkt beim Zuschlag 300 kaum
+  // (R12 gemessen: 70 → 150 nur +11 m) → mit kleinem Zuschlag prüfen
+  const mf = [0.5, 1, 2].map((faktor) => medSperr({ faktor }));
+  zeile('L Wirkung faktor 0,5 → 1 → 2: Sperr Detonation ↔ Drohne Median (Ersatz-Flak, unverwundbar)', 'steigt, 2 ≥ 1,3 × 0,5', mf.map(f1).join(' → ') + ' m', mf[1] > mf[0] && mf[2] > mf[1] && mf[2] >= 1.3 * mf[0]);
+  const m0 = medSperr({ sperrQuer: 0, raumZuschlag: 50 }), m300 = medSperr({ sperrQuer: 300, raumZuschlag: 50 });
+  zeile('L Wirkung: Sperr Median bei sperrQuer 0 → 300 (Zuschlag 50, Ersatz-Flak, unverwundbar)', 'steigt', `${f1(m0)} → ${f1(m300)} m`, m300 > m0);
 }
 
 // ---------- M) Toleranz folgt dem Waffen-Regler deckelQuer (Befund Prüfer R11), echte Flak ----------
 {
-  // Stehendes Ziel 1000 m vor der Batterie, Zielfeuer, Regler deckelQuer 0,10: Kugel 140 → Waffe kürzt auf 100 m.
-  // Granate ↔ Punkt QUER zur Schusslinie (WARUM quer: längs streut streuTiefe 140 m unabhängig vom Querdeckel)
+  // Stehendes Ziel 1000 m vor der Batterie, Zielfeuer, Regler deckelQuer 0,10: Kugel 320 (R12) → Waffe kürzt auf 100 m.
+  // Granate ↔ Punkt QUER zur Schusslinie (WARUM quer: längs streut streuTiefe 320 m unabhängig vom Querdeckel)
   // ≤ Kugel (100) + Feuer-Spielraum (toleranz · d, jetzt ≤ 100 m statt 140) + Streuung/Rohrversatz 10 m;
   // nach dem Einrichten (Turm steht) ≤ Kugel + 10 m.
   for (const dq of [0.10, 0.30]) {
@@ -700,7 +719,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
     }
     const kug = Math.min(TURMKI.streuKugel.ziel, dq * 1000);
     zeile(`M deckelQuer ${dq}: Feuer-Spielraum ≤ wirksamer Deckel · d (max, m)`, `≤ ${f1(tolSoll)} m`, f1(tolMax) + ' m', tolMax <= tolSoll + 1e-6);
-    zeile(`M deckelQuer ${dq}: Granate ↔ Punkt quer, max gesamt / nach dem Einrichten (1000 m, Kugel 140)`, `≤ ${f1(2 * kug + 10)} / ${f1(kug + 10)} m`, `${f1(maxAll)} / ${f1(maxSpaet)} m`, maxAll <= 2 * kug + 10 && maxSpaet <= kug + 10);
+    zeile(`M deckelQuer ${dq}: Granate ↔ Punkt quer, max gesamt / nach dem Einrichten (1000 m, Kugel ${TURMKI.streuKugel.ziel})`, `≤ ${f1(2 * kug + 10)} / ${f1(kug + 10)} m`, `${f1(maxAll)} / ${f1(maxSpaet)} m`, maxAll <= 2 * kug + 10 && maxSpaet <= kug + 10);
   }
 }
 
