@@ -23,3 +23,7 @@
   streuTiefe) direkt lesen statt Modus aus dem HUD ableiten. Nicht unbekannte Felder als Funktion aufrufen (bricht die Messung ab).
 - 2026-11-16 Runde 11 — Regler einzeln testen (standard() → setze() → bilder(300)), Pixel per gl.readPixels direkt nach
   bilder(1). Bei Umschalt-Tasten den Zustand VORHER lesen (Taste R „öffnete nicht“ = Feld war schon offen).
+- 2026-11-19 Runde 12 — computer.type erzeugt im verdeckten Pane keine keydown-Ereignisse → Tastensperre in Feldern per
+  dispatchEvent(KeyboardEvent, bubbles) mit Gegenprobe auf body. Streuung je Regler nur nach labor.zuruecksetzen()
+  vergleichen. Testdateien, die man anlegt, im Bericht nennen (oder selbst löschen). Konsolenfehler vor dem Melden im
+  Netzprotokoll zuordnen (der 400 war ein absichtlicher Test).

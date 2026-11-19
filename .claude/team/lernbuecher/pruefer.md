@@ -23,3 +23,7 @@
 - 2026-11-16 Runde 11 — Wird ein Deckel zum Regler, alle Leser des Deckels suchen: die Waffe nutzte den Reglerwert, die
   KI-Toleranz noch die Konstante. Gefährlich ist die Richtung, in der der Regler UNTER der Konstante steht.
   Bitgleichheit „ohne Regler“ gegen den alten Stand per git archive prüfen, nicht nur gegen Standardwerte im neuen Code.
+- 2026-11-19 Runde 12 — Server-Middleware ohne Browser prüfen: vite.config.js ins Scratchpad kopieren (defineConfig durch
+  x=>x ersetzen), Handler mit Readable-req/Fake-res aufrufen. Prüfen: Status bei kaputtem JSON/URI (400 statt 500),
+  Spread-Reihenfolge (überschreibt der Body Kopf-Felder?). Schutzbedingungen mit Vorzeichen-Abkürzung (kN < 0) gegen alle
+  Achsen gegenrechnen, die das Ergebnis verschieben (kG). Eigene Reset-Vergleiche: nach dem Reset denselben Plan.

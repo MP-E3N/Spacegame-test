@@ -34,3 +34,6 @@
 - 2026-11-16 Runde 11 — Regler-Wünsche: jeder Besitzer exportiert eine Tabelle { min, max, standard }, die Seite baut
   daraus generisch (regler.js) → keine doppelten Zahlen. Ein stiller Deckel macht Regler wirkungslos → als eigenen Regler
   anbieten und den Anteil „gedeckelt“ anzeigen. Testwerte im localStorage nach eigenen Browsertests wieder löschen.
+- 2026-11-19 Runde 12 — „Damit du sie direkt abrufen kannst“ → Ablage als Datei im Projekt über eine Vite-Middleware
+  (nicht localStorage: fremder Browser). Vor jedem git add -A den Status lesen (ein Agenten-Messskript rutschte in den
+  Commit). Im Bauauftrag: Skripte nur ins Scratchpad. Neue Agenten nach Sitzungswechsel — Lernbücher tragen den Kontext.

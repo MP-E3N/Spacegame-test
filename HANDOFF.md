@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 11 nur lokal committet).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 11+12 nur lokal committet).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -66,11 +66,20 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   rauchGroesse, zusatzAnzahl, zusatzWeite — `GRAFIK_REGLER` in flakgrafik.js; Vorrat 3072, 1024 Reserve für echte Wolken).
   Knöpfe Standard / Konfig kopieren (JSON), Werte im Browser gemerkt (`localStorage` „schwarmfront.flaklabor.konfig“).
   Ohne Regler bitgleich zu R10. Seite: `src/labor/regler.js`. Protokoll `…/2026-11-16-runde11.md`.
-- **Nächster Schritt:** Nutzer testet mit den Reglern und schickt seine Konfig (JSON) → als neue Standardwerte in die
-  drei Tabellen übernehmen, dann Balance bei diesen Werten nachmessen (labor8.mjs-Muster, 3 Startwerte).
-  Offen: Feuerrate als Hebel für dichtere Sättigung; Station unten links verdeckt die linken Türme; kopierte Konfig enthält
-  `v0`, wird aber nicht wieder eingelesen (Kann); Rauch-Größe 2 = weiße Flächen (Reglerende). Stellschrauben Balance:
-  `FLAK.sorte`, `DROHNEN.vorstoss.panzer` 0,18 (steil!). Offen (Kann): Schadensskala, Turmteile 30 Draw-Calls.
+- Nutzer zu R11 („auf einem guten Weg“) → **Runde 12 (2026-11-19, lokal committet, nicht gepusht):**
+  (1) **Konfig speichern unter Namen** oben im Reglerfeld → Datei **`konfig/flak/<name>.json`** über den Dev-Server
+  (`vite.config.js`, `/api/flak-konfig`), Liste + Laden (inkl. v0). **Die KI liest Nutzer-Konfigs direkt aus diesem Ordner.**
+  (2) **Viel weitere Streuung:** Gesamtregler **„Streuung gesamt ×“** (`faktor` 0,5–3) skaliert alle Sim-Streuungen und
+  Räume; neue Standards Sperr 120/80, Zuschlag 340, Ziel 320; Waffen-Deckel 0,6/0,8 (bis 1,0/0,9), Sperr-Schutz für
+  versetzte Granaten, Zenit-Bremse, Leuchtspur-Kugel ≤ 0,10·d; Zusatz-Explosionen bis 120 m (zusatzWeite 0,5–6).
+  Median fern: Sperr 269 m (vorher 164), Ziel 227 m (vorher 103); faktor 3 → Sperr ~410–550 m. Balance (3 Startwerte):
+  Sperr 44–45 Abschüsse / 50–64 % Vorstöße, Ziel 22–26 / 36–57 % (knapp unter Ziel, gemeinsamer Panzer 0,13).
+  Protokoll `…/2026-11-19-runde12.md`.
+- **Nächster Schritt:** Nutzer speichert seine Lieblings-Konfig → aus `konfig/flak/` lesen, als neue Standardwerte in die
+  Tabellen übernehmen (STREU_REGLER, WAFFEN_REGLER, GRAFIK_REGLER), Balance nachmessen (labor8.mjs-Muster, 3 Startwerte).
+  Offen: Feuerrate als Hebel für dichtere Sättigung; Station unten links verdeckt die linken Türme; Zielfeuer-Balance
+  (getrennte Splitter fern/nah wäre Code); Rauch-Größe 2 = weiße Flächen. Stellschrauben: `FLAK.sorte`,
+  `DROHNEN.vorstoss.panzer` 0,13 (steil!). Offen (Kann): Schadensskala, Turmteile 30 Draw-Calls.
 - **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
@@ -131,6 +140,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 12** (2026-11-19, mit Team): Konfig speichern unter Namen (konfig/flak/), Gesamtregler Streuung ×, große
+  Standards, Sperr-Schutz, Zenit-Bremse, Balance. Lokal committet.
 - **Runde 11** (2026-11-16, mit Team): Reglerfeld mit 15 Schiebereglern (Streuung, Waffen-Grenzen, Optik inkl. Füll-Flak),
   Konfig kopieren/merken. Lokal committet.
 - **Runde 10** (2026-11-16, mit Team): Sättigungsfeuer — Räume mit 3 Tiefenlagen, Streu-Ellipsoid, 4 Zusatz-Explosionen,
