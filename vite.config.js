@@ -13,6 +13,8 @@ const ORDNER = resolve(import.meta.dirname, 'konfig', 'flak');
 // Name: Buchstaben (auch Umlaute), Ziffern, Leerzeichen, - und _; 1–40 Zeichen. WARUM so streng: der Name wird zum
 // Dateinamen — kein Punkt, kein Schrägstrich, also kein Ausbruch aus dem Ordner.
 const NAME = /^[\p{L}\p{N} _-]{1,40}$/u;
+// Windows-Gerätenamen (CON, NUL, COM1 …) sind als Dateiname tückisch → abweisen. „a b“ und „a_b“ ergeben dieselbe Datei (gewollt).
+const GERAET = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 const dateiname = (name) => name.trim().replace(/\s+/g, '_') + '.json';
 
 function konfigAblage() {
@@ -22,26 +24,31 @@ function konfigAblage() {
       server.middlewares.use('/api/flak-konfig', async (req, res) => {
         const antwort = (code, daten) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(daten)); };
         try {
-          const name = decodeURIComponent((req.url || '/').replace(/^\/+/, '').split('?')[0]);
+          let name;
+          try { name = decodeURIComponent((req.url || '/').replace(/^\/+/, '').split('?')[0]); } catch { return antwort(400, { fehler: 'Name ungültig kodiert' }); }
           if (!name) {
             if (req.method !== 'GET') return antwort(405, { fehler: 'nur GET' });
             await mkdir(ORDNER, { recursive: true });
             const dateien = (await readdir(ORDNER)).filter((d) => d.endsWith('.json')).sort();
             return antwort(200, dateien.map((d) => d.slice(0, -5).replace(/_/g, ' ')));
           }
-          if (!NAME.test(name.trim())) return antwort(400, { fehler: 'Name: nur Buchstaben, Ziffern, Leerzeichen, - und _ (max. 40)' });
+          if (!NAME.test(name.trim()) || GERAET.test(name.trim())) return antwort(400, { fehler: 'Name: nur Buchstaben, Ziffern, Leerzeichen, - und _ (max. 40)' });
           const pfad = resolve(ORDNER, dateiname(name));
           if (req.method === 'GET') return antwort(200, JSON.parse(await readFile(pfad, 'utf8')));
           if (req.method !== 'POST') return antwort(405, { fehler: 'nur GET/POST' });
-          let text = '';
-          for await (const stueck of req) { text += stueck; if (text.length > 65536) return antwort(413, { fehler: 'zu groß' }); }
-          const daten = JSON.parse(text);
+          // WARUM Puffer sammeln: Bytes zählen und Umlaute an Stückgrenzen nicht zerreißen
+          const teile = []; let bytes = 0;
+          for await (const stueck of req) { bytes += stueck.length; if (bytes > 65536) return antwort(413, { fehler: 'zu groß' }); teile.push(stueck); }
+          const text = Buffer.concat(teile).toString('utf8');
+          let daten;
+          try { daten = JSON.parse(text); } catch { return antwort(400, { fehler: 'kein gültiges JSON' }); }
           if (!daten || typeof daten !== 'object' || Array.isArray(daten)) return antwort(400, { fehler: 'kein JSON-Objekt' });
           await mkdir(ORDNER, { recursive: true });
-          await writeFile(pfad, JSON.stringify({ name: name.trim(), gespeichert: new Date().toISOString(), ...daten }, null, 2) + '\n', 'utf8');
+          await writeFile(pfad, JSON.stringify({ ...daten, name: name.trim(), gespeichert: new Date().toISOString() }, null, 2) + '\n', 'utf8');
           return antwort(200, { ok: true, datei: 'konfig/flak/' + dateiname(name) });
         } catch (f) {
-          return antwort(f?.code === 'ENOENT' ? 404 : 500, { fehler: String(f?.message || f) });
+          // WARUM keine Rohmeldung: sie enthielte den absoluten Pfad auf dem Rechner
+          return f?.code === 'ENOENT' ? antwort(404, { fehler: 'Konfig nicht gefunden' }) : antwort(500, { fehler: 'Ablage-Fehler' });
         }
       });
     },

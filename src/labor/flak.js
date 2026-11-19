@@ -160,6 +160,7 @@ function ladeKonfig(k) {
   reglerfeld.setze(k);
   const s = V0_STUFEN.find((x) => x.v === k?.v0);
   if (s) befehl.v0 = s.v;
+  else if (k?.v0 !== undefined) meldung('Mündungsgeschwindigkeit ' + k.v0 + ' m/s ist keine Stufe — bleibt bei ' + befehl.v0);
   hudUhr = 1;
 }
 async function listeLaden(wahl) {
