@@ -35,10 +35,12 @@ const BLITZ_M = 2.5, BLITZ_S = 0.05, MRAUCH_JEDER = 3, MRAUCH_M = 2.5, MRAUCH_S 
 // Zusatz-Explosionen je Detonation (R9, Nutzer: „3 weitere Explosionseffekte, nur visuell, für mehr Fülle“; R10: 4, weiter,
 // länger — „das Areal um ein Ziel viel weiter gestreut mit Flak-Wolken gesättigt“). Nur Grafik-Zufall (rnd), die Sim merkt
 // nichts — diese Wolken tragen KEINEN Schaden (Absicht, Entscheidung R10/3). Verzögerung über negatives Alter.
-// Versatz: 20 m bis versatzMax = clamp(30 + versatzJeStreu · streu, 30, 60) m. WARUM mitwachsend: im Nahbereich (Kugel
-// ≤ 35 m) bleibt die Traube eng wie in R9, im Sättigungsraum (Kugel 140 m) füllt sie bis 51 m, ab 200 m bis 60 m.
-// WARUM höchstens 60 m: weiter weg wirkt die Zusatzwolke wie eine eigene Granate ohne Schaden (ehrliche Optik).
-const ZUSATZ = { anzahl: 4, versatz: [20, 30, 60], versatzJeStreu: 0.15, verzoegerung: [0.06, 0.12, 0.18, 0.26], verzoegerungStreu: 0.05,
+// Versatz: 20 m bis versatzMax = clamp(30 + versatzJeStreu · streu, 30, 120) m (R12; R10: 0,15 · streu bis 60 m).
+// WARUM mitwachsend: im Nahbereich (Kugel ≤ 35 m) bleibt die Traube eng wie in R9 (≤ 39 m), die Zielkugel 320 m füllt
+// bis 110 m, ab 360 m bis 120 m. Alles mal zusatzWeite (Standard 1,5).
+// WARUM höchstens 120 m (R12, Nutzer: „die Flak-Explosionen viel mehr verteilen“; vorher 60 m): die Sim streut jetzt bis
+// 320 m — die Traube bleibt kleiner als die echte Streuung, weiter wirkt eine Zusatzwolke wie eine Granate ohne Schaden.
+const ZUSATZ = { anzahl: 4, versatz: [20, 30, 120], versatzJeStreu: 0.25, verzoegerung: [0.06, 0.12, 0.18, 0.26], verzoegerungStreu: 0.05,
   kern: [4, 6], kernDauer: 0.12, kernKraft: 0.3, glut: 0.25, wolke: [0.5, 0.65], leben: 2.0 };
 // Glut (R10-Testrunde, Bildprüfer: „überstrahlter Ballen aus Glutkernen statt Wolkenfeld“): der Rauch trägt das Feld, Glut
 // blitzt nur kurz. Zusatz-Kerne 0,3 Kraft / 0,12 s (vorher 0,8 / 0,25), Zusatz-Wolken mit 25 % Innenglut, Hauptkern 0,22 s.
@@ -56,7 +58,8 @@ export const GRAFIK_REGLER = {
   rauchDeckkraft: { min: 0.2, max: 1, standard: 0.7, schritt: 0.05, text: 'Rauch-Deckkraft' },
   rauchGroesse:   { min: 0.5, max: 2, standard: 1,   schritt: 0.05, text: 'Rauch-Größe (× 42 m)' },
   zusatzAnzahl:   { min: 0,   max: 6, standard: 4,   schritt: 1,    text: 'Zusatz-Explosionen je Detonation' },
-  zusatzWeite:    { min: 0.5, max: 3, standard: 1,   schritt: 0.05, text: 'Zusatz-Weite (× 20–60 m)' },
+  // zusatzWeite R12 (Nutzer: „die Area größer machen … als konfigurierbaren Slider“): 0,5–6, Standard 1,5 → 30–180 m
+  zusatzWeite:    { min: 0.5, max: 6, standard: 1.5, schritt: 0.05, text: 'Zusatz-Weite (× 20–120 m)' },
 };
 // Füll-Flak: FUELL_RATE Wolken/s je Reglereinheit. Quelle A (immer): zwischen zwei Detonationen der letzten FUELL_FENSTER s,
 // die höchstens FUELL_PAAR m auseinander liegen. Quelle B (mit lage): gleichverteilt in einem Kasten von lage.schirme
@@ -64,7 +67,9 @@ export const GRAFIK_REGLER = {
 // tragen keinen Schaden — ein Blitz sähe nach Treffer aus; die Wolke soll nur das Feld größer wirken lassen.
 // FUELL_RESERVE: Füll-Flak setzt nur, solange weniger als MAX_RAUCH − Reserve belegt sind. WARUM: nimmt sie die letzten freien
 // Plätze, müssen die echten Detonationswolken danach lebende ersetzen (Messung R11: 2806 überschrieben).
-const FUELL_RATE = 30, FUELL_FENSTER = 2, FUELL_PAAR = 400, FUELL_RING = 64, FUELL_GLUT = 0.15, FUELL_RESERVE = 1024;
+// WARUM FUELL_PAAR 800 (R12; vorher 400): die Sim streut bis 320 m, Nachbar-Detonationen liegen weiter auseinander — bei
+// 400 m fände Quelle A kaum noch Paare.
+const FUELL_RATE = 30, FUELL_FENSTER = 2, FUELL_PAAR = 800, FUELL_RING = 64, FUELL_GLUT = 0.15, FUELL_RESERVE = 1024;
 const klemme = (w, a, b) => (w < a ? a : w > b ? b : w);
 const ZWEI_PI = Math.PI * 2;
 const umbruch = (w) => w - ZWEI_PI * Math.floor((w + Math.PI) / ZWEI_PI);

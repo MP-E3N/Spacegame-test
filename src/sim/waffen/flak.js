@@ -13,6 +13,7 @@
 //        Kugel um befehl.punkt, Zeitzünder auf genau diesen Punkt (Runde 8, Nutzer: „Luft sättigen statt treffen“).
 //        Seit R10 ein ELLIPSOID: streuKugel = Halbachse quer zur Schusslinie, befehle[i].streuTiefe = Halbachse längs
 //        (fehlt → = streuKugel). Deckel FLAK.deckelQuer/-QuerLeucht/-Tiefe · d; jede Kürzung zählt geschosse.gedeckelt.
+//        Sperr-Schutz (R12): versetzte Granaten nie unter den Mindest-Nick der Nachbar-Sperre (zählt geschosse.unterSperre).
 //        Detonations-Ereignis trägt `streu` (m) = größere benutzte Halbachse (Grafik streut die Zusatz-Explosionen damit).
 import { zufall } from '../zufall.js';
 import { LAFETTEN } from './lafetten.js';
@@ -28,11 +29,15 @@ export const FLAK = {
   zuenderStreuSperr: 0.08,    // ±8 % Sperrgranaten ohne Kugel → Schirm ~120 m tief bei 800 m (Runde 7)
   // Deckel der Streuung (R10, Entscheidung 1) — die KI liest sie von HIER (nicht doppelt führen). Anteil der Entfernung d.
   // quer: Seitenversatz kostet Winkel am Rohr. WARUM 0,10 mit Leuchtspur: darüber fliegt die Spur sichtbar schief aus dem
-  //       Rohr (≈ 5,7°). WARUM 0,18 ohne: ohne Spur sieht niemand den Abgangswinkel (≈ 10°), die KI braucht 0,18 (Messung R10).
+  //       Rohr (≈ 5,7°). WARUM 0,60 ohne (R12, Nutzer: „die Area um die feindlichen Objekte größer machen“; R10: 0,18):
+  //       ohne Spur sieht niemand den Abgangswinkel (≈ 31°); die Zielkugel 320 m bleibt so ab d ≈ 530 m ungekürzt.
+  //       Versetzte Granaten fliegen nie unter die Nachbar-Sperre (Sperr-Schutz im Schuss).
   // längs: Tiefe entsteht nur über die Zünderzeit (kein Winkel) → großzügig, Tiefenstaffel in Anflugrichtung.
+  //       WARUM 0,80 (R10: 0,35): Tiefe 320 m ab d = 400 m; höchstens 0,9, sonst liegt der Punkt an der Mündung und der
+  //       Mindestzünder (60 m) zündet die Granate direkt vor der Batterie.
   deckelQuerLeucht: 0.10,
-  deckelQuer: 0.18,
-  deckelTiefe: 0.35,
+  deckelQuer: 0.60,
+  deckelTiefe: 0.80,
   // Annäherungszünder (R8 aus, Code bleibt): er war der eigentliche „Direkttreffer“ — zündete bei r + 12 m an jedem Ziel.
   annaeherung: false,
   naheZuender: 12,            // m über dem Zielradius
@@ -75,11 +80,12 @@ export const FLAK = {
 
 // Regler der Waffe (R11, Nutzer: „die Area frei vergrößern“). Nur der Deckel OHNE Leuchtspur und der Längsdeckel —
 // WARUM nicht deckelQuerLeucht: die Leuchtspur muss gerade aus dem Rohr kommen (0,10 · d bleibt fest).
-// WARUM höchstens 0,6 quer (≈ 31°) / 0,8 längs: darüber schießt der Turm sichtbar in eine andere Richtung bzw. zündet kurz
-// vor dem Rohr (der Mindestzünder 60 m fängt das ab, sieht aber wie ein Fehlschuss aus).
+// WARUM höchstens 1,0 quer (45°, R12; R11: 0,6): darüber schießt der Turm in eine ganz andere Richtung als das Rohr.
+// WARUM höchstens 0,9 längs (R12; R11: 0,8): bei 1,0 · d läge der Punkt an der Mündung — der Mindestzünder (60 m) zündete
+// dann direkt vor der Batterie.
 export const WAFFEN_REGLER = {
-  deckelQuer:  { min: 0.10, max: 0.60, standard: FLAK.deckelQuer,  schritt: 0.01, text: 'Deckel quer ohne Leuchtspur (× Entfernung)' },
-  deckelTiefe: { min: 0.10, max: 0.80, standard: FLAK.deckelTiefe, schritt: 0.01, text: 'Deckel längs (× Entfernung)' },
+  deckelQuer:  { min: 0.10, max: 1.00, standard: FLAK.deckelQuer,  schritt: 0.01, text: 'Deckel quer ohne Leuchtspur (× Entfernung)' },
+  deckelTiefe: { min: 0.10, max: 0.90, standard: FLAK.deckelTiefe, schritt: 0.01, text: 'Deckel längs (× Entfernung)' },
 };
 
 const ZWEI_PI = Math.PI * 2;
@@ -102,6 +108,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   const N = FLAK.poolGeschosse;
   const geschosse = {
     max: N, anzahlAktiv: 0, verworfen: 0,
+    unterSperre: 0, // Granaten, die der Sperr-Schutz auf den Mindest-Nick angehoben hat (R12, nur Zähler)
     gedeckelt: 0, // Schüsse, deren Streuung (quer oder längs) der Deckel gekürzt hat (R10: stumme Kürzung sichtbar machen)
     streu: new Float32Array(N), // benutzte Streuung je Granate (m), geht ans Detonations-Ereignis
     aktiv: new Uint8Array(N), turm: new Uint8Array(N), sperr: new Uint8Array(N), // sperr 1 = Sperrgranate
@@ -162,7 +169,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
 
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
-    geschosse.gedeckelt = 0; geschosse.streu.fill(0);
+    geschosse.gedeckelt = 0; geschosse.unterSperre = 0; geschosse.streu.fill(0);
     einstellung.deckelQuer = FLAK.deckelQuer; einstellung.deckelTiefe = FLAK.deckelTiefe; // Umschalter mit zurücksetzen (Lehre R8)
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
@@ -356,7 +363,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     }
     // Streuung: zwei Achsen, je Dreiecksverteilung (Summe zweier Zufallszahlen) → dichte Mitte, weicher Rand
     const g = t.gier + kG + (t.rnd() + t.rnd() - 1) * t.streuung / Math.max(0.2, Math.cos(t.nick));
-    const n = t.nick + kN + (t.rnd() + t.rnd() - 1) * t.streuung;
+    let n = t.nick + kN + (t.rnd() + t.rnd() - 1) * t.streuung;
+    // Sperr-Schutz (R12): der Ellipsoid-Versatz lenkt die Granate bis zu 45° vom Rohr ab, die Sperre prüft aber nur das
+    // Rohr. WARUM: sonst fliegt eine nach unten versetzte Granate durch den Nachbarturm. Kein Zufall → Folge bleibt gleich.
+    if (kN < 0) { const m = sperrNick(t, g); if (n < m) { n = m; geschosse.unterSperre++; } }
     const cn = Math.cos(n), rx = Math.sin(g) * cn, ry = Math.sin(n), rz = Math.cos(g) * cn;
     zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMinStrecke / v0, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * zStreu);
     const j = i * 3;
