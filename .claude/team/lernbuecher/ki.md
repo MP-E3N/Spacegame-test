@@ -39,3 +39,8 @@
 - 2026-11-16 Runde 11 — Streu-Regler über befehl.streu/befehl.waffe mit Tabelle (STREU_REGLER) und Klemm-Hilfe
   (streuWert/waffeWert, NaN → Standard): ohne Regler bitgleich. Feste Klammern (Raum 120–250, Lagenabstand) verschlucken
   Regler → an den Regler koppeln. Fremde Deckel nie als Konstante lesen, sondern über dieselbe Klemmregel wie der Besitzer.
+- 2026-11-19 Runde 12 — Gesamtregler faktor (0,5–3) skaliert alle Sim-Streuungen + Raum-Obergrenzen; Raum nur
+  geometrisch (0,8/0,45 rad), Periode = Grund · max(1, halb/Bezug), Phase je Raum aufintegriert. Sperr-Median 164 → 269 m,
+  Ziel 103 → 227 m. Ausreißer 552°/s = Nah-Ziel bei 88° Nick (Gier-Singularität) → Zenit-Bremse, auch im Zielfeuer.
+  Lehre: TURMKI-Patches wirken nicht auf Regler-Standards (beim Laden gebildet) → über befehl.streu messen; fremde
+  Deckel selbst einhalten (Leuchtspur-Kugel ≤ 0,98·0,10·d), sonst kürzt die Waffe stumm (21 % → 4 %).
