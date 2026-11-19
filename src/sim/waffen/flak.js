@@ -64,8 +64,17 @@ export const FLAK = {
     // WARUM Ziel-Splitter 42 statt 30 m: = sichtbare Hauptwolke (42 m); die weit gestreuten Zielgranaten (Median 105 m)
     // treffen sonst kaum — 30 m: 19–30 Abschüsse, 42 m: 31–37 (2 Startwerte); nah (Kugel ≤ 35 m) ändert sich wenig.
     // Labor (Panzer 0,18), Startwerte 101 / 7 / 202: Sperr 54 / 47 / 46, Ziel 32 / 31 / 32 Abschüsse.
-    { wirkRadius: 30, vollRadius: 4, schaden: 3, splitterRadius: 42, splitterDauer: 30, splitterDps: 15 },
-    { wirkRadius: 25, vollRadius: 6, schaden: 1.5, splitterRadius: 45, splitterDauer: 54, splitterDps: 45 },
+    // R12 (KI, Nutzer: „Explosionen viel mehr verteilen“; Sperr-Median 165 → 270 m, Zielkugel 140 → 320 m): mit den
+    // R10-Zahlen nur Sperr 19, Ziel 29 Abschüsse (Startwert 101). Sperrgranate: Splitter 45 → 60 m, 45 → 90 HP/s.
+    // WARUM 60 m (über der sichtbaren Hauptwolke 42 m × rauchGroesse): dasselbe Feuer verteilt sich auf ~4× Volumen;
+    // ein Splitterfeld von 60 m fasst (60/45)³ ≈ 2,4× Volumen, den Rest trägt die Dauer-Wirkung (Dps). Der Splitter-
+    // Kegel liegt um die Wolke, die man sieht — 60 m bleibt unter der Zusatz-Explosionen-Weite (bis 120 m, R12).
+    // Zielgranate: Schaden 3 → 5,5, Splitter 15 → 18 HP/s, Radius bleibt 42 m. WARUM nicht der Radius: dieselbe Sorte
+    // trifft im Nahbereich (Kugel ≤ 35 m) jeden Vorstoß — 55 m: 1 von 13 Vorstößen überlebt (Startwert 101).
+    // Getestet (Labor, 1100 m/s, 5 min): 10 Varianten × 1–3 Startwerte; gewählt mit Panzer 0,13 (DROHNEN.vorstoss),
+    // Startwerte 101 / 7 / 202: Sperr 44 / 44 / 45, Ziel 25 / 26 / 22 Abschüsse.
+    { wirkRadius: 30, vollRadius: 4, schaden: 5.5, splitterRadius: 42, splitterDauer: 30, splitterDps: 18 },
+    { wirkRadius: 25, vollRadius: 6, schaden: 1.5, splitterRadius: 60, splitterDauer: 54, splitterDps: 90 },
   ],
   poolSplitter: 96,
   // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
