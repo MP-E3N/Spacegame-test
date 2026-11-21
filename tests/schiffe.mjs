@@ -4,11 +4,13 @@
 //   2) Feld == alter Erzeuger aus grafik/asteroiden.js (Runde 4, hier eingefroren), Abweichung < 1e-9.
 //   3) src/sim/** importiert nichts aus grafik/; src/sim/schiffe/ und feld.js auch kein three (reine Daten).
 //   4) Kugel-Deckung des Rumpfs (Rumpfpunkte höchstens 1,5 m außerhalb einer Kugel) — WARN unter 85 %; Überstand als Info.
+//   5) Rumpftreffer (R14): Strahlen innerhalb Grenzen + rumpfSperre() treffen die echten Lofts nicht.
+//   6) Abdeckung (R14, Bollwerk): 2000 Richtungen — jede von ≥ 1 Flak-Turm erreichbar; Ziel ≥ 80 % von ≥ 2.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 import * as THREE from 'three';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { SCHIFFSDATEN, alleTeile, TURM, masse } from '../src/sim/schiffe/index.js';
+import { SCHIFFSDATEN, alleTeile, TURM, masse, rumpfSperre, sperrSektor } from '../src/sim/schiffe/index.js';
 import { erstelleFeld } from '../src/sim/feld.js';
 import { loft } from '../src/grafik/schiff/bauteile.js';
 import { zufall } from '../src/grafik/zufall.js';
@@ -131,6 +133,69 @@ for (const [key, schiff] of Object.entries(SCHIFFSDATEN)) {
   }
   zeile(`${key}: Rumpf in Kugeln (${schiff.kugeln.length} St., ±1,5 m)`, '≥ 85 %', (100 * drin / alle).toFixed(0) + ' %', drin / alle >= 0.85, false);
   zeile(`${key}: Kugel-Überstand > 3 m`, 'Info', (100 * aus / n).toFixed(0) + ' %', true, false);
+}
+
+// ---------- 5) Rumpftreffer (R14) ----------
+// Strahlen aus dem Zapfen (Mitte + beide Rohrachsen) innerhalb der Turm-Grenzen UND der Rumpf-Sperre gegen die ECHTEN
+// Lofts (auch TEILE.details) bis 300 m: kein Treffer erlaubt. Prüft rumpfSperre() unabhängig (Raycaster statt Kanten).
+const umbruch = (w) => w - 2 * Math.PI * Math.floor((w + Math.PI) / (2 * Math.PI));
+/** Turm-Rahmen → Schiff (unten: x, y gespiegelt, turm.js). */
+const inSchiff = (t, v, punkt) => v.set(t.oben ? v.x : -v.x, t.oben ? v.y : -v.y, v.z).add(punkt ? o.set(t.x, t.y, t.z) : o.set(0, 0, 0));
+const richtung = (g, n, v) => v.set(Math.sin(g) * Math.cos(n), Math.sin(n), Math.cos(g) * Math.cos(n));
+const erreicht = (t, sperre, g, n) => (t.gier[1] >= Math.PI - 1e-6 || Math.abs(umbruch(g - t.gier[0])) <= t.gier[1])
+  && n >= t.nick[0] && n <= t.nick[1] && n >= sperre[sperrSektor(g, sperre.length)];
+for (const [key, schiff] of Object.entries(SCHIFFSDATEN)) {
+  const netze = alleTeile(schiff.teile).map((t) => new THREE.Mesh(loft(t.ab, t.fase)));
+  netze.forEach((n) => n.updateMatrixWorld());
+  strahl.far = 300;
+  let treffer = 0, strahlen = 0;
+  const wo = [], p = new THREE.Vector3(), q = new THREE.Vector3();
+  for (const t of schiff.tuerme) {
+    const sperre = rumpfSperre(t, schiff.teile), voll = t.gier[1] >= Math.PI - 1e-6, NG = voll ? 96 : 48;
+    let hier = 0;
+    for (let a = 0; a <= NG; a++) {
+      const g = voll ? -Math.PI + 2 * Math.PI * a / NG : t.gier[0] - t.gier[1] + 2 * t.gier[1] * a / NG;
+      const nMin = Math.max(t.nick[0], sperre[sperrSektor(g)]);
+      if (nMin > t.nick[1]) continue;
+      for (let b = 0; b <= 10; b++) {
+        const n = nMin + (t.nick[1] - nMin) * b / 10;
+        richtung(g, n, q); inSchiff(t, q, false); const dir = q.clone();
+        for (const seite of [0, t.muendungen[0].x, -t.muendungen[0].x]) {
+          // Zapfen um gier gedreht + Seitenversatz quer zum Rohr (Turm-Rahmen)
+          p.set(Math.sin(g) * t.zapfen.z + Math.cos(g) * seite, t.zapfen.y, Math.cos(g) * t.zapfen.z - Math.sin(g) * seite);
+          inSchiff(t, p, true);
+          strahl.set(p, dir); strahlen++;
+          if (strahl.intersectObjects(netze, false).length) hier++;
+        }
+      }
+    }
+    if (hier) wo.push(`${t.id}: ${hier}`);
+    treffer += hier;
+  }
+  strahl.far = Infinity;
+  zeile(`${key}: Rumpftreffer in Grenzen + Sperre (${strahlen} Strahlen)`, '0', wo.length ? wo.join(', ') : '0', treffer === 0);
+}
+
+// ---------- 6) Abdeckung der Flak (R14) ----------
+// 2000 Richtungen gleichmäßig auf der Kugel (Schiffs-Rahmen, „im Unendlichen“): von wie vielen Flak-Türmen erreichbar
+// (Grenzen + Rumpf-Sperre)? Hart: jede Richtung von ≥ 1 Turm. Ziel (weich): ≥ 80 % von ≥ 2 Türmen.
+for (const [key, schiff] of Object.entries(SCHIFFSDATEN)) {
+  const flak = schiff.tuerme.filter((t) => t.typ === 'flak');
+  if (key !== 'bollwerk') continue; // WARUM nur Bollwerk: Ambos-Türme sind nicht auf Rundum-Abdeckung ausgelegt (Nutzerregel R1)
+  const sperren = flak.map((t) => rumpfSperre(t, schiff.teile));
+  let eins = 0, zwei = 0; const N = 2000, v = new THREE.Vector3();
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (2 * i + 1) / N, rr = Math.sqrt(1 - y * y), w = i * 2.39996323;
+    let k = 0;
+    flak.forEach((t, j) => {
+      v.set(Math.cos(w) * rr, y, Math.sin(w) * rr); inSchiff(t, v, false); // Schiff → Turm (Spiegelung ist selbstinvers)
+      if (erreicht(t, sperren[j], Math.atan2(v.x, v.z), Math.asin(Math.max(-1, Math.min(1, v.y))))) k++;
+    });
+    if (k >= 1) eins++;
+    if (k >= 2) zwei++;
+  }
+  zeile(`${key}: Abdeckung ≥ 1 Flak-Turm (${flak.length} St., ${N} Richtungen)`, '100 %', (100 * eins / N).toFixed(1) + ' %', eins === N);
+  zeile(`${key}: Abdeckung ≥ 2 Flak-Türme`, '≥ 80 %', (100 * zwei / N).toFixed(1) + ' %', zwei / N >= 0.8, false);
 }
 
 console.table(zeilen);
