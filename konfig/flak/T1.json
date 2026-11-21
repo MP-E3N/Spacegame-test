@@ -1,0 +1,29 @@
+{
+  "streu": {
+    "faktor": 1,
+    "sperrQuer": 200,
+    "sperrTiefe": 200,
+    "raumZuschlag": 400,
+    "ziel": 135,
+    "nahMax": 35,
+    "lagenAnteil": 0.75
+  },
+  "waffe": {
+    "deckelQuer": 1,
+    "deckelTiefe": 0.9
+  },
+  "grafik": {
+    "fuellen": 2,
+    "lebenFaktor": 0.4,
+    "explosionDauer": 3,
+    "explosionHell": 2.35,
+    "rauchDeckkraft": 0.1,
+    "rauchGroesse": 0.55,
+    "zusatzAnzahl": 6,
+    "zusatzWeite": 1.05
+  },
+  "v0": 1100,
+  "spurImmer": true,
+  "name": "T1",
+  "gespeichert": "2026-11-21T15:08:17.721Z"
+}

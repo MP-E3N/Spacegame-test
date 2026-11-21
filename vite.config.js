@@ -1,4 +1,4 @@
-// ZWECK: Vite mit zwei Seiten — Spiel (index.html) und Flak-Labor (flak.html, Runde 6) — plus Konfig-Ablage für das
+// ZWECK: Vite mit mehreren Seiten — Startmenü (index.html), Freiflug, Flak-Labor, Gefechtstest — plus Konfig-Ablage für das
 //        Flak-Labor (Runde 12, Nutzer: „Konfig speichern mit Benennung, damit du sie direkt abrufen kannst“).
 // WARUM eigene Konfiguration: im Entwicklungsmodus liefert Vite jede HTML-Datei aus, für `npm run build` muss die
 // zweite Seite aber als Eingang genannt sein.
@@ -59,7 +59,8 @@ export default defineConfig({
   plugins: [konfigAblage()],
   build: {
     rollupOptions: {
-      input: { spiel: resolve(import.meta.dirname, 'index.html'), flak: resolve(import.meta.dirname, 'flak.html') },
+      // Runde 14: index.html = Startmenü, Freiflug eigene Seite, Gefechtstest neu
+      input: Object.fromEntries(['index', 'freiflug', 'flak', 'gefecht'].map((n) => [n, resolve(import.meta.dirname, n + '.html')])),
     },
   },
 });
