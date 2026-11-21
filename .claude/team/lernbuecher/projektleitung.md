@@ -37,3 +37,6 @@
 - 2026-11-19 Runde 12 — „Damit du sie direkt abrufen kannst“ → Ablage als Datei im Projekt über eine Vite-Middleware
   (nicht localStorage: fremder Browser). Vor jedem git add -A den Status lesen (ein Agenten-Messskript rutschte in den
   Commit). Im Bauauftrag: Skripte nur ins Scratchpad. Neue Agenten nach Sitzungswechsel — Lernbücher tragen den Kontext.
+- 2026-11-21 Runde 14 — Großer Wunsch (Schiff + Flak + Angreifer + Menü): Schnittstelle im Kickoff vorschlagen, in der
+  Frühwarnung von allen drei Rollen schärfen lassen, dann parallel bauen; die Verdrahtung (gefecht.js, Seite) selbst nach
+  dem Zusammenführen. Bauaufträge: „keine Server starten, eigene Prozesse beenden“ — sonst bleiben Worktrees gesperrt.

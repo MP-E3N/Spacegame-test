@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 11+12 nur lokal committet).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 11–14 nur lokal committet).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
 
 ## Worum es geht
@@ -80,6 +80,15 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   1 → 1,6, neuer Regler **„Explosion: Helligkeit“** (explosionHell 0,5–3, Standard 1,8; Kern-Budget 16 → 28 × hell);
   **Taste T / Knopf „Leuchtspur dauerhaft“** (grafik.regler.spurImmer, nur Optik, wird in der Konfig mitgespeichert).
   Browser: weiße Pixel 0,15 ‰, Bildzeit 0,4 ms, 68 Spuren mit T. Keine Sim-Änderung.
+- **Runde 14 (2026-11-21, mit Team, lokal committet): Startmenü + Gefechtstest.** `index.html` = Startmenü
+  (Gefechtstest · Flak-Labor · Freiflug; Freiflug jetzt `freiflug.html`; Esc = zurück). **Gefechtstest** `gefecht.html`:
+  Bollwerk fliegen (Steuerung wie Freiflug), 14 Flak-Türme (10 neue PDC, ids 7–16, oben/unten; `rumpfSperre()`), Turm-KI
+  im Schiffsrahmen (Killzone 900/1000), Angreifer-KI `src/sim/ki/angreifer.js` (Kanonenboote in Rotten, Wellen 4/6/8,
+  Autokanone mit grüner Spur, Schaden am Rumpf). Sim-Welt `src/sim/gefecht.js` (Schiff → Angreifer → Rahmen → KI → Flak),
+  Flak am Schiff über `flak.setzeRahmen()`. Konfig **T1 = Standard**, Füll-Flak nur bis 0,5 s nach dem letzten Schuss
+  (kein Rauch bei Feuer halt). Tasten im Gefecht: Leertaste Flak frei/halt, 1/2 Modus, L Leuchtspur, N Neustart.
+  Balance: ~12 Abschüsse/min, Schiff −6 … −9 % Rumpf/min (3 min Kurvenflug: 35 Abschüsse, −19 %). Protokoll `…/2026-11-21-runde14.md`.
+  Aufräumen offen: alte Ordner `Schwarmfront-wt/r14-schiffbauer` und `r14-schatten` (gesperrt von Vite-Servern 5191–5193 eines Agenten).
 - **Nächster Schritt:** Nutzer speichert seine Lieblings-Konfig → aus `konfig/flak/` lesen, als neue Standardwerte in die
   Tabellen übernehmen (STREU_REGLER, WAFFEN_REGLER, GRAFIK_REGLER), Balance nachmessen (labor8.mjs-Muster, 3 Startwerte).
   Offen: Feuerrate als Hebel für dichtere Sättigung; Station unten links verdeckt die linken Türme; Zielfeuer-Balance

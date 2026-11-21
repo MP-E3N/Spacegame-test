@@ -34,7 +34,8 @@ const { welt, schiff, flak, angreifer } = gefecht;
 const sim = schiff;
 // Turm-Modelle des Schiffs in der Reihenfolge der Flak-Lafetten (Zuordnung über die Schiffs-Turm-id)
 const grafik = erstelleFlakGrafik(bild.scene, bild.camera, { turmModelle: gefecht.lafetten.map((l) => modell.tuerme[l.id]) });
-const feindGrafik = erstelleDrohnenGrafik(bild.scene, 16);
+// WARUM größer als im Labor: Kanonenboote sollen im Gefecht auch auf 1–2 km als Schiff mit rotem Auge lesbar sein (Spieltest R14)
+const feindGrafik = erstelleDrohnenGrafik(bild.scene, 16, { skala: 2, augePx: 6 });
 const feindFeuer = erstelleAngreiferGeschossGrafik(bild.scene, { max: angreifer.geschosse.max });
 
 // Flak-Befehl (Seite → Sim): Standards wie im Labor, Killzone/Räume rechnet die KI im Schiffsrahmen
@@ -66,7 +67,8 @@ function gefechtHud(dt) {
   let aktiv = 0; for (const z of angreifer.ziele) if (z.aktiv) aktiv++;
   gsetze('angreifer', String(aktiv));
   gsetze('abschuesse', String(gefecht.zaehler.abschuesse));
-  gsetze('treffer', gefecht.zaehler.trefferAmSchiff + ' (−' + Math.round(gefecht.zaehler.schadenAmSchiff / welt.werte.hpMax * 100) + ' %)');
+  // WARUM „durch Beschuss“: der Rumpf-Wert unten links enthält auch Kollisionen (Asteroiden) — Spieltest R14
+  gsetze('treffer', gefecht.zaehler.trefferAmSchiff + ' · −' + Math.round(gefecht.zaehler.schadenAmSchiff / welt.werte.hpMax * 100) + ' % Rumpf');
   gsetze('flak', (flakBefehl.modus === 'sperrfeuer' ? 'Sperrfeuer' : 'Zielfeuer') + ' · ' + (flakBefehl.feuerFrei ? 'frei' : 'HALT'));
   const nah = !!gefecht.ki.lage?.nahbereich;
   gsetze('alarm', nah ? 'NAHBEREICH' : '');

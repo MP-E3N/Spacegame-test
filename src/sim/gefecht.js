@@ -37,6 +37,7 @@ export function erstelleGefecht() {
   const zaehler = { takt: 0, schuesse: 0, abschuesse: 0, trefferAmSchiff: 0, schadenAmSchiff: 0 };
   const abschuesse = Array.from({ length: ABSCHUSS_VORRAT }, () => ({ x: 0, y: 0, z: 0 }));
   const ergebnis = { kollision: null, treffer: 0 };
+  const halt = {}; // Haltebefehl für das Wrack — WARUM fest angelegt: keine neuen Objekte im Schritt (Befund Prüfer R14)
 
   function schritt(dt, steuerBefehl, flakBefehl) {
     // 1) Schiff + Kollision
@@ -60,7 +61,9 @@ export function erstelleGefecht() {
     flak.setzeRahmen(schiff.z);
     zieleLokal = inSchiffsrahmen(angreifer.ziele, schiff.z, zieleLokal);
     // WARUM kein Feuer als Wrack: ein zerstörtes Schiff hat keine Energie für die Türme
-    const befehle = ki.schritt(dt, schiff.z.zerstoert ? { ...flakBefehl, feuerFrei: false } : flakBefehl, zieleLokal, flak.tuerme);
+    let fb = flakBefehl;
+    if (schiff.z.zerstoert) { Object.assign(halt, flakBefehl); halt.feuerFrei = false; fb = halt; }
+    const befehle = ki.schritt(dt, fb, zieleLokal, flak.tuerme);
     flak.schritt(dt, befehle, angreifer.ziele);
     zaehler.schuesse += flak.ereignisse.schuesse.length;
     zaehler.takt++;

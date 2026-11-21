@@ -19,7 +19,9 @@ function rumpfGeometrie() {
   return mergeGeometries(teile);
 }
 
-export function erstelleDrohnenGrafik(scene, anzahl = 16) {
+// Optionen (R14, Spieltester: „Angreifer im Gefecht nur winzige Punkte“): skala = Sichtgröße des Modells, augePx = Mindestgröße
+// des roten Auges in Bildpunkten. Labor-Standard 1 / 3 (unverändert).
+export function erstelleDrohnenGrafik(scene, anzahl = 16, { skala: SICHT = 1, augePx = 3 } = {}) {
   const rumpf = new THREE.InstancedMesh(rumpfGeometrie(),
     new THREE.MeshStandardMaterial({ color: 0x45474b, roughness: 0.55, metalness: 0.75 }), anzahl);
   // WARUM Werte > 1: HDR-Ziel + Bloom → das Auge leuchtet auch auf 2 km noch als roter Punkt (Deckel 30, CLAUDE.md Regel 5)
@@ -50,7 +52,7 @@ export function erstelleDrohnenGrafik(scene, anzahl = 16) {
       dir.set(z.vel.x, z.vel.y, z.vel.z);
       if (dir.lengthSq() > 1) letzteRichtung[i].copy(dir.normalize()); else dir.copy(letzteRichtung[i]);
       m.lookAt(dir, null3, hoch);                       // WARUM lookAt(dir, 0): Matrix4.lookAt legt +Z auf (eye − target) = Flugrichtung
-      const s = (z.r ?? 6) / 6;
+      const s = ((z.r ?? 6) / 6) * SICHT;
       m.scale(skala.set(s, s, s)).setPosition(pos);
       rumpf.setMatrixAt(i, m);
       // Beschädigt: Auge flackert (lesbar, ohne Extra-Effekt)
@@ -58,7 +60,7 @@ export function erstelleDrohnenGrafik(scene, anzahl = 16) {
       if (flackern) off.makeScale(0, 0, 0);
       else {
         off.multiplyMatrices(m, augeOff);
-        const groesse = Math.max(1, (3 * pos.distanceTo(kamPos) * pixWinkel) / (1.0 * s)); // Auge Ø 1 m × s
+        const groesse = Math.max(1, (augePx * pos.distanceTo(kamPos) * pixWinkel) / (1.0 * s)); // Auge Ø 1 m × s
         if (groesse > 1) off.scale(augeSkala.set(groesse, groesse, groesse));
       }
       auge.setMatrixAt(i, off);

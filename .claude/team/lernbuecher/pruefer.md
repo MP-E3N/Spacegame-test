@@ -27,3 +27,6 @@
   x=>x ersetzen), Handler mit Readable-req/Fake-res aufrufen. Prüfen: Status bei kaputtem JSON/URI (400 statt 500),
   Spread-Reihenfolge (überschreibt der Body Kopf-Felder?). Schutzbedingungen mit Vorzeichen-Abkürzung (kN < 0) gegen alle
   Achsen gegenrechnen, die das Ergebnis verschieben (kG). Eigene Reset-Vergleiche: nach dem Reset denselben Plan.
+- 2026-11-21 Runde 14 — Schaden über zwei Module (Angreifer meldet, Gefecht-Welt zieht ab): drei Summen vergleichen
+  (Rückgabe je Takt, Zähler der Welt, Statistik des Melders) plus HP-Differenz. Wrack-Test: hp = 0 von außen, 30 s laufen.
+  Im Wrack-/Halt-Zweig nach Spread-Objekten je Takt suchen — Gleichlauf-Tests sehen sie nicht.

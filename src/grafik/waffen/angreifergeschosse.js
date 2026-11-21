@@ -11,7 +11,8 @@ import { spurMaterial } from './shader.js';
 const SIM_DT = 1 / 60;
 // WARUM 30 m und 0,5 m breit: 600 m/s sind 10 m je Schritt — kürzer als ~2 Schrittwege wird die Spur zur Perlenkette;
 // etwas breiter als die Flak-Spur (0,35), weil sie auf die Kamera zufliegt und sonst als Punkt endet.
-const LAENGE = 30, BREITE = 0.5, HELL = 3.5;
+// R14 Spieltest („grüne Feindgeschosse kaum zu erkennen“): breiter und heller (0,5 → 0,9 m, 3,5 → 6)
+const LAENGE = 30, BREITE = 0.9, HELL = 6;
 // Grün-gelblich (Rand) → fast weiß-grün (Kern). WARUM grün: Orange ist die eigene Flak, Rot/Weiß sind Explosionen.
 const FARBE_RAND = [0.25, 1.0, 0.35], FARBE_KERN = [0.8, 1.0, 0.75];
 

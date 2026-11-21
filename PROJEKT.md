@@ -25,7 +25,9 @@ npm test           # Messflüge ohne Browser
 ## Aufbau
 | Datei | Inhalt |
 |---|---|
-| `src/main.js` | Start, Hauptschleife (feste Sim 60 Hz + interpolierte Darstellung), `window.spiel` |
+| `index.html`, `src/menue/*` | **Startmenü** (Runde 14): Gefechtstest / Flak-Labor / Freiflug; `zurueck.js` = Esc-Rückweg |
+| `freiflug.html`, `src/main.js` | Freiflug: Start, Hauptschleife (feste Sim 60 Hz + interpolierte Darstellung), `window.spiel` |
+| `gefecht.html`, `src/gefecht/*`, `src/sim/gefecht.js` | **Gefechtstest** (Runde 14): Bollwerk + 14 Flak-Türme gegen Angreifer-KI (`src/sim/ki/angreifer.js`) |
 | `src/eingabe.js` | Tastatur/Maus → `befehl` (Form wie `sim.schritt` erwartet) |
 | `src/hud.js` | Anzeige der Steuer-Station |
 | `src/sim/welt.js` | Sim-Welt: fester Schritt Schiff → Kollision (später Drohnen, Türme, Geschosse) |
