@@ -15,11 +15,17 @@
 // bzw. auf dem Ellipsoid-Punkt (nur Zeitzünder, R8). Streuung 0,25°.
 //   L) R11 Regler befehl.streu: Standard bitgleich, Klammern, Reglerplan gleichläufig, Richttempo beim Ziehen, Wirkung
 //   K) R10 Sättigungsräume: Lagen vor/auf/hinter (Abstand, Schwenktempo der Richtung), Streu-Regel, Anteil vor/hinter
+//   N) R14 Turm-KI im Schiffsrahmen: Prüfstand bitgleich (Anker R13), Turm-Rahmen oben/unten, Gier-Grenze, Raumzuteilung,
+//      Momentaufnahme exakt · O) Angreifer: Gleichlauf, Läufe, Schaden, Mindestabstand, Wellen · P) Gefecht-Messung
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { erstelleZieldrohnen, DROHNEN } from '../src/sim/ki/zieldrohnen.js';
-import { erstelleTurmKi, abfangen, TURMKI, querDeckel, STREU_REGLER, streuWert, waffeWert } from '../src/sim/ki/turmziel.js';
+import { erstelleTurmKi, abfangen, TURMKI, querDeckel, STREU_REGLER, streuWert, waffeWert, grenzenOk } from '../src/sim/ki/turmziel.js';
+import { erstelleAngreifer, ANGREIFER } from '../src/sim/ki/angreifer.js';
+import { inSchiffsrahmen, zuWelt } from '../src/sim/ki/schiffsrahmen.js';
+import { erstelleFlakLabor } from '../src/sim/flaklabor.js';
+import { SCHIFFSDATEN, rumpfSperre, sperrSektor } from '../src/sim/schiffe/index.js';
 import { FLAK, erstelleFlak } from '../src/sim/waffen/flak.js';
 import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR as S } from '../src/sim/waffen/lafetten.js';
 import { zufall } from '../src/sim/zufall.js';
@@ -122,7 +128,9 @@ function erstelleErsatzFlak(seed = 303, takteJeSchuss = 12, modell = 'r7') {
     },
   };
 }
-const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Zielgranate mit Kugel < Zielfeuer-Radius = Nahbereich (Messung getrennt)
+// R14: Standards der Streuung stehen in STREU_REGLER (T1), nicht mehr in TURMKI (Bezug R12)
+const STD = (f) => STREU_REGLER[f].standard;
+const SCHADEN_KUGEL_ZIEL = STD('ziel'); // Zielgranate mit Kugel < Zielfeuer-Radius = Nahbereich (Messung getrennt)
 
 // ---------- A) Vorhalt ----------
 {
@@ -147,13 +155,13 @@ const SCHADEN_KUGEL_ZIEL = TURMKI.streuKugel.ziel; // Zielgranate mit Kugel < Zi
     maxRech = Math.max(maxRech, L(gx - ziel.pos.x - ziel.vel.x * t, gy - ziel.pos.y - ziel.vel.y * t, gz - ziel.pos.z - ziel.vel.z * t));
     const tk = Math.round(t / DT) * DT; // Detonation auf dem nächsten ganzen Takt
     maxTakt = Math.max(maxTakt, L(m.x + dx / d * V0 * tk - ziel.pos.x - ziel.vel.x * tk, m.y + dy / d * V0 * tk - ziel.pos.y - ziel.vel.y * tk, m.z + dz / d * V0 * tk - ziel.pos.z - ziel.vel.z * tk));
-    const K0 = TURMKI.streuKugel.ziel;
-    if (b.streuKugel !== K0 || b.streuTiefe !== TURMKI.streuKugel.ziel || Math.abs(b.toleranz - Math.max(Math.min(K0, querDeckel(false) * d) / d, 0.008)) > 1e-12) kugelZiel = false;
+    const K0 = STD('ziel');
+    if (b.streuKugel !== K0 || b.streuTiefe !== K0 || Math.abs(b.toleranz - Math.max(Math.min(K0, querDeckel(false) * d) / d, 0.008)) > 1e-12) kugelZiel = false;
   }
   zeile('A Vorhaltfehler rechnerisch (5 Bahnen × v0 620/1100, 1500 m, 150 m/s)', '< 1 m', f2(maxRech) + ' m', maxRech < 1);
   // WARUM ≤ 11 m: Zündung auf ganzen Takten verschiebt um ≤ DT/2 → (v0 + 150)·DT/2 = 10,4 m bei 1100 m/s
   zeile('A Vorhaltfehler, Zündung nur auf ganzen Takten', '≤ 11 m (Info)', f1(maxTakt) + ' m', maxTakt <= 11, false);
-  zeile(`A Zielfeuer: streuKugel/streuTiefe ${TURMKI.streuKugel.ziel}/${TURMKI.streuKugel.ziel} m, toleranz = min(Kugel, ${FLAK.deckelQuer}·d)/d (ohne Leuchtspur)`, 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
+  zeile(`A Zielfeuer: streuKugel/streuTiefe ${STD('ziel')}/${STD('ziel')} m, toleranz = min(Kugel, ${FLAK.deckelQuer}·d)/d (ohne Leuchtspur)`, 'ja', kugelZiel ? 'ja' : 'nein', kugelZiel);
   // unlösbar: Ziel flieht schneller als die Granate (v0 620)
   const tuerme = ersatzTuerme(620), m = tuerme[1].muendung;
   const flieht = { id: 9, pos: { x: m.x, y: m.y + 500, z: m.z + 1400 }, vel: { x: 0, y: 0, z: 700 }, r: 6, aktiv: true, angriff: false };
@@ -318,7 +326,7 @@ function lauf(takte, mitMessung, befehl = { modus: 'zielfeuer', feuerFrei: true,
     // R8–R10: Streu-Regel je Befehl (Sperrraum 70/40, feste Wand/kein Ziel 0, Nahbereich min(35, 0,10·d) quer = tief,
     // Zielfeuer 140/140) + toleranz (Ziel: min(max(Kugel, 8), Querdeckel·d)/d ≥ 0,008; Sperrraum: halbe kleinste Seite /
     // Abstand, 0,015–toleranzSperr)
-    const SK = TURMKI.streuKugel, folgt = befehl.modus === 'sperrfeuer' && befehl.folgen !== false;
+    const SK = { ...TURMKI.streuKugel, ziel: STD('ziel'), sperr: STD('sperrQuer'), sperrTiefe: STD('sperrTiefe'), nahMax: STD('nahMax') }, folgt = befehl.modus === 'sperrfeuer' && befehl.folgen !== false;
     bef.forEach((b, i) => {
       const mu = tuerme[i].muendung, d = L(b.punkt.x - mu.x, b.punkt.y - mu.y, b.punkt.z - mu.z);
       const nah = b.zielId !== null && ki.lage.eindringlinge.includes(b.zielId);
@@ -578,7 +586,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
 // ---------- K) Sättigungsräume (R10): Lagen, Schwenktempo, Detonationen vor/hinter, Abstand (unverwundbar) ----------
 {
   const dr = erstelleZieldrohnen({ startwert: Number(process.env.DROHNEN_START ?? 101) }), ki = erstelleTurmKi({ startwert: 202 });
-  const tuerme = ersatzTuerme(1100), flak = erstelleErsatzFlak(303, 6), LA = TURMKI.folgen.lagen;
+  const tuerme = ersatzTuerme(1100), flak = erstelleErsatzFlak(303, 6), LA = TURMKI.folgen.lagen, FA = STD('lagenAnteil') / LA.anteil; // R14: Klammer skaliert mit dem Regler (R11)
   let lagenFalsch = 0, schwenk = 0, proben = 0, raeume = 0, dreiLagen = 0, mitDrei = 0;
   const vorR = new Array(6).fill(null), laengs = [], abst = [];
   for (let k = 0; k < 3 * 60 * 60; k++) {
@@ -592,7 +600,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
       const e = sc.laengs, a = sc.lagenAbstand, l0 = sc.lagen[0], l2 = sc.lagen[2];
       proben++;
       // Lagen: Abstand vor ↔ hinter = 2a, a in [min, max], Richtung Einheitsvektor, auf der Linie längs e
-      const d02 = L(l0.x - l2.x, l0.y - l2.y, l0.z - l2.z), ok = Math.abs(d02 - 2 * a) < 1e-6 && a >= LA.min - 1e-9 && a <= LA.max + 1e-9 && Math.abs(L(e.x, e.y, e.z) - 1) < 1e-9
+      const d02 = L(l0.x - l2.x, l0.y - l2.y, l0.z - l2.z), ok = Math.abs(d02 - 2 * a) < 1e-6 && a >= LA.min * FA - 1e-9 && a <= LA.max * FA + 1e-9 && Math.abs(L(e.x, e.y, e.z) - 1) < 1e-9
         && Math.abs(((l0.x - l2.x) * e.x + (l0.y - l2.y) * e.y + (l0.z - l2.z) * e.z) - d02) < 1e-6;
       if (!ok) lagenFalsch++;
       const p = vorR[g];
@@ -615,7 +623,7 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
       abst.push(bd);
     }
   }
-  zeile(`K Lagen vor/auf/hinter: Abstand ${LA.min}–${LA.max} m, auf einer Linie längs der Flugrichtung (Proben falsch)`, '0', `${lagenFalsch} von ${proben}`, lagenFalsch === 0);
+  zeile(`K Lagen vor/auf/hinter: Abstand ${LA.min * FA}–${LA.max * FA} m, auf einer Linie längs der Flugrichtung (Proben falsch)`, '0', `${lagenFalsch} von ${proben}`, lagenFalsch === 0);
   zeile('K Schwenktempo der Richtung „vor“ (max)', `≤ ${f1(LA.maxDreh / GRAD)}°/s`, f2(schwenk / GRAD) + '°/s', schwenk <= LA.maxDreh * 1.01);
   zeile('K Räume höchstens / Proben mit ≥ 3 Sperr-Rohren in einem Raum', 'Info', `${raeume} / ${mitDrei}`, true, false);
   const vor = 100 * laengs.filter((x) => x > 75).length / Math.max(1, laengs.length), hinter = 100 * laengs.filter((x) => x < -75).length / Math.max(1, laengs.length);
@@ -717,10 +725,229 @@ for (const [name, bef0] of [['Zielfeuer', { modus: 'zielfeuer', feuerFrei: true,
         const rx = e.pos.x - z.pos.x, ry = e.pos.y - z.pos.y, rz = e.pos.z - z.pos.z, ux = z.pos.x - M.x, uy = z.pos.y - M.y, uz = z.pos.z - M.z, ul = L(ux, uy, uz);
         const la = (rx * ux + ry * uy + rz * uz) / ul, a = Math.sqrt(Math.max(0, rx * rx + ry * ry + rz * rz - la * la)); maxAll = Math.max(maxAll, a); if (k > 3 * 60) maxSpaet = Math.max(maxSpaet, a); }
     }
-    const kug = Math.min(TURMKI.streuKugel.ziel, dq * 1000);
+    const kug = Math.min(STD('ziel'), dq * 1000);
     zeile(`M deckelQuer ${dq}: Feuer-Spielraum ≤ wirksamer Deckel · d (max, m)`, `≤ ${f1(tolSoll)} m`, f1(tolMax) + ' m', tolMax <= tolSoll + 1e-6);
-    zeile(`M deckelQuer ${dq}: Granate ↔ Punkt quer, max gesamt / nach dem Einrichten (1000 m, Kugel ${TURMKI.streuKugel.ziel})`, `≤ ${f1(2 * kug + 10)} / ${f1(kug + 10)} m`, `${f1(maxAll)} / ${f1(maxSpaet)} m`, maxAll <= 2 * kug + 10 && maxSpaet <= kug + 10);
+    zeile(`M deckelQuer ${dq}: Granate ↔ Punkt quer, max gesamt / nach dem Einrichten (1000 m, Kugel ${STD('ziel')})`, `≤ ${f1(2 * kug + 10)} / ${f1(kug + 10)} m`, `${f1(maxAll)} / ${f1(maxSpaet)} m`, maxAll <= 2 * kug + 10 && maxSpaet <= kug + 10);
   }
+}
+
+// ---------- N) Turm-KI im Schiffsrahmen (R14): Prüfstand bitgleich, Turm-Rahmen, Raumzuteilung, Momentaufnahme ----------
+{
+  // N1 Anker R13: Labor mit ausdrücklichem Streu (R12- bzw. T1-Werte), v0-Umschalten, 5400 Takte — Prüfsummen vor dem
+  // Umbau gemessen. WARUM Sperr-splitterDps hier fest 90: Entscheidung R14 (115) ändert die Waffe, nicht die KI.
+  // Bricht der Anker, weil Drohnen/Flak BEWUSST geändert wurden → neu messen und hier eintragen.
+  const ANKER = [['R12', 'sperrfeuer', 97391.509436], ['R12', 'zielfeuer', 108397.889691], ['T1', 'sperrfeuer', 109253.808219]];
+  const WERTE = { R12: { faktor: 1, sperrQuer: 120, sperrTiefe: 80, raumZuschlag: 340, ziel: 320, nahMax: 35, lagenAnteil: 0.6 },
+    T1: { faktor: 1, sperrQuer: 200, sperrTiefe: 200, raumZuschlag: 400, ziel: 135, nahMax: 35, lagenAnteil: 0.75 } };
+  const dpsAlt = FLAK.sorte[1].splitterDps; FLAK.sorte[1].splitterDps = 90;
+  const ist = ANKER.map(([w, modus]) => {
+    const lab = erstelleFlakLabor(), b = { modus, feuerFrei: true, folgen: true, schirmAbstand: 800, v0: 1100, streu: WERTE[w], waffe: { deckelQuer: 1, deckelTiefe: 0.9 } };
+    for (let k = 0; k < 5400; k++) { if (k === 2000) b.v0 = 900; if (k === 3500) b.v0 = 1100; lab.schritt(DT, b); }
+    return lab.pruefsumme().toFixed(6);
+  });
+  FLAK.sorte[1].splitterDps = dpsAlt;
+  const ankerOk = ist.every((h, k) => h === ANKER[k][2].toFixed(6));
+  zeile('N Prüfstand bitgleich zu R13 (Labor 5400 Takte, 3 Läufe, Prüfsumme)', 'gleich', ankerOk ? 'gleich' : ist.join(' / '), ankerOk);
+  // N1b ausdrückliche Prüfstand-Parameter = Standard
+  const reiheKi = (ki) => {
+    const d = erstelleZieldrohnen({ startwert: 101 }), t = ersatzTuerme(1100), fl = erstelleErsatzFlak(303, 6); let h = 0;
+    for (let k = 0; k < 1800; k++) {
+      d.schritt(DT, fl.ereignisse); const bf = ki.schritt(DT, k < 900 ? FOLGEN : { modus: 'zielfeuer', feuerFrei: true }, d.ziele, t);
+      richte(t, bf); fl.schritt(t, bf, d.ziele);
+      for (const b of bf) h = (h * 31 + Math.round(b.punkt.x * 1e3) + Math.round(b.punkt.y * 1e3) * 7 + (b.feuer ? 1 : 0) + (b.zielId ?? -1) * 13) >>> 0;
+    }
+    return h;
+  };
+  const h0 = reiheKi(erstelleTurmKi({ startwert: 202 }));
+  const h1 = reiheKi(erstelleTurmKi({ startwert: 202, lafetten: LAFETTEN, mitte: M, sektor: S, killzone: TURMKI.killzone }));
+  zeile('N erstelleTurmKi mit Prüfstand-Angaben = ohne Angaben (1800 Takte)', 'gleich', h0 === h1 ? 'gleich' : 'anders', h0 === h1);
+
+  // Test-Lafette (Felder wie turmDaten)
+  const laf = (id, x, y, z, oben, gier = [0, Math.PI], nick = [-0.05, 1.45]) => ({ id, x, y, z, oben, typ: 'flak', s: 1, sockel: 0,
+    zapfen: { y: 2.1, z: 2.4 }, muendungen: [{ x: 0.8, y: 0, z: 6.7 }, { x: -0.8, y: 0, z: 6.7 }], gier, nick });
+  const ziel = (id, x, y, z) => ({ id, pos: { x, y, z }, vel: { x: 0, y: 0, z: 0 }, r: 6, hp: 100, hpMax: 100, aktiv: true, angriff: false });
+  // N2 oben/unten: der obere Turm nimmt das Ziel über dem Schiff, der untere das darunter (Turm-Rahmen nach turm.js)
+  {
+    const ki = erstelleTurmKi({ startwert: 1, lafetten: [laf(0, 0, 5, 0, true), laf(1, 0, -5, 0, false)], mitte: { x: 0, y: 0, z: 0 } });
+    const zz = [ziel(1, 0, 800, 600), ziel(2, 0, -800, 600)], b = { modus: 'zielfeuer', feuerFrei: true };
+    let bf; for (let k = 0; k < 10; k++) bf = ki.schritt(DT, b, zz);
+    const ok1 = bf[0].zielId === 1 && bf[1].zielId === 2 && bf[0].feuer && bf[1].feuer;
+    const ki2 = erstelleTurmKi({ startwert: 1, lafetten: [laf(0, 0, 5, 0, true), laf(1, 0, -5, 0, false)], mitte: { x: 0, y: 0, z: 0 } });
+    for (let k = 0; k < 10; k++) bf = ki2.schritt(DT, b, [ziel(1, 0, 800, 600)]);
+    const ok2 = bf[0].zielId === 1 && bf[1].zielId === null && !bf[1].feuer;
+    zeile('N oben → Ziel über dem Schiff, unten → Ziel darunter; unten ohne Ziel unter sich: kein Feuer', 'ja', ok1 && ok2 ? 'ja' : `nein (${bf.map((x) => x.zielId)})`, ok1 && ok2);
+  }
+  // N3 Gier-Grenze: Turm nach Backbord (+X, Mitte π/2 ± 1,0) nimmt kein Ziel an Steuerbord; erreichbar() der Waffe ersetzt die eigene Prüfung
+  {
+    const L3 = [laf(0, 10, 5, 0, true, [Math.PI / 2, 1.0])], b = { modus: 'zielfeuer', feuerFrei: true };
+    const waehle = (zz, opt = {}) => { const ki = erstelleTurmKi({ startwert: 1, lafetten: L3, mitte: { x: 0, y: 0, z: 0 }, ...opt }); let bf; for (let k = 0; k < 10; k++) bf = ki.schritt(DT, b, zz); return bf[0].zielId; };
+    const links = waehle([ziel(1, 1000, 300, 0)]), rechts = waehle([ziel(1, -1000, 300, 0)]);
+    let gefragt = 0;
+    const mitWaffe = waehle([ziel(1, 1000, 300, 0)], { erreichbar: (i, g, n) => { gefragt++; return false; } });
+    const ok = links === 1 && rechts === null && mitWaffe === null && gefragt > 0;
+    zeile('N Gier-Grenze im Turm-Rahmen (Backbord-Turm: +X ja, −X nein); erreichbar() der Waffe wird gefragt', 'ja', ok ? 'ja' : `nein (${links}/${rechts}/${mitWaffe}/${gefragt})`, ok);
+  }
+  // N4 Raumzuteilung nach Erreichbarkeit: Gruppe über und Gruppe unter dem Schiff, 2 Türme oben + 2 unten
+  {
+    const L4 = [laf(0, -14, 5, 0, true), laf(1, 14, 5, 0, true), laf(2, -14, -5, 0, false), laf(3, 14, -5, 0, false)];
+    const ki = erstelleTurmKi({ startwert: 1, lafetten: L4, mitte: { x: 0, y: 0, z: 0 } });
+    const zz = [];
+    for (let k = 0; k < 3; k++) { zz.push(ziel(1 + k, -60 + 60 * k, 1100, 900)); zz.push(ziel(10 + k, -60 + 60 * k, -1100, 900)); }
+    let falsch = 0, proben = 0, nickMax = 0, raeume = 0;
+    for (let k = 0; k < 600; k++) {
+      ki.schritt(DT, FOLGEN, zz);
+      if (k < 300) continue;
+      raeume = Math.max(raeume, ki.lage.schirme.length);
+      for (const sc of ki.lage.schirme) {
+        nickMax = Math.max(nickMax, Math.abs(sc.nick));
+        for (const i of sc.tuerme) {
+          const l = L4[i], s = l.oben ? 1 : -1, dx = sc.mitte.x - l.x, dy = sc.mitte.y - l.y, dz = sc.mitte.z - l.z;
+          proben++; if (!grenzenOk(l, Math.atan2(s * dx, dz), Math.asin(s * dy / L(dx, dy, dz)))) falsch++;
+        }
+      }
+    }
+    zeile('N Sperrräume über/unter dem Schiff: Türme nur in Räumen, die sie erreichen (Proben falsch)', '0, 2 Räume', `${falsch} von ${proben}, ${raeume} Räume`, falsch === 0 && raeume === 2 && proben > 0);
+    zeile('N Raum-Nick beidseitig gedeckelt (|Nick| ≤ 1,2 rad)', '≤ 1.20', f2(nickMax), nickMax <= TURMKI.folgen.nickMax + 1e-9);
+  }
+  // N5 Momentaufnahme: Abfangen im Schiffsrahmen + Rückrechnung mit derselben Drehung + Granate erbt Schiffstempo → exakt
+  {
+    const rnd = zufall(77); let maxF = 0, maxR = 0;
+    for (let k = 0; k < 50; k++) {
+      let qx = rnd() - 0.5, qy = rnd() - 0.5, qz = rnd() - 0.5, qw = rnd() - 0.5; const ql = Math.hypot(qx, qy, qz, qw); qx /= ql; qy /= ql; qz /= ql; qw /= ql;
+      const sz = { pos: { x: rnd() * 1e4, y: rnd() * 500, z: rnd() * 1e4 }, vel: { x: (rnd() - 0.5) * 120, y: (rnd() - 0.5) * 40, z: (rnd() - 0.5) * 120 }, rot: { x: qx, y: qy, z: qz, w: qw } };
+      const zw = [{ id: 1, aktiv: true, r: 6, hp: 1, hpMax: 1, pos: { x: sz.pos.x + (rnd() - 0.5) * 3000, y: sz.pos.y + (rnd() - 0.5) * 3000, z: sz.pos.z + (rnd() - 0.5) * 3000 },
+        vel: { x: (rnd() - 0.5) * 360, y: (rnd() - 0.5) * 360, z: (rnd() - 0.5) * 360 } }];
+      const lok = inSchiffsrahmen(zw, sz);
+      // Rückweg Lage
+      const w = zuWelt(sz, lok[0].pos, { x: 0, y: 0, z: 0 });
+      maxR = Math.max(maxR, L(w.x + sz.pos.x - zw[0].pos.x, w.y + sz.pos.y - zw[0].pos.y, w.z + sz.pos.z - zw[0].pos.z));
+      const mL = { x: 3, y: 12, z: 40 }, ab = { t: 0, x: 0, y: 0, z: 0 };
+      if (!abfangen(mL, lok[0].pos, lok[0].vel, 1100, ab)) continue;
+      // Welt: Mündung, Richtung lokal → Welt, Granate = Richtung·v0 + Schiffstempo, nach t
+      const mW = zuWelt(sz, mL, { x: 0, y: 0, z: 0 }); mW.x += sz.pos.x; mW.y += sz.pos.y; mW.z += sz.pos.z;
+      const dl = L(ab.x - mL.x, ab.y - mL.y, ab.z - mL.z), r = zuWelt(sz, { x: (ab.x - mL.x) / dl, y: (ab.y - mL.y) / dl, z: (ab.z - mL.z) / dl }, { x: 0, y: 0, z: 0 });
+      const g = { x: mW.x + (r.x * 1100 + sz.vel.x) * ab.t, y: mW.y + (r.y * 1100 + sz.vel.y) * ab.t, z: mW.z + (r.z * 1100 + sz.vel.z) * ab.t };
+      const p = zw[0].pos, v = zw[0].vel;
+      maxF = Math.max(maxF, L(g.x - p.x - v.x * ab.t, g.y - p.y - v.y * ab.t, g.z - p.z - v.z * ab.t));
+    }
+    zeile('N inSchiffsrahmen: Rückweg Lage / Abfangen im Schiffsrahmen → Welt (50 Lagen, gedreht + fahrend)', '< 1e-6 / < 1e-6 m', `${maxR.toExponential(1)} / ${maxF.toExponential(1)} m`, maxR < 1e-6 && maxF < 1e-6);
+  }
+}
+
+// ---------- O) Angreifer (R14): Gleichlauf, Verhalten, Wellen ----------
+const SCHIFF_GERADE = () => ({ pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 60 }, rot: { x: 0, y: 0, z: 0, w: 1 }, zerstoert: false });
+const KUGELN = SCHIFFSDATEN.bollwerk.kugeln;
+{
+  const lauf = (ang, takte, toeten = false) => {
+    const sz = SCHIFF_GERADE(), ev = { treffer: [], detonationen: [] };
+    let h = 0, schaden = 0, eng = Infinity, ersterLauf = -1, maxAktiv = 0, feuerFern = 0;
+    for (let k = 0; k < takte; k++) {
+      sz.pos.z += 60 * DT;
+      ev.treffer.length = 0;
+      if (toeten) for (const z of ang.ziele) if (z.aktiv) ev.treffer.push({ zielId: z.id, schaden: 1000 });
+      const e = ang.schritt(DT, ev, sz, KUGELN);
+      for (const t of e.treffer) schaden += t.schaden;
+      let aktiv = 0;
+      for (const z of ang.ziele) {
+        if (!z.aktiv) continue; aktiv++;
+        const d = L(z.pos.x - sz.pos.x, z.pos.y - sz.pos.y, z.pos.z - sz.pos.z); eng = Math.min(eng, d);
+        h = (h * 31 + Math.round(z.pos.x * 1e3) + Math.round(z.pos.y * 1e3) * 3 + Math.round(z.pos.z * 1e3) * 7 + z.id) >>> 0;
+      }
+      maxAktiv = Math.max(maxAktiv, aktiv);
+      // neue Geschosse (alter 1): vorPos = Abschussort → Abstand zum Schiff ≤ feuerAb
+      const G = ang.geschosse;
+      for (let q = 0; q < G.max; q++) if (G.aktiv[q] && G.alter[q] === 1 && L(G.vorPos[q * 3] - sz.pos.x, G.vorPos[q * 3 + 1] - sz.pos.y, G.vorPos[q * 3 + 2] - sz.pos.z) > ANGREIFER.feuerAb + 5) feuerFern++;
+      if (ersterLauf < 0 && ang.statistik.laeufe > 0) ersterLauf = k * DT;
+      h = (h * 31 + ang.geschosse.anzahlAktiv + ang.statistik.treffer * 17) >>> 0;
+    }
+    return { h, schaden, eng, ersterLauf, maxAktiv, feuerFern };
+  };
+  const a = lauf(erstelleAngreifer({ startwert: 404 }), 3600), b = lauf(erstelleAngreifer({ startwert: 404 }), 3600);
+  const c = erstelleAngreifer({ startwert: 404 }); lauf(c, 1500); c.zuruecksetzen(); const cr = lauf(c, 3600);
+  const d = lauf(erstelleAngreifer({ startwert: 405 }), 3600);
+  zeile('O Angreifer-Gleichlauf: zwei Läufe / nach zuruecksetzen() / anderer Startwert (3600 Takte)', 'gleich / gleich / anders',
+    `${a.h.toString(16)} / ${cr.h.toString(16)} / ${d.h.toString(16)}`, a.h === b.h && a.h === cr.h && a.h !== d.h);
+  // Verhalten ohne Flak, 5 min: Läufe, Schaden, Mindestabstand, Feuerfenster, Rechenzeit
+  const ang = erstelleAngreifer({ startwert: 404 }), t0 = performance.now(), v = lauf(ang, 5 * 3600), us = (performance.now() - t0) / (5 * 3600) * 1000;
+  const S = ang.statistik, proMin = v.schaden / 5;
+  zeile('O ohne Flak: Läufe/min · erster Lauf nach', '≥ 5 · < 20 s', `${f1(S.laeufe / 5)} · ${f1(v.ersterLauf)} s`, S.laeufe / 5 >= 5 && v.ersterLauf >= 0 && v.ersterLauf < 20);
+  zeile('O ohne Flak: Schiffsschaden (Welle 1 = 4 Boote, 5000 HP)', '10–30 %/min', `${f1(proMin / 50)} %/min (${S.treffer} Treffer, ${f1(100 * S.treffer / Math.max(1, S.schuesse))} %)`, proMin / 50 >= 10 && proMin / 50 <= 30);
+  zeile('O engster Abstand zur Schiffsmitte · Schüsse jenseits 705 m', `≥ ${ANGREIFER.mindest - 5} m · 0`, `${f1(v.eng)} m · ${v.feuerFern}`, v.eng >= ANGREIFER.mindest - 5 && v.feuerFern === 0);
+  zeile('O Rechenzeit Angreifer je Takt (4 Boote + Geschosse)', '< 100 µs', `${f1(us)} µs`, us < 100);
+  // Wellen: jeder erscheinende Angreifer stirbt sofort → Wellen laufen durch
+  const w = erstelleAngreifer({ startwert: 404 }), wl = lauf(w, 150 * 60, true);
+  zeile('O Wellen 4 → 6 → 8 (alle sofort abgeschossen, 150 s): Welle · gleichzeitig · höchstens aktiv · Abschüsse', '≥ 4 · 8 · ≤ 8',
+    `${w.welle.nr} · ${w.welle.gleichzeitig} · ${wl.maxAktiv} · ${w.statistik.abschuesse}`, w.welle.nr >= 4 && w.welle.gleichzeitig === 8 && wl.maxAktiv <= 8 && w.statistik.abschuesse > 0);
+}
+
+// ---------- P) Gefecht-Messung (R14): Angreifer + Turm-KI (Schiffsrahmen, Bollwerk-Flak) + echte Flak ----------
+// Flak-Emulation, bis flak.setzeRahmen da ist: zwei Instanzen in einem mitbewegten, NICHT drehenden Rahmen (Ursprung
+// Schiffsmitte, Weltachsen); A = oben montierte Türme, B = unten montierte im um Z gedrehten Rahmen (−x, −y, z), in dem sie
+// oben sitzen. Gieren um ψ: Lafetten (Lage, Gier-Mitte, Nachbar-Sperrzonen) je Takt mitgedreht. Ersatz für erreichbar():
+// Grenzen + Rumpf-Sperre (sperre.js). Granate erbt das Schiffstempo (im Rahmen ruht das Schiff) → exakt bis auf ½·a·t².
+function gefecht(modus, flug, sek, startwert = 1) {
+  const B = SCHIFFSDATEN.bollwerk, LF = B.tuerme.filter((t) => t.typ === 'flak'), RS = LF.map((t) => rumpfSperre(t, B.teile));
+  const ki = erstelleTurmKi({ startwert: 202, lafetten: LF, mitte: { x: 0, y: 0, z: 0 }, killzone: { ...TURMKI.killzone, ein: 900, aus: 1000 },
+    erreichbar: (i, g, n) => grenzenOk(LF[i], g, n) && n >= RS[i][sperrSektor(g)] });
+  const ang = erstelleAngreifer({ startwert });
+  const oben = [], unten = [];
+  LF.forEach((l, i) => (l.oben ? oben : unten).push(i));
+  const kopie = (l, f) => ({ ...l, oben: true, x: f ? -l.x : l.x, y: f ? -l.y : l.y, gier: l.gier.slice(), basis: { x: f ? -l.x : l.x, z: l.z, g: l.gier[0] } });
+  const lafA = oben.map((i) => kopie(LF[i], false)), lafB = unten.map((i) => kopie(LF[i], true));
+  const fA = erstelleFlak({ startwert: 303, lafetten: lafA }), fB = erstelleFlak({ startwert: 304, lafetten: lafB });
+  for (const f of [fA, fB]) { for (const t of f.tuerme) { t.v0 = 1100; for (const z of t.sperrzonen) z.basis = z.gier; } }
+  const befehl = { modus: modus === 'halt' ? 'sperrfeuer' : modus, feuerFrei: modus !== 'halt', folgen: true, schirmAbstand: 800, v0: 1100, waffe: { deckelQuer: 1, deckelTiefe: 0.9 } };
+  const sz = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 60 }, rot: { x: 0, y: 0, z: 0, w: 1 }, zerstoert: false };
+  const neuZ = () => ang.ziele.map(() => ({ id: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, r: 6, aktiv: false }));
+  const ziA = neuZ(), ziB = neuZ(), lokal = [], ev = { treffer: [], detonationen: [] };
+  const tz = LF.map(() => ({ muendung: { x: 0, y: 0, z: 0 }, v0: 1100, reichweite: 2500, gesperrt: false, gier: 0, nick: 0 }));
+  const befA = lafA.map(() => ({ punkt: { x: 0, y: 0, z: 0 } })), befB = lafB.map(() => ({ punkt: { x: 0, y: 0, z: 0 } }));
+  const rotY = (x, z, a) => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; // Schiff → Welt bei a = ψ
+  let psi = 0, schaden = 0, kiMs = 0;
+  const T = sek * 60;
+  for (let k = 0; k < T; k++) {
+    const om = flug === 'manoever' ? 0.18 * (Math.sin(2 * Math.PI * k * DT / 40) >= 0 ? 1 : -1) : 0;
+    psi += om * DT; sz.rot.y = Math.sin(psi / 2); sz.rot.w = Math.cos(psi / 2);
+    sz.vel.x = 60 * Math.sin(psi); sz.vel.z = 60 * Math.cos(psi); sz.pos.x += sz.vel.x * DT; sz.pos.z += sz.vel.z * DT;
+    ev.treffer.length = ev.detonationen.length = 0;
+    for (const t of fA.ereignisse.treffer) ev.treffer.push(t); for (const t of fB.ereignisse.treffer) ev.treffer.push(t);
+    for (const d of fA.ereignisse.detonationen) ev.detonationen.push({ pos: { x: d.pos.x + sz.pos.x, y: d.pos.y + sz.pos.y, z: d.pos.z + sz.pos.z } });
+    for (const d of fB.ereignisse.detonationen) ev.detonationen.push({ pos: { x: sz.pos.x - d.pos.x, y: sz.pos.y - d.pos.y, z: d.pos.z + sz.pos.z } });
+    for (const t of ang.schritt(DT, ev, sz, B.kugeln).treffer) schaden += t.schaden;
+    ang.ziele.forEach((z, i) => {
+      const a = ziA[i], b = ziB[i]; a.id = b.id = z.id; a.aktiv = b.aktiv = z.aktiv;
+      a.pos.x = z.pos.x - sz.pos.x; a.pos.y = z.pos.y - sz.pos.y; a.pos.z = z.pos.z - sz.pos.z;
+      a.vel.x = z.vel.x - sz.vel.x; a.vel.y = z.vel.y - sz.vel.y; a.vel.z = z.vel.z - sz.vel.z;
+      b.pos.x = -a.pos.x; b.pos.y = -a.pos.y; b.pos.z = a.pos.z; b.vel.x = -a.vel.x; b.vel.y = -a.vel.y; b.vel.z = a.vel.z;
+    });
+    inSchiffsrahmen(ang.ziele, sz, lokal);
+    for (const [f, laf, s] of [[fA, lafA, 1], [fB, lafB, -1]]) {
+      for (const l of laf) { const [x, z] = rotY(l.basis.x, l.basis.z, s * psi); l.x = x; l.z = z; l.gier[0] = l.basis.g + s * psi; }
+      for (const t of f.tuerme) for (const z of t.sperrzonen) z.gier = z.basis + s * psi;
+    }
+    oben.forEach((i, j) => { const t = fA.tuerme[j], [x, z] = rotY(t.muendung.x, t.muendung.z, -psi); const o = tz[i]; o.muendung.x = x; o.muendung.y = t.muendung.y; o.muendung.z = z; o.gier = t.gier - psi; o.nick = t.nick; o.gesperrt = t.gesperrt; });
+    unten.forEach((i, j) => { const t = fB.tuerme[j], [x, z] = rotY(-t.muendung.x, t.muendung.z, -psi); const o = tz[i]; o.muendung.x = x; o.muendung.y = -t.muendung.y; o.muendung.z = z; o.gier = t.gier + psi; o.nick = t.nick; o.gesperrt = t.gesperrt; });
+    const t0 = performance.now(), bef = ki.schritt(DT, befehl, lokal, tz); kiMs += performance.now() - t0;
+    oben.forEach((i, j) => { const b = bef[i], [x, z] = rotY(b.punkt.x, b.punkt.z, psi); Object.assign(befA[j], b); befA[j].punkt = { x, y: b.punkt.y, z }; });
+    unten.forEach((i, j) => { const b = bef[i], [x, z] = rotY(b.punkt.x, b.punkt.z, psi); Object.assign(befB[j], b); befB[j].punkt = { x: -x, y: -b.punkt.y, z }; });
+    fA.schritt(DT, befA, ziA); fB.schritt(DT, befB, ziB);
+  }
+  const min = sek / 60;
+  return { abMin: ang.statistik.abschuesse / min, hpMin: schaden / min / 50, laeufeMin: ang.statistik.laeufe / min, welle: ang.welle.nr, kiUs: kiMs / T * 1000 };
+}
+{
+  const dpsAlt = FLAK.sorte[1].splitterDps; FLAK.sorte[1].splitterDps = 115; // Entscheidung R14 (Waffentechniker)
+  const sek = 180, r = {};
+  for (const [name, m, f] of [['halt', 'halt', 'gerade'], ['sperr', 'sperrfeuer', 'gerade'], ['ziel', 'zielfeuer', 'gerade'], ['sperrM', 'sperrfeuer', 'manoever'], ['zielM', 'zielfeuer', 'manoever']]) r[name] = gefecht(m, f, sek);
+  FLAK.sorte[1].splitterDps = dpsAlt;
+  const t = (x) => `${f1(x.abMin)}/min · −${f1(x.hpMin)} %/min · Welle ${x.welle}`;
+  zeile('P Gefecht 3 min, Feuer halt (Abschüsse · Schiffs-HP · Welle)', 'Info', t(r.halt), true, false);
+  zeile('P Gefecht 3 min, Sperrfeuer gerade / Manöver (Gieren ±0,18 rad/s)', 'Info', `${t(r.sperr)} | ${t(r.sperrM)}`, true, false);
+  zeile('P Gefecht 3 min, Zielfeuer gerade / Manöver', 'Info', `${t(r.ziel)} | ${t(r.zielM)}`, true, false);
+  const flakHilft = ['sperr', 'ziel', 'sperrM', 'zielM'].every((k) => r[k].hpMin < r.halt.hpMin && r[k].abMin >= 4);
+  zeile('P Flak schützt: jeder Lauf mit Feuer weniger Schiffsschaden als Feuer halt und ≥ 4 Abschüsse/min', 'ja', flakHilft ? 'ja' : 'nein', flakHilft);
+  const kiMax = Math.max(...Object.values(r).map((x) => x.kiUs));
+  zeile('P Rechenzeit Turm-KI (14 Türme, bis 8 Angreifer) je Takt', '< 1000 µs', `${f1(kiMax)} µs`, kiMax < 1000);
 }
 
 // ---------- D) Gleichlauf ----------
