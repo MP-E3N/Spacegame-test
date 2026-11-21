@@ -98,7 +98,7 @@ addEventListener('wheel', (e) => { if (e.target?.id === 'leinwand') maus.rad += 
 const $ = (id) => document.getElementById(id);
 const el = { modus: $('modus'), feuer: $('feuer'), schirm: $('schirm'), granaten: $('granaten'), wolken: $('wolken'), schussrate: $('schussrate'),
   treffer: $('treffer'), abschuesse: $('abschuesse'), nah: $('nahbereich'), spuren: $('spuren'), bildzeit: $('bildzeit'), meldung: $('meldung'), bedienung: $('bedienung'), bedienungAuf: $('bedienung-auf'),
-  kFeuer: $('k-feuer'), kSperr: $('k-sperr'), kZiel: $('k-ziel'), kFolgen: $('k-folgen'), kPause: $('k-pause'), kRegler: $('k-regler'), kKamera: $('k-kamera'), kV0: $('k-v0') };
+  kFeuer: $('k-feuer'), kSperr: $('k-sperr'), kZiel: $('k-ziel'), kFolgen: $('k-folgen'), kPause: $('k-pause'), kRegler: $('k-regler'), kSpur: $('k-spur'), kKamera: $('k-kamera'), kV0: $('k-v0') };
 // Stufen-Knöpfe der Mündungsgeschwindigkeit
 const v0Knoepfe = V0_STUFEN.map((s) => {
   const k = document.createElement('button');
@@ -111,6 +111,7 @@ const v0Knoepfe = V0_STUFEN.map((s) => {
 // Nutzer: „Schieberegler … mit Werten, damit wir diese als Konfig nehmen können“. Bereiche/Standard kommen aus
 // STREU_REGLER (KI) und GRAFIK_REGLER (Grafik); hier stehen nur Anzeigename, Schrittweite, Einheit, Erklärung.
 const R_NAMEN = {
+  explosionHell: ['Explosion: Helligkeit', 0.05, '×', 'Wie hell und groß die Glut der Explosionen ist'],
   faktor: ['Streuung gesamt ×', 0.1, '×', 'Vergrößert alle Streuungen und Räume gemeinsam (Sperr- und Zielfeuer, nicht den Nahbereich)'],
   sperrQuer: ['Sperrfeuer: Streuung quer', 5, 'm', 'Radius quer zur Schusslinie um jeden Musterpunkt'],
   sperrTiefe: ['Sperrfeuer: Lagendicke', 5, 'm', 'Streuung längs der Schusslinie (Tiefe jeder Lage)'],
@@ -154,12 +155,13 @@ document.getElementById('regler-kopieren').addEventListener('click', (e) => {
 const ablage = { name: $('konfig-name'), liste: $('konfig-liste') };
 const NAME_OK = /^[\p{L}\p{N} _-]{1,40}$/u; // wie im Server
 /** Komplette Konfig: Regler + Mündungsgeschwindigkeit. */
-const ganzeKonfig = () => ({ ...reglerfeld.konfig(), v0: befehl.v0 });
+const ganzeKonfig = () => ({ ...reglerfeld.konfig(), v0: befehl.v0, spurImmer: !!grafik.regler.spurImmer });
 /** Konfig übernehmen, inkl. v0 (nur bekannte Stufen). */
 function ladeKonfig(k) {
   reglerfeld.setze(k);
   const s = V0_STUFEN.find((x) => x.v === k?.v0);
   if (s) befehl.v0 = s.v;
+  if (typeof k?.spurImmer === 'boolean') grafik.regler.spurImmer = k.spurImmer;
   else if (k?.v0 !== undefined) meldung('Mündungsgeschwindigkeit ' + k.v0 + ' m/s ist keine Stufe — bleibt bei ' + befehl.v0);
   hudUhr = 1;
 }
@@ -219,6 +221,7 @@ function knoepfe() {
   el.kFolgen.lastChild.textContent = befehl.folgen ? 'folgt den Zielen' : 'fest (F = wieder folgen)';
   el.kPause.classList.toggle('an', pause);
   el.kRegler.classList.toggle('an', !document.getElementById('regler').classList.contains('versteckt'));
+  el.kSpur.classList.toggle('an', !!grafik.regler.spurImmer);
   el.kKamera.lastChild.textContent = kam.modus === 'batterie' ? 'Kamera Prüfstand (→ Übersicht)' : 'Kamera Übersicht (→ Prüfstand)';
   V0_STUFEN.forEach((s, i) => v0Knoepfe[i].classList.toggle('an', s.v === befehl.v0));
 }
@@ -299,6 +302,9 @@ function bedienen() {
   }
   for (const s of V0_STUFEN) if (einmal.has('V0:' + s.v)) setzeV0(s);
   if (einmal.has('KeyR')) document.getElementById('regler').classList.toggle('versteckt');
+  // T (R13, Nutzer: „Button, um die Tracer dauerhaft einzuschalten“): jede Granate zeigt Leuchtspur — nur Optik, die Sim
+  // (Streuung, Deckel) bleibt unverändert.
+  if (einmal.has('KeyT')) { grafik.regler.spurImmer = !grafik.regler.spurImmer; meldung(grafik.regler.spurImmer ? 'Leuchtspur dauerhaft an (jede Granate)' : 'Leuchtspur nur im Nahbereich'); }
   if (einmal.has('KeyH')) { el.bedienung.classList.toggle('versteckt'); el.bedienungAuf.classList.toggle('versteckt'); }
   if (einmal.size) hudUhr = 1; // Knöpfe sofort nachziehen
   einmal.clear();

@@ -75,6 +75,11 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   Median fern: Sperr 269 m (vorher 164), Ziel 227 m (vorher 103); faktor 3 → Sperr ~410–550 m. Balance (3 Startwerte):
   Sperr 44–45 Abschüsse / 50–64 % Vorstöße, Ziel 22–26 / 36–57 % (knapp unter Ziel, gemeinsamer Panzer 0,13).
   Protokoll `…/2026-11-19-runde12.md`.
+- **Runde 13 (2026-11-21, Schnellrunde ohne Besprechung auf Nutzerwunsch, lokal committet):** „Explosionen mehr zu sehen,
+  viel weniger Rauch“ → Grafik-Standards Rauch-Deckkraft 0,7 → 0,3 (Regler ab 0,05), Rauch-Lebensdauer 1 → 0,6, Glutdauer
+  1 → 1,6, neuer Regler **„Explosion: Helligkeit“** (explosionHell 0,5–3, Standard 1,8; Kern-Budget 16 → 28 × hell);
+  **Taste T / Knopf „Leuchtspur dauerhaft“** (grafik.regler.spurImmer, nur Optik, wird in der Konfig mitgespeichert).
+  Browser: weiße Pixel 0,15 ‰, Bildzeit 0,4 ms, 68 Spuren mit T. Keine Sim-Änderung.
 - **Nächster Schritt:** Nutzer speichert seine Lieblings-Konfig → aus `konfig/flak/` lesen, als neue Standardwerte in die
   Tabellen übernehmen (STREU_REGLER, WAFFEN_REGLER, GRAFIK_REGLER), Balance nachmessen (labor8.mjs-Muster, 3 Startwerte).
   Offen: Feuerrate als Hebel für dichtere Sättigung; Station unten links verdeckt die linken Türme; Zielfeuer-Balance

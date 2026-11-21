@@ -47,15 +47,20 @@ const ZUSATZ = { anzahl: 4, versatz: [20, 30, 120], versatzJeStreu: 0.25, verzoe
 // KERN_BUDGET: Summe der Kraft aller Granaten-Kerne (art 1) im Bild — darüber werden alle gleichmäßig gedämpft (Wert des
 // Vorbilds, 1 Bild Verzug). WARUM: viele Detonationen auf einem Fleck addieren sich (additiv) zur weißen Fläche.
 // Abschuss-Explosionen (art 2) zählen nicht und werden nie gedämpft — ein Abschuss soll knallen.
-const KERN_DAUER = 0.22, KERN_BUDGET = 16;
+// R13 (Nutzer: „Explosionen mehr zu sehen, viel weniger Rauch“): Budget 16 → 28, zusätzlich mal explosionHell —
+// WARUM mitwachsen: sonst dämpft das Budget die hellere Glut gleich wieder weg.
+const KERN_DAUER = 0.22, KERN_BUDGET = 28;
 const HAUPT_LEBEN = 2.8; // s, Hauptwolke einer Detonation
 // Regler (R11, Nutzer: „Schieberegler für einen rein visuellen Flak-Screen, der die Leere zwischen den Points of Action
 // füllt“ / „für die Länge der Explosionen und die Rauchentwicklung“). Nur Grafik, die Sim merkt nichts.
 export const GRAFIK_REGLER = {
   fuellen:        { min: 0,   max: 3, standard: 0,   schritt: 0.1,  text: 'Füll-Flak (× 30 Wolken/s)' },
-  lebenFaktor:    { min: 0.5, max: 2, standard: 1,   schritt: 0.05, text: 'Rauch-Lebensdauer (× 2,8 / 2,0 s)' },
-  explosionDauer: { min: 0.5, max: 3, standard: 1,   schritt: 0.05, text: 'Explosionsdauer Glut (× 0,22 / 0,12 s)' },
-  rauchDeckkraft: { min: 0.2, max: 1, standard: 0.7, schritt: 0.05, text: 'Rauch-Deckkraft' },
+  // R13 (Nutzer: „Explosionen mehr zu sehen und viel weniger Rauch“): neue Standards — Rauch kürzer/durchscheinender,
+  // Glut länger und heller (explosionHell neu). Rauch-Deckkraft ab 0,05 regelbar (vorher 0,2).
+  lebenFaktor:    { min: 0.3, max: 2, standard: 0.6, schritt: 0.05, text: 'Rauch-Lebensdauer (× 2,8 / 2,0 s)' },
+  explosionDauer: { min: 0.5, max: 3, standard: 1.6, schritt: 0.05, text: 'Explosionsdauer Glut (× 0,22 / 0,12 s)' },
+  explosionHell:  { min: 0.5, max: 3, standard: 1.8, schritt: 0.05, text: 'Explosion: Helligkeit/Größe der Glut' },
+  rauchDeckkraft: { min: 0.05, max: 1, standard: 0.3, schritt: 0.05, text: 'Rauch-Deckkraft' },
   rauchGroesse:   { min: 0.5, max: 2, standard: 1,   schritt: 0.05, text: 'Rauch-Größe (× 42 m)' },
   zusatzAnzahl:   { min: 0,   max: 6, standard: 4,   schritt: 1,    text: 'Zusatz-Explosionen je Detonation' },
   // zusatzWeite R12 (Nutzer: „die Area größer machen … als konfigurierbaren Slider“): 0,5–6, Standard 1,5 → 30–180 m
@@ -171,12 +176,13 @@ export function erstelleFlakGrafik(scene, camera) {
       rueck[s.turmId * 2 + s.rohr] = 0;
     }
     if (!e.detonationen.length) return;
-    const leben = rw('lebenFaktor'), dauer = rw('explosionDauer'), deck = rw('rauchDeckkraft'), gr = rw('rauchGroesse');
+    const leben = rw('lebenFaktor'), dauer = rw('explosionDauer'), deck = rw('rauchDeckkraft'), gr = rw('rauchGroesse'), hell = rw('explosionHell');
+    const kernGr = 0.8 + 0.2 * hell; // Glut wächst etwas mit (R13)
     for (const d of e.detonationen) {
-      neuesGluehen(d.pos.x, d.pos.y, d.pos.z, d.art === 'nah' ? 13 : 11, KERN_DAUER * dauer, 1, 1);
+      neuesGluehen(d.pos.x, d.pos.y, d.pos.z, (d.art === 'nah' ? 13 : 11) * kernGr, KERN_DAUER * dauer, hell, 1);
       // Sichtgröße ≈ Splitter-Wirkradius (Runde 7) beim Standard-Regler
       neueWolke(d.pos.x, d.pos.y, d.pos.z, 6, WOLKE_R * gr, HAUPT_LEBEN * leben, 0, 0, 0, 1, deck);
-      zusatzExplosionen(d.pos, d.streu || 0, leben, dauer, deck, gr);
+      zusatzExplosionen(d.pos, d.streu || 0, leben, dauer, deck, gr, hell, kernGr);
       // Detonations-Ring für die Füll-Flak (Quelle A)
       const j = detRing.zeiger; detRing.zeiger = (j + 1) % FUELL_RING;
       detRing.pos[j * 3] = d.pos.x; detRing.pos[j * 3 + 1] = d.pos.y; detRing.pos[j * 3 + 2] = d.pos.z; detRing.zeit[j] = uhr;
@@ -185,7 +191,7 @@ export function erstelleFlakGrafik(scene, camera) {
 
   /** Kleinere, leicht verzögerte Explosionen um den Zündpunkt (nur Grafik, R9/R10); streu = benutzte Streuung (m).
    *  Anzahl/Weite/Leben/Dauer/Deckkraft/Größe aus den Reglern (R11); Standard = R10 (gleich viele rnd-Aufrufe). */
-  function zusatzExplosionen(p, streu, leben, dauer, deck, gr) {
+  function zusatzExplosionen(p, streu, leben, dauer, deck, gr, hell = 1, kernGr = 1) {
     const Z = ZUSATZ, weite = rw('zusatzWeite'), anzahl = Math.round(rw('zusatzAnzahl'));
     const vMax = Math.min(Z.versatz[2], Math.max(Z.versatz[1], Z.versatz[1] + Z.versatzJeStreu * streu));
     for (let k = 0; k < anzahl; k++) {
@@ -195,7 +201,7 @@ export function erstelleFlakGrafik(scene, camera) {
       const x = p.x + r * sz * Math.cos(phi), y = p.y + r * sz * Math.sin(phi), z = p.z + r * cz;
       // ab der 5. Explosion eine Runde später (0,04 s je Runde) — WARUM: sonst blitzen je zwei gleichzeitig
       const nv = Z.verzoegerung.length, warte = Z.verzoegerung[k % nv] + 0.04 * Math.floor(k / nv) + rnd() * Z.verzoegerungStreu;
-      neuesGluehen(x, y, z, Z.kern[0] + rnd() * (Z.kern[1] - Z.kern[0]), Z.kernDauer * dauer, Z.kernKraft, 1, warte);
+      neuesGluehen(x, y, z, (Z.kern[0] + rnd() * (Z.kern[1] - Z.kern[0])) * kernGr, Z.kernDauer * dauer, Z.kernKraft * hell, 1, warte);
       neueWolke(x, y, z, 3, WOLKE_R * gr * (Z.wolke[0] + rnd() * (Z.wolke[1] - Z.wolke[0])), Z.leben * leben, 0, 0, 0, Z.glut, deck, warte, false);
     }
   }
@@ -303,7 +309,8 @@ export function erstelleFlakGrafik(scene, camera) {
     const gs = flak.geschosse, K = spur.puffer.aKopf.array, S = spur.puffer.aSchweif.array, H = spur.puffer.aHell.array;
     let n = 0;
     for (let i = 0; i < gs.max && n < MAX_SPUR; i++) {
-      if (!gs.aktiv[i] || !gs.leucht[i]) continue; // Spur nur für Leuchtspur-Granaten (Runde 7)
+      // Spur nur für Leuchtspur-Granaten (Runde 7) — außer regler.spurImmer (R13, Knopf „Leuchtspur dauerhaft“, nur Optik)
+      if (!gs.aktiv[i] || (!gs.leucht[i] && !regler.spurImmer)) continue;
       const j = i * 3;
       const x = gs.vorPos[j] + (gs.pos[j] - gs.vorPos[j]) * alpha, y = gs.vorPos[j + 1] + (gs.pos[j + 1] - gs.vorPos[j + 1]) * alpha,
         z = gs.vorPos[j + 2] + (gs.pos[j + 2] - gs.vorPos[j + 2]) * alpha;
@@ -320,7 +327,8 @@ export function erstelleFlakGrafik(scene, camera) {
     // Glühen altern lassen
     const GP = glueh.puffer.aPos.array, GG = glueh.puffer.aGroesse.array, GF = glueh.puffer.aFarbe.array;
     n = 0;
-    const budget = kernKraftVorher > KERN_BUDGET ? KERN_BUDGET / kernKraftVorher : 1;
+    const kb = KERN_BUDGET * rw('explosionHell');
+    const budget = kernKraftVorher > kb ? kb / kernKraftVorher : 1;
     kernKraftVorher = 0;
     for (let i = 0; i < MAX_GLUEH; i++) {
       const a = (G.alter[i] += dt), u = a / G.dauer[i];
