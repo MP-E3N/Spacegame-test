@@ -70,7 +70,8 @@ export function erstelleBollwerk(scene) {
   for (const [i, s] of [1, -1].entries()) {
     const x = s * POD_X, deck = T.deck[i];
     eimer.rumpf.push(lofte(deck));
-    aufbauten(rnd, deck.ab, -50, 14, eimer, { unten: false, dichte: 0.9, fase: deck.fase, skala: 1.2 });
+    // R14: mit Turm-Sperre (PDC an der Außenkante); die Zufallsfolge bleibt gleich, nur Kisten unter Türmen fallen weg
+    aufbauten(rnd, deck.ab, -50, 14, eimer, { unten: false, dichte: 0.9, fase: deck.fase, skala: 1.2, ...sperre });
     // Nahtleiste zwischen Hangar und Hülle (verdeckt die Kante, wirkt verschweißt)
     eimer.dunkel.push(kiste(2.2, 1.2, 74, s * (POD_X - 7.2), POD_Y + 6.3, -16));
     for (let z = -48; z <= 14; z += 8) eimer.dunkel.push(kiste(2.6, 1.6, 1.4, s * (POD_X - 7.2), POD_Y + 6.6, z));
@@ -88,7 +89,8 @@ export function erstelleBollwerk(scene) {
   const gruppe = new THREE.Group();
   gruppe.name = 'bollwerk';
   fuegeZusammen(eimer, mats, gruppe, 'bollwerk');
-  // Türme aus den Sim-Daten (Index = id); Runde 5: Hals z 22 auf 6-m-Sockel, Flak-Paar z 62 bei x ±9 (vorher Clips)
+  // Türme aus den Sim-Daten (Index = id); Runde 5: Hals z 22 auf 6-m-Sockel, Flak-Paar z 62 bei x ±9 (vorher Clips).
+  // Runde 14: +10 Zwillings-PDC (ids 7–16) an den Außenkanten — je 5 Netze (Sockel, Kranz, 2 Rohre, Wiege) → +50 Draw-Calls.
   const tuerme = BOLLWERK.tuerme.map((t) => turm(gruppe, mats, t));
 
   // ---------- Beschriftung ----------
