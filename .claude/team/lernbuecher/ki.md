@@ -44,3 +44,8 @@
   Ziel 103 → 227 m. Ausreißer 552°/s = Nah-Ziel bei 88° Nick (Gier-Singularität) → Zenit-Bremse, auch im Zielfeuer.
   Lehre: TURMKI-Patches wirken nicht auf Regler-Standards (beim Laden gebildet) → über befehl.streu messen; fremde
   Deckel selbst einhalten (Leuchtspur-Kugel ≤ 0,98·0,10·d), sonst kürzt die Waffe stumm (21 % → 4 %).
+- 2026-11-21 Runde 14 — Turm-KI im Schiffsrahmen, Angreifer-KI. Parameter `killzone` wurde von der inneren
+  function killzone() verdeckt (Hoisting) → Prüfstand still anders. Lehre: Optionen nie wie innere Funktionen benennen;
+  Bitgleichheit mit Prüfsummen-Anker VOR dem Umbau messen. Grenzen im Turm-Rahmen über Vorzeichen s (oben 1, unten −1).
+  Killzone 900/1000 statt 500/600: Abschüsse vor dem Feuern. Scheinfahrt aus Lagedifferenzen im mitdrehenden Rahmen:
+  −15 statt −9 %/min Schiffsschaden. Flak ohne setzeRahmen emulierbar (zwei Instanzen, unten gespiegelt).
