@@ -15,3 +15,8 @@
 - 2026-11-15 Runde 5 — Fußpunkt = höchste Oberkante über der Standfläche + Schürze, Daten in der Sim. Messung: Spalt
   0,000 m (Strahltest), Feld bitgleich, Rumpfnetze bitgleich. Lehre: Anbauteile aus dem Querschnitt ableiten und gegen
   die echte Geometrie testen; Kugeln lieber zu groß als zu klein. Kisten unter Türmen überspringen, Zufallsfolge halten.
+- 2026-11-21 Runde 14 — Bollwerk +10 Zwillings-PDC an den Außenkanten (ids 7–16), rumpfSperre() je Gier-Sektor.
+  Grafik-Anbauten (Kühlrippen, Rohre, Mast, Triebwerke) standen nicht in TEILE → Fußpunkt und Sperre sahen sie nicht;
+  unten montierte Türme brauchen gespiegelte gier-Mitte. TEILE.details als Quader, Sperre aus Ober-/Unterkanten (+0,5 m),
+  Prüfung per Raycaster gegen die Lofts; Gegenprobe ohne Sperre muss rot werden. Rumpftreffer 0/33 825, Abdeckung 100 % ≥ 1
+  / 99,9 % ≥ 2, Draw-Calls +100 (Schatten verdoppelt). Lehre: jedes Netz zählt doppelt (Schattendurchgang).
