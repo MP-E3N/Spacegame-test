@@ -8,10 +8,13 @@
 //   Runde 8: 11) Streukugel gleichverteilt (Median 0,79 R) · 12) R = 0 → Detonation am Punkt bei jeder v0-Stufe
 //   13) Flächenschaden an zwei Drohnen, abfallend · 14) v0-Wechsel im Flug · 15) Zielfeuer mit Streukugel gegen Flieger.
 //   Runde 10–12: 16) Ellipsoid · 17) Deckel-Regler · 18) Sperr-Schutz versetzter Granaten, keine Detonation vor der Batterie.
+//   Runde 14: Prüfstand bitgleich zu R13 · 19) gedrehtes fliegendes Schiff · 20) unten montiert · 21) Sperren am Schiff,
+//   Gleichlauf, Rechenzeit · 22) Mindestabstand 150 m, erreichbar() · 23) Feuer halt ohne Füllwolken (Grafik).
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
 import { erstelleFlak, FLAK, WAFFEN_REGLER } from '../src/sim/waffen/flak.js';
-import { LAFETTEN } from '../src/sim/waffen/lafetten.js';
+import { LAFETTEN, schiffsLafetten } from '../src/sim/waffen/lafetten.js';
+import { SCHIFFSDATEN, rumpfSperre, sperrSektor } from '../src/sim/schiffe/index.js';
 
 const DT = 1 / 60;
 const zeilen = [];
@@ -279,7 +282,8 @@ function punktLauf({ d = 1000, streuKugel = 0, streuTiefe, leuchtspur, zielId = 
   // Deckel quer (R10, Werte R12): mit Leuchtspur Kugel 60 m bei 300 m → quer 0,10 · d ≈ 30 m, längs bleiben 60 m.
   // Ohne Leuchtspur Kugel 250 m bei 300 m → quer deckelQuer · d (0,60 → ≈ 175 m), längs deckelTiefe · d (0,80 → ≈ 233 m).
   // WARUM die Sollwerte aus FLAK und el: Deckel messen ab der Mündung (Lehre R10), Standard darf sich ändern.
-  for (const [leuchtspur, R] of [[false, 250], [true, 60]]) {
+  // R14: Querdeckel 1,0 (T1) → ohne Leuchtspur Kugel 400 m, damit bei 300 m quer UND längs (0,9 · d) gekürzt wird
+  for (const [leuchtspur, R] of [[false, 400], [true, 60]]) {
     const nah = punktLauf({ d: 300, streuKugel: R, schritte: 3000, leuchtspur });
     const mq = nah.quer.length ? Math.max(...nah.quer) : Infinity, ml = nah.laengs.length ? Math.max(...nah.laengs) : Infinity;
     const sq = (leuchtspur ? FLAK.deckelQuerLeucht : FLAK.deckelQuer) * nah.el, sl = Math.min(R, FLAK.deckelTiefe * nah.el);
@@ -431,7 +435,8 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
     befehle.forEach((b, k) => { b.punkt = { x: 200 * k - 500, y: 600, z: 1400 }; b.feuer = true; b.toleranz = 0.03; b.zielId = null; b.streuKugel = 1000; b.streuTiefe = 1300; });
     for (let i = 0; i < 2400; i++) {
       if (modus === 'leer') flak.einstellen(undefined);
-      if (modus === 'wechsel') flak.einstellen(i < 1200 ? undefined : { deckelQuer: WAFFEN_REGLER.deckelQuer.max, deckelTiefe: WAFFEN_REGLER.deckelTiefe.max });
+      // R14: der Standard (T1) liegt an den Obergrenzen → Wechsel auf die R13-Werte 0,60 / 0,80 (mehr Kürzung)
+      if (modus === 'wechsel') flak.einstellen(i < 1200 ? undefined : { deckelQuer: 0.6, deckelTiefe: 0.8 });
       flak.schritt(DT, befehle, []);
     }
     return { h: flak.pruefsumme(), g: flak.geschosse.gedeckelt };
@@ -439,7 +444,7 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
   const roh = lauf('ohne'), leer = lauf('leer'), w1 = lauf('wechsel'), w2 = lauf('wechsel');
   zeile('Gleichlauf Deckel-Regler: ohne = Standard, Wechsel in 2 Läufen gleich, Wechsel wirkt', 'gleich / gleich / anders',
     `${roh.h} / ${leer.h} · ${w1.h} / ${w2.h} (gedeckelt ${roh.g} → ${w1.g})`,
-    roh.h === leer.h && roh.g === leer.g && w1.h === w2.h && w1.h !== roh.h && w1.g < roh.g);
+    roh.h === leer.h && roh.g === leer.g && w1.h === w2.h && w1.h !== roh.h && w1.g > roh.g);
 }
 
 // ---------- 18) R12: Sperr-Schutz der versetzten Granaten, keine Detonation direkt vor der Batterie ----------
@@ -494,6 +499,241 @@ const quantil = (a, p) => { const s = [...a].sort((x, y) => x - y); return s.len
     if (d === 600) okNah = okNah && r.ab.length > 200 && unter === 0;
   }
   zeile('Zielkugel 320/320: Detonationen < 150 m vor der Mündung (600 m hart / 400 m Info)', '0 / Info', nahe.join(' · '), okNah);
+}
+
+// ---------- Runde 14: Prüfstand bitgleich, Flak am fliegenden Schiff, Sperren, Mindestabstand, Füll-Flak ----------
+// Vollständige Prüfsumme (Turmwinkel, Mündungen, Granaten inkl. vorPos/vel, Ereignisse) — dieselbe wie die R13-Referenz
+// im Scratchpad (wt14/ref_r13.mjs). WARUM fest eingetragen: so bleibt der Prüfstand-Zweig bitgleich zu R13, solange die
+// R13-Werte (Deckel 0,60 / 0,80, Sperr-Splitter 90 HP/s) gesetzt sind — neue Standards ändern ihn nicht unbemerkt.
+function hashVoll(flak, h) {
+  const mische = (v) => { h ^= (Math.round(v * 1e6) | 0); h = Math.imul(h, 16777619) >>> 0; };
+  for (const t of flak.tuerme) { mische(t.gier); mische(t.nick); mische(t.schuesse); mische(t.muendung.x); mische(t.muendung.y); mische(t.muendung.z); }
+  const g = flak.geschosse;
+  for (let i = 0; i < g.max; i++) if (g.aktiv[i]) for (let k = 0; k < 3; k++) { mische(g.pos[i * 3 + k]); mische(g.vel[i * 3 + k]); mische(g.vorPos[i * 3 + k]); }
+  for (const d of flak.ereignisse.detonationen) { mische(d.pos.x); mische(d.pos.y); mische(d.pos.z); }
+  for (const s of flak.ereignisse.schuesse) { mische(s.pos.x); mische(s.richtung.y); }
+  for (const t of flak.ereignisse.treffer) mische(t.schaden);
+  return h;
+}
+function pruefstandLauf(sw, rahmenJeSchritt) {
+  const flak = erstelleFlak({ startwert: sw }); flak.einstellen({ deckelQuer: 0.6, deckelTiefe: 0.8 });
+  const bef = LAFETTEN.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: true, toleranz: 0.03, zuender: 1 }));
+  const ziele = Array.from({ length: 8 }, (_, k) => ({ id: k, pos: { x: -600 + 150 * k, y: 300 + 20 * k, z: 900 }, vorPos: { x: 0, y: 0, z: 0 }, vel: { x: 60, y: 0, z: -40 }, r: 6, aktiv: true }));
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < 3600; i++) {
+    for (const z of ziele) { z.vorPos.x = z.pos.x; z.vorPos.y = z.pos.y; z.vorPos.z = z.pos.z; z.pos.x += z.vel.x * DT; z.pos.z += z.vel.z * DT; }
+    bef.forEach((b, k) => { const w = i * DT * 1.3 + k; b.punkt.x = 700 * Math.sin(0.6 * Math.sin(w)); b.punkt.y = 300 + 200 * Math.sin(2 * w); b.punkt.z = 900;
+      b.zielId = k % 2 ? 3 : null; b.streuKugel = 150 + 50 * k; b.streuTiefe = 250; b.leuchtspur = ((i >> 6) + k) % 4 === 0; });
+    if (rahmenJeSchritt) flak.setzeRahmen(rahmenJeSchritt);
+    flak.schritt(DT, bef, ziele);
+    h = hashVoll(flak, h);
+  }
+  return { h: h.toString(16) + '/' + flak.pruefsumme(), verl: flak.geschosse.abstandVerlaengert };
+}
+{
+  const SG = FLAK.sorte[1], echt = SG.splitterDps, REF = { 303: '43512428/8833a6c1', 7: 'e676d157/7285cb66', 202: '92ac96b4/be47596c' };
+  const werte = [];
+  let ok = true;
+  try {
+    SG.splitterDps = 90;
+    for (const sw of [303, 7, 202]) { const r = pruefstandLauf(sw); werte.push(r.h); ok = ok && r.h === REF[sw]; }
+  } finally { SG.splitterDps = echt; }
+  zeile('R14 Prüfstand ohne Rahmen bitgleich zu R13 (R13-Werte gesetzt, 3 Startwerte × 3600 Schritte)', 'gleich Referenz', werte.join(' · '), ok);
+  // Einheits-Rahmen (Lage 0, keine Drehung, Tempo 0) muss dieselben Zahlen liefern wie gar kein Rahmen — solange der
+  // Mindestabstand nicht greift (die Befehle liegen ≥ 700 m weit).
+  const ident = { pos: { x: 0, y: 0, z: 0 }, rot: { x: 0, y: 0, z: 0, w: 1 }, vel: { x: 0, y: 0, z: 0 } };
+  const ohne = pruefstandLauf(303), mit = pruefstandLauf(303, ident);
+  zeile('R14 Einheits-Rahmen = kein Rahmen (Prüfsumme)', 'gleich, 0 verlängert', `${ohne.h} / ${mit.h} (${mit.verl} verlängert)`, ohne.h === mit.h && mit.verl === 0);
+}
+
+const BW = SCHIFFSDATEN.bollwerk;
+const quat = (ax, ay, az, w) => { const l = Math.hypot(ax, ay, az) || 1, s = Math.sin(w / 2); return { x: ax / l * s, y: ay / l * s, z: az / l * s, w: Math.cos(w / 2) }; };
+const dreheQ = (q, v) => { const tx = 2 * (q.y * v.z - q.z * v.y), ty = 2 * (q.z * v.x - q.x * v.z), tz = 2 * (q.x * v.y - q.y * v.x);
+  return { x: v.x + q.w * tx + q.y * tz - q.z * ty, y: v.y + q.w * ty + q.z * tx - q.x * tz, z: v.z + q.w * tz + q.x * ty - q.y * tx }; };
+const konj = (q) => ({ x: -q.x, y: -q.y, z: -q.z, w: q.w });
+const mal = (a, b) => ({ x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z });
+const schiffsFlak = (startwert) => { const { lafetten, hindernisse } = schiffsLafetten(BW);
+  return erstelleFlak({ startwert, lafetten, schiff: { hindernisse, rumpf: (l) => rumpfSperre(l, BW.teile) } }); };
+/** Richtung im Turm-Rahmen (gier, nick) → Schiffs-Lokal (unten gespiegelt). */
+const turmRichtung = (l, g, n) => { const v = { x: Math.sin(g) * Math.cos(n), y: Math.sin(n), z: Math.cos(g) * Math.cos(n) }; if (l.oben === false) { v.x = -v.x; v.y = -v.y; } return v; };
+/** Schiffs-Lokal-Richtung → (gier, nick) im Turm-Rahmen. */
+const turmWinkel = (l, v) => { const x = l.oben === false ? -v.x : v.x, y = l.oben === false ? -v.y : v.y;
+  return { g: Math.atan2(x, v.z), n: Math.asin(Math.max(-1, Math.min(1, y / Math.hypot(v.x, v.y, v.z)))) }; };
+/** Freie Richtung je Turm: Lafetten-Mitte, Nick 0,15 über der Sperre (mindestens 0,5). */
+function freieRichtung(t) {
+  const l = t.lafette, g = l.gier[0];
+  let n = 0.5;
+  for (let k = 0; k < 40 && !t.erreichbarTest(g, n); k++) n += 0.05;
+  return { g, n };
+}
+
+// ---------- 19) Gedrehtes, fliegendes Schiff: Granate fliegt aus der Mündung in Rohrrichtung + Schiffstempo ----------
+{
+  const alt = { k: FLAK.zuenderStreuKugel, z: FLAK.zuenderStreu };
+  FLAK.zuenderStreuKugel = 0; FLAK.zuenderStreu = 0;
+  try {
+    const flak = schiffsFlak(41), q = quat(0.3, 1, 0.2, 1.1), vs = { x: 120, y: 30, z: 250 }, pos = { x: 1000, y: -500, z: 3000 };
+    flak.tuerme.forEach((t, i) => { t.streuung = 0; t.erreichbarTest = (g, n) => flak.erreichbar(i, g, n); });
+    const ziele = flak.tuerme.map((t) => { const f = freieRichtung(t), d = turmRichtung(t.lafette, f.g, f.n), l = t.lafette;
+      return { x: l.x + d.x * 900, y: l.y + d.y * 900, z: l.z + d.z * 900 }; });
+    const befehle = flak.tuerme.map((t, i) => ({ turmId: t.id, zielId: 99, punkt: ziele[i], feuer: false, toleranz: 0.002, streuKugel: 0 }));
+    let tempoFehler = 0, richtFehler = 0, ortFehler = 0, detFehler = 0, det = 0, schuesse = 0;
+    const feuernd = new Set();
+    for (let i = 0; i < 600; i++) {
+      pos.x += vs.x * DT; pos.y += vs.y * DT; pos.z += vs.z * DT;
+      flak.setzeRahmen({ pos, rot: q, vel: vs });
+      flak.tuerme.forEach((t, k) => { const b = befehle[k], m = t.muendung; b.feuer = i >= 180;
+        b.zuender = Math.hypot(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) / t.v0; });
+      flak.schritt(DT, befehle, []);
+      const gs = flak.geschosse;
+      for (const s of flak.ereignisse.schuesse) {
+        schuesse++; feuernd.add(s.turmIndex);
+        const t = flak.tuerme[s.turmIndex];
+        // Granate: der jüngste Eintrag mit alter 0 an dieser Mündung
+        for (let g = 0; g < gs.max; g++) {
+          if (!gs.aktiv[g] || gs.alter[g] !== 0 || Math.abs(gs.pos[g * 3] - s.pos.x) > 1e-9) continue;
+          const rx = gs.vel[g * 3] - vs.x, ry = gs.vel[g * 3 + 1] - vs.y, rz = gs.vel[g * 3 + 2] - vs.z;
+          tempoFehler = Math.max(tempoFehler, Math.abs(Math.hypot(rx, ry, rz) - t.v0));
+        }
+        const soll = dreheQ(q, turmRichtung(t.lafette, t.gier, t.nick)); // Rohrrichtung in Welt (Streuung 0)
+        richtFehler = Math.max(richtFehler, Math.hypot(s.richtung.x - soll.x, s.richtung.y - soll.y, s.richtung.z - soll.z));
+        const mw = t.muendungWelt;
+        ortFehler = Math.max(ortFehler, Math.hypot(s.pos.x - mw.x, s.pos.y - mw.y, s.pos.z - mw.z));
+      }
+      for (const d of flak.ereignisse.detonationen) {
+        // zurück in Schiffs-Lokal (Schiff fliegt gleichförmig, keine Drehung → exakt bis auf den Bruch im Schritt)
+        const lok = dreheQ(konj(q), { x: d.pos.x - pos.x, y: d.pos.y - pos.y, z: d.pos.z - pos.z });
+        let best = Infinity;
+        for (const p of ziele) best = Math.min(best, Math.hypot(lok.x - p.x, lok.y - p.y, lok.z - p.z));
+        detFehler = Math.max(detFehler, best); det++;
+      }
+    }
+    zeile('R14 Schiff gedreht + 300 m/s: |Granate − Schiffstempo| = v0 / Richtung = gedrehtes Rohr / Abgang an der Mündung',
+      '< 1e-6 m/s / < 1e-9 / < 1,5 m (Rohrversatz)', `${tempoFehler.toExponential(1)} / ${richtFehler.toExponential(1)} / ${ortFehler.toFixed(2)} m (${schuesse} Schuss, ${feuernd.size} von ${flak.tuerme.length} Türmen)`,
+      schuesse > 500 && feuernd.size === flak.tuerme.length && tempoFehler < 1e-6 && richtFehler < 1e-9 && ortFehler < 1.5);
+    // Bruch im Schritt: das Schiff steht beim Vergleich am Schrittende → bis zu |vs| · dt (≈ 4,6 m) Versatz längs vs
+    zeile('R14 Schiff gedreht + fliegend: Detonation ↔ befohlener Punkt (Schiffs-Lokal, 900 m)', '< 8 m', `${detFehler.toFixed(2)} m (${det} Det.)`, det > 300 && detFehler < 8);
+  } finally { FLAK.zuenderStreuKugel = alt.k; FLAK.zuenderStreu = alt.z; }
+}
+
+// ---------- 20) Unten montiert: Turm-Rahmen gespiegelt ----------
+{
+  const flak = schiffsFlak(42), k = flak.tuerme.findIndex((t) => t.id === 5), t = flak.tuerme[k], l = t.lafette;
+  const befehle = flak.tuerme.map((u) => ({ turmId: u.id, zielId: null, punkt: null, feuer: false }));
+  befehle[k] = { turmId: 5, zielId: null, punkt: { x: l.x - 1000, y: l.y - 400, z: l.z }, feuer: true, toleranz: 0.02, zuender: 1 };
+  let unten = 0, schuesse = 0;
+  for (let i = 0; i < 300; i++) {
+    flak.schritt(DT, befehle, []);
+    for (const s of flak.ereignisse.schuesse) { schuesse++; if (s.richtung.x < 0 && s.richtung.y < 0) unten++; }
+  }
+  zeile('R14 unten montierter Turm 5: Ziel Schiff −X/unten → Gier im Turm-Rahmen ≈ +π/2, Granaten nach −X und unten',
+    'Gier 1,57 ± 0,03, alle', `Gier ${t.gier.toFixed(3)}, ${unten} von ${schuesse}`, Math.abs(t.gier - Math.PI / 2) < 0.03 && schuesse > 10 && unten === schuesse);
+}
+
+// ---------- 21) Sperren am Schiff + Rechenzeit + Gleichlauf: Granaten nie unter Rumpf-/Nachbar-Sperre, nie außerhalb der Grenzen ----------
+function schiffLauf(startwert) {
+  const flak = schiffsFlak(startwert), dreh = quat(0.2, 1, 0.1, 0.1 * DT); // 0,1 rad/s Drehung
+  let q = quat(1, 0, 0, 0.4);
+  const pos = { x: 0, y: 0, z: 0 }, vs = { x: 40, y: -10, z: 220 };
+  const ziele = Array.from({ length: 10 }, (_, k) => ({ id: k, pos: { x: 0, y: 0, z: 0 }, vorPos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, r: 6, aktiv: true }));
+  const befehle = flak.tuerme.map((t) => ({ turmId: t.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: true, toleranz: 0.08, streuKugel: 400, streuTiefe: 300 }));
+  let schuesse = 0, ausserhalb = 0, unterRumpf = 0, unterNachbar = 0, istVerletzt = 0;
+  const t0 = performance.now();
+  for (let i = 0; i < 3600; i++) {
+    pos.x += vs.x * DT; pos.y += vs.y * DT; pos.z += vs.z * DT; q = mal(dreh, q);
+    flak.setzeRahmen({ pos, rot: q, vel: vs });
+    for (const z of ziele) { const w = i * DT * 0.4 + z.id; z.vorPos = { ...z.pos };
+      z.pos = { x: pos.x + 900 * Math.sin(w), y: pos.y + 500 * Math.cos(1.3 * w), z: pos.z + 900 * Math.cos(w) }; }
+    // Befehle streichen über die ganze Kugel (lokal, 1200 m) — auch in Richtung Rumpf, die Waffe muss sperren
+    flak.tuerme.forEach((t, k) => { const w = i * DT * 0.12 + k * 0.9, g = Math.PI * Math.sin(w), n = 1.4 * Math.sin(1.7 * w + k);
+      const p = befehle[k].punkt; p.x = 1200 * Math.sin(g) * Math.cos(n); p.y = 1200 * Math.sin(n); p.z = 1200 * Math.cos(g) * Math.cos(n);
+      befehle[k].zielId = k % 2 ? 3 : null; });
+    flak.schritt(DT, befehle, ziele);
+    const qi = konj(q);
+    for (const s of flak.ereignisse.schuesse) {
+      schuesse++;
+      const t = flak.tuerme[s.turmIndex], l = t.lafette, w = turmWinkel(l, dreheQ(qi, s.richtung)), e = 1e-9;
+      const relG = Math.atan2(Math.sin(w.g - l.gier[0]), Math.cos(w.g - l.gier[0]));
+      if ((l.gier[1] < Math.PI - 1e-6 && Math.abs(relG) > l.gier[1] + e) || w.n < l.nick[0] - e) ausserhalb++;
+      if (t.rumpf && w.n < t.rumpf[sperrSektor(w.g, t.rumpf.length)] - e) unterRumpf++;
+      for (const z of t.sperrzonen) if (Math.abs(Math.atan2(Math.sin(w.g - z.gier), Math.cos(w.g - z.gier))) < z.halb && w.n < z.nickMin - e) unterNachbar++;
+    }
+    for (const t of flak.tuerme) {
+      // Ist-Lage beim Feuern: das Rohr selbst liegt nie unter der Sperre (sonst stünde es im Rumpf)
+      if (t.abklingen === FLAK.schussAbstand && t.rumpf && t.nick < t.rumpf[sperrSektor(t.gier, t.rumpf.length)] - 1e-9) istVerletzt++;
+    }
+  }
+  return { ms: (performance.now() - t0) / 3600, schuesse, ausserhalb, unterRumpf, unterNachbar, istVerletzt, h: flak.pruefsumme(),
+    verworfen: flak.geschosse.verworfen, angehoben: flak.geschosse.unterSperre, tuerme: flak.tuerme.length };
+}
+{
+  schiffLauf(5); // Aufwärmen (JIT)
+  const a = schiffLauf(51), b = schiffLauf(51), c = schiffLauf(52);
+  zeile(`R14 Sperren am Schiff (${a.tuerme} Flaktürme, Kugel 400/300, 60 s, Schiff dreht 0,1 rad/s): außerhalb Grenzen / unter Rumpf / unter Nachbar / Rohr unter Rumpf`,
+    '0 / 0 / 0 / 0', `${a.ausserhalb} / ${a.unterRumpf} / ${a.unterNachbar} / ${a.istVerletzt} von ${a.schuesse} (${a.angehoben} angehoben, ${a.verworfen} verworfen)`,
+    a.schuesse > 3000 && a.ausserhalb === 0 && a.unterRumpf === 0 && a.unterNachbar === 0 && a.istVerletzt === 0 && a.verworfen === 0);
+  zeile('R14 Gleichlauf am Schiff (gleicher Startwert / anderer)', 'gleich / anders', `${a.h} / ${b.h} / ${c.h}`, a.h === b.h && a.h !== c.h);
+  zeile(`R14 Rechenzeit Sim-Schritt am Schiff (${a.tuerme} Türme, 10 Ziele, ~${Math.round(a.schuesse / 60 * 2)} Granaten)`, '≤ 0,5 ms', a.ms.toFixed(3) + ' ms', a.ms <= 0.5);
+}
+
+// ---------- 22) Mindestabstand 150 m zur Schiffsmitte + erreichbar() ----------
+{
+  const flak = schiffsFlak(61), pos = { x: 0, y: 0, z: 0 }, vs = { x: 0, y: 0, z: 300 }, q = quat(0, 1, 0, 0.7);
+  // Befehl: Punkte 60–110 m neben der Schiffsmitte (Zünder kurz) — ohne Mindestabstand detonierten sie über dem Rumpf
+  const befehle = flak.tuerme.map((t, k) => ({ turmId: t.id, zielId: null, feuer: true, toleranz: 0.05, streuKugel: 0,
+    punkt: { x: (t.lafette.x > 0 ? 1 : -1) * 70, y: (t.lafette.oben === false ? -1 : 1) * 70, z: t.lafette.z + 10 * k } }));
+  let min = Infinity, det = 0;
+  for (let i = 0; i < 900; i++) {
+    pos.z += vs.z * DT; flak.setzeRahmen({ pos, rot: q, vel: vs });
+    flak.tuerme.forEach((t, k) => { const b = befehle[k], m = t.muendung; b.zuender = Math.hypot(b.punkt.x - m.x, b.punkt.y - m.y, b.punkt.z - m.z) / t.v0; });
+    flak.schritt(DT, befehle, []);
+    // WARUM + |vs|·dt: das Schiff steht am Schrittende, die Granate zündet im Bruch des Schritts (≤ 5 m früher)
+    for (const d of flak.ereignisse.detonationen) { det++; min = Math.min(min, Math.hypot(d.pos.x - pos.x, d.pos.y - pos.y, d.pos.z - pos.z) + 300 * DT); }
+  }
+  zeile('R14 Mindestabstand: Befehle 60–110 m neben dem Schiff → kleinster Detonationsabstand zur Schiffsmitte', '≥ 150 m',
+    `${min.toFixed(1)} m (${det} Det., ${flak.geschosse.abstandVerlaengert} Zünder verlängert)`, det > 100 && min >= 150 - 1e-6 && flak.geschosse.abstandVerlaengert > 0);
+
+  // erreichbar(): knapp unter der Rumpf-Sperre nein, knapp darüber ja (wo Grenzen/Nachbarn nicht stören)
+  let falsch = 0, geprueft = 0;
+  flak.tuerme.forEach((t, i) => {
+    const R = t.rumpf, n = R.length, l = t.lafette;
+    for (let k = 0; k < n; k++) {
+      const g = -Math.PI + (k + 0.5) * 2 * Math.PI / n, w = R[k];
+      if (w - 0.02 < l.nick[0] || w + 0.02 > l.nick[1]) continue;
+      if (l.gier[1] < Math.PI - 1e-6 && Math.abs(Math.atan2(Math.sin(g - l.gier[0]), Math.cos(g - l.gier[0]))) > l.gier[1]) continue;
+      const nachbar = t.sperrzonen.some((z) => Math.abs(Math.atan2(Math.sin(g - z.gier), Math.cos(g - z.gier))) < z.halb && z.nickMin > w);
+      geprueft++;
+      if (flak.erreichbar(i, g, w - 0.02)) falsch++;
+      if (!nachbar && !flak.erreichbar(i, g, w + 0.02)) falsch++;
+    }
+  });
+  zeile('R14 erreichbar(): knapp unter/über der Rumpf-Sperre', '0 falsch', `${falsch} falsch von ${geprueft} Sektoren`, geprueft > 50 && falsch === 0);
+}
+
+// ---------- 23) Feuer halt: keine Füllwolken mehr 0,5 s nach dem letzten Schuss (Grafik in Node, ohne Turm-Modelle) ----------
+{
+  const THREE = await import('three');
+  const { erstelleFlakGrafik } = await import('../src/grafik/waffen/flakgrafik.js');
+  const cam = new THREE.PerspectiveCamera(60, 1.6, 0.1, 1e5);
+  const modelle = LAFETTEN.map(() => ({ drehkranz: new THREE.Object3D(), wiege: new THREE.Object3D(), rohre: [new THREE.Object3D(), new THREE.Object3D()] }));
+  const grafik = erstelleFlakGrafik(new THREE.Scene(), cam, { turmModelle: modelle });
+  const flak = erstelleFlak({ startwert: 71 }), befehle = leererBefehl();
+  befehle.forEach((b) => { b.punkt = { x: 0, y: 500, z: 900 }; b.toleranz = 0.03; b.zuender = 1.6; b.streuKugel = 150; });
+  // lage wie die KI im Sperrfeuer: der Raum bleibt auch bei Feuer halt gesetzt (das war die Ursache)
+  const lage = { schirme: [{ mitte: { x: 0, y: 500, z: 900 }, lagen: [{ x: 0, y: 500, z: 900 }], laengs: { x: 0, y: 0.5, z: 0.9 }, breite: 150, hoehe: 80, tiefeHalb: 100 }] };
+  let letzterSchuss = -1, waehrend = 0, nach = 0, nachDet = 0;
+  for (let i = 0; i < 600; i++) { // 3 s Feuer, dann 7 s Feuer halt
+    befehle.forEach((b) => { b.feuer = i < 180; });
+    flak.schritt(DT, befehle, []); grafik.nachSchritt(flak);
+    if (flak.ereignisse.schuesse.length) letzterSchuss = i;
+    const vor = grafik.zaehler.fuellGesetzt;
+    grafik.aktualisiere(flak, 1, DT, i * DT, lage);
+    const neu = grafik.zaehler.fuellGesetzt - vor;
+    if (i < 180) waehrend += neu; else if ((i - letzterSchuss) * DT > 0.5) { nach += neu; nachDet += flak.ereignisse.detonationen.length; }
+  }
+  zeile('R14 Feuer halt: Füllwolken beim Feuern / ab 0,5 s nach dem letzten Schuss (echte Detonationen danach: Info)', '> 0 / 0',
+    `${waehrend} / ${nach} (${nachDet} echte Det. danach)`, waehrend > 0 && nach === 0);
 }
 
 // ---------- Ausgabe ----------

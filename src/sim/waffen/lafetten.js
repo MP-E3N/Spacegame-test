@@ -1,5 +1,5 @@
 // ZWECK: Lafetten-Tabelle (Turm-Montage) des Flak-Labors — EINZIGE Quelle für Waffen-Sim, Turm-KI und Grafik.
-// LIEFERT: LAFETTEN (6 Zwillings-Flaktürme, Felder wie turmDaten() in src/sim/schiffe/turm.js) · BATTERIE_MITTE ·
+// LIEFERT: LAFETTEN (6 Zwillings-Flaktürme, Felder wie turmDaten() in src/sim/schiffe/turm.js) · BATTERIE_MITTE · schiffsLafetten(daten) ·
 //          STANDARD_SEKTOR · turmGier/turmNick-Konvention siehe turm.js
 // REGEL: Prüfstand ohne Schiff: flache Plattform, Oberkante y = 0, Türme oben montiert, keine Drehung der Montage →
 //        Turm-Rahmen = Welt-Rahmen (verschoben). gier 0 = Rohr nach Welt +Z, gier > 0 zu +X; nick > 0 = nach oben.
@@ -32,3 +32,15 @@ export const BATTERIE_MITTE = { x: 0, y: 4, z: 0 };
 
 /** Sperrfeuer-Sektor, zeigt in die Anflugrichtung der Drohnen (+Z, vor dem Gasriesen). Winkel in rad. */
 export const STANDARD_SEKTOR = { gierMitte: 0, gierHalb: 0.52, nickMin: 0.17, nickMax: 0.79 };
+
+/**
+ * Flak am Schiff (R14, Entscheidung 3): aus einem Schiffsdatensatz (SCHIFFSDATEN.bollwerk) die Lafetten (typ 'flak',
+ * Reihenfolge = flak.tuerme = Befehle der KI, `id` = Schiffs-Turm-id für die Grafik) und die Hindernisse (ALLE Türme,
+ * auch schwere) für die Nachbar-Sperre. Schiffs-Lokalkoordinaten, Turm-Rahmen nach turm.js (unten = gespiegelt).
+ * Gebrauch: const { lafetten, hindernisse } = schiffsLafetten(BOLLWERK);
+ *           erstelleFlak({ lafetten, schiff: { hindernisse, rumpf: (l) => rumpfSperre(l, BOLLWERK.teile) } })
+ */
+export function schiffsLafetten(daten) {
+  const hindernisse = daten.tuerme;
+  return { lafetten: hindernisse.filter((t) => t.typ === 'flak'), hindernisse };
+}
