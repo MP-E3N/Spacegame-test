@@ -18,13 +18,13 @@
 //          schießen Zielgranaten auf ihn; solange der Nahbereich aktiv ist (+0,5 s Nachlauf) → leuchtspur für ALLE Türme.
 // LIEFERT: erstelleTurmKi({ startwert }) → { befehle, lage, schritt(dt, befehl, ziele, turmZustand) → befehle,
 //          zuruecksetzen(), statistik } · TURMKI (Werte) · STREU_REGLER · streuWert(streu, feld) · waffeWert(waffe, feld) · abfangen(m, pos, vel, v0, aus) (für Tests)
-//          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
+//          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt bzw. Schiffsrahmen, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
 //          streuKugel (m, 0 = aus), streuTiefe (m) }
 //        · streuKugel / streuTiefe (R8/R10, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“, R10: „das Areal um
 //          ein Ziel noch viel weiter gestreut sättigen“): Ellipsoid um `punkt` — streuKugel quer zur Schusslinie,
 //          streuTiefe längs (über den Zünder). Die Waffe schießt jede Granate auf einen eigenen Punkt darin und deckelt
 //          (quer 0,10·d mit / deckelQuer·d ohne Leuchtspur, längs deckelTiefe·d; Werte in FLAK/WAFFEN_REGLER).
-//          Zielfeuer 320/320 m, Nahbereich min(35, 0,10·d), Sperrraum 120/80 m, feste Wand/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0.
+//          Zielfeuer/Sperrraum nach STREU_REGLER (R14: T1 135 bzw. 200/200 m), Nahbereich min(35, 0,10·d), feste Wand/kein Ziel 0. Vorhalt immer mit dem AKTUELLEN turmZustand[i].v0.
 //          lage = { nahbereich (bool), schirme: [{ mitte{x,y,z}, abstand, gierHalb, nickHalb, tuerme[], gier, nick,
 //          sollGier, sollNick, sollAbstand, breite, hoehe, tiefeHalb (m, halbe Kastenmaße), laengs{x,y,z} (Einheit,
 //          „vor“), lagenAbstand (m), lagen[{x,y,z}] (Mitten vor/auf/hinter, Welt) }], eindringlinge: [id] } — Objekte/Arrays werden wiederverwendet.
@@ -35,11 +35,18 @@
 //          faktor (R12, Gesamtregler „Streuung ×“): multipliziert sperrQuer, sperrTiefe, raumZuschlag, ziel und die
 //          Raum-Obergrenzen (quer 450 m, Tiefe 120 m); NICHT nahMax (Leuchtspur-Deckel 0,10·d) und lagenAnteil (Tempo ×
 //          Flugzeit ist Physik, keine Streuung).
+//        · R14 (Nutzer: „Schiff fliegen und von gegnerischen Schiffen angegriffen werden“): erstelleTurmKi({ startwert,
+//          lafetten, mitte, sektor, killzone, erreichbar }) — ohne Angaben = Prüfstand (bitgleich R13). Am Schiff:
+//          lafetten = Flaktürme des Schiffs (Schiffs-Lokal, Felder wie turmDaten()), mitte = Schiffsmitte, Ziele und
+//          turmZustand[i].muendung im SCHIFFSRAHMEN (Momentaufnahme, s. schiffsrahmen.js), befehle[i].punkt ebenso.
+//          Grenzen je Turm im TURM-RAHMEN (oben: Schiff = Turm, verschoben; unten: Turm (x,y,z) → Schiff (−x,−y,z),
+//          turm.js): Zielwahl, Zenit-Bremse und Raumzuteilung prüfen die Erreichbarkeit; erreichbar(i, gier, nick) der
+//          Waffe (Grenzen + Nachbar- + Rumpf-Sperre) ersetzt die eigene Grenzprüfung, sobald übergeben.
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
 //        Simulation: kein DOM, kein Math.random, fester Schritt; keine neuen Objekte im Schritt.
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
 import { zufall } from '../zufall.js';
-import { LAFETTEN, BATTERIE_MITTE as M, STANDARD_SEKTOR } from '../waffen/lafetten.js';
+import { LAFETTEN, BATTERIE_MITTE, STANDARD_SEKTOR } from '../waffen/lafetten.js';
 import { FLAK, WAFFEN_REGLER } from '../waffen/flak.js';
 
 // Deckel der Waffe (R10, Entscheidung 1): die KI liest sie aus FLAK, statt sie doppelt zu führen (· Entfernung ab Mündung).
@@ -143,14 +150,19 @@ export const TURMKI = {
 
 /** Regler der Streuung (R11): m bzw. Faktor; Standard = TURMKI (R10). Die Seite baut ihre Schieberegler hieraus. */
 // R12: faktor (Gesamtregler „Streuung ×“) zuerst, Bereiche erweitert (Nutzer: „viel mehr verteilen … als Slider“).
+// R14 (Nutzer: „Nimm die Konfig T1“): Standards = konfig/flak/T1.json (Feld streu). TURMKI behält die R12-Werte als
+// Bezug (Raum-Obergrenzen, Lagen-Klammer skalieren damit) — WARUM nicht TURMKI ändern: lagenAnteil/anteil ist der Faktor
+// der Lagen-Klammer (R11), ein geänderter Bezug verschöbe die Klammer mit. Messung T1 (Labor, 3 Startwerte, 5 min,
+// v0 1100, Deckel 1,0/0,9): Sperr 32–36 Abschüsse → Sperr-splitterDps 90 → 115 (Waffentechniker) → 43–46, Vorstöße
+// 40–60 % überlebt; Ziel 31–42, 36–67 %.
 export const STREU_REGLER = {
   faktor: { min: 0.5, max: 3, standard: 1 },                                 // × sperrQuer/sperrTiefe/raumZuschlag/ziel/Raum-Obergrenzen
-  sperrQuer: { min: 0, max: 400, standard: TURMKI.streuKugel.sperr },        // Sperr-Kugel quer zur Schusslinie
-  sperrTiefe: { min: 0, max: 400, standard: TURMKI.streuKugel.sperrTiefe },  // Lagendicke längs
-  raumZuschlag: { min: 0, max: 600, standard: TURMKI.folgen.quer[0] },       // halbe Raumbreite/-höhe = Streuung + Zuschlag
-  ziel: { min: 20, max: 700, standard: TURMKI.streuKugel.ziel },             // Zielfeuer quer = tief
-  nahMax: { min: 5, max: 60, standard: TURMKI.streuKugel.nahMax },           // Nahbereich min(nahMax, 0,10·d), ohne faktor
-  lagenAnteil: { min: 0.3, max: 1.2, standard: TURMKI.folgen.lagen.anteil }, // Lagenabstand = Anteil · Tempo · Flugzeit
+  sperrQuer: { min: 0, max: 400, standard: 200 },        // Sperr-Kugel quer zur Schusslinie (R12: 120)
+  sperrTiefe: { min: 0, max: 400, standard: 200 },       // Lagendicke längs (R12: 80)
+  raumZuschlag: { min: 0, max: 600, standard: 400 },     // halbe Raumbreite/-höhe = Streuung + Zuschlag (R12: 340)
+  ziel: { min: 20, max: 700, standard: 135 },            // Zielfeuer quer = tief (R12: 320)
+  nahMax: { min: 5, max: 60, standard: TURMKI.streuKugel.nahMax },           // Nahbereich min(nahMax, 0,10·d), ohne faktor (35)
+  lagenAnteil: { min: 0.3, max: 1.2, standard: 0.75 },   // Lagenabstand = Anteil · Tempo · Flugzeit (R12: 0,6)
 };
 /** Wirksamer Reglerwert: fehlt/keine Zahl → Standard, sonst auf [min, max] geklammert. */
 export function streuWert(streu, feld) {
@@ -204,11 +216,34 @@ export function abfangen(m, pos, vel, v0, aus) {
   return true;
 }
 
-export function erstelleTurmKi({ startwert = 202 } = {}) {
-  const K = TURMKI, F = K.folgen, KZ = K.killzone, n = LAFETTEN.length;
-  const befehle = LAFETTEN.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0, streuTiefe: 0 }));
-  // Ersatz-Mündung (Drehpunkt der Wiege), falls turmZustand noch keine liefert
-  const ersatzM = LAFETTEN.map((l) => ({ x: l.x, y: l.y + l.zapfen.y, z: l.z }));
+/** Vorzeichen des Turm-Rahmens (turm.js): oben 1 (Turm = Schiff, verschoben), unten −1 (Turm (x,y,z) → Schiff (−x,−y,z),
+ *  Drehung um Z um π). Die Umkehrung ist dieselbe Abbildung. */
+export const turmVorzeichen = (l) => (l.oben === false ? -1 : 1);
+
+/** Eigene Grenzprüfung (R14) im Turm-Rahmen: Gier [Mitte ± Halbweite] (volle Drehung ab π), Nick [min, max].
+ *  WARUM eigene Prüfung: bis erreichbar(i, gier, nick) der Waffe (mit Nachbar- und Rumpf-Sperre) übergeben wird. */
+export function grenzenOk(l, gier, nick) {
+  const lim = l.nick ?? TURMKI.nick;
+  if (nick < lim[0] || nick > lim[1]) return false;
+  const g = l.gier;
+  return !g || g[1] >= Math.PI - 1e-6 || Math.abs(winkelDiff(gier, g[0])) <= g[1];
+}
+
+export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = BATTERIE_MITTE, sektor = STANDARD_SEKTOR,
+  killzone: kzWerte = TURMKI.killzone, erreichbar = null } = {}) {
+  // WARUM lokale Namen statt der Prüfstand-Importe: dieselbe KI läuft auf dem Prüfstand (Welt) und am Schiff (Schiffsrahmen)
+  const LAF = lafetten, M = mitte, STANDARD = sektor;
+  // WARUM kzWerte: die innere Funktion killzone() würde den gleichnamigen Parameter verdecken (Hoisting)
+  const K = TURMKI, F = K.folgen, KZ = kzWerte, n = LAF.length;
+  const sgn = LAF.map(turmVorzeichen);
+  /** Richtung (dx, dy, dz) im Schiffsrahmen von Turm i aus erreichbar? (im Turm-Rahmen: x, y gespiegelt bei unten) */
+  const reicht = (i, dx, dy, dz) => {
+    const s = sgn[i], d = L(dx, dy, dz) || 1, g = Math.atan2(s * dx, dz), nk = Math.asin(klemme(s * dy / d, -1, 1));
+    return erreichbar ? erreichbar(i, g, nk) : grenzenOk(LAF[i], g, nk);
+  };
+  const befehle = LAF.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0, streuTiefe: 0 }));
+  // Ersatz-Mündung (Drehpunkt der Wiege), falls turmZustand noch keine liefert; unten montiert: Zapfen unter dem Fuß
+  const ersatzM = LAF.map((l, i) => ({ x: l.x, y: l.y + sgn[i] * l.zapfen.y, z: l.z }));
   const halt = new Float64Array(n);           // Haltezeit des aktuellen Ziels je Turm
   const gesperrtZeit = new Float64Array(n);
   const zielSlot = new Int32Array(n).fill(-1); // Index in ziele[] (−1 = keins)
@@ -246,7 +281,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
   // Übergang je Rohr: Kasten im letzten Takt (−1 = kein Muster, −2 = Start), laufender Übergang + Punkt (Gier, Nick, R um M)
   const kastenVor = new Int32Array(n).fill(-2), ueb = new Uint8Array(n), uOk = new Uint8Array(n), lageVor = new Int32Array(n).fill(-1);
   const uG = new Float64Array(n), uN = new Float64Array(n), uR = new Float64Array(n);
-  const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAFETTEN.map((l, i) => i).sort((a, b) => LAFETTEN[a].x - LAFETTEN[b].x || a - b);
+  const ord = new Int32Array(MAXZ), gruppeTurm = new Int32Array(n), turmNachX = LAF.map((l, i) => i).sort((a, b) => LAF[a].x - LAF[b].x || a - b);
   let takt, zeit, phase0, letzterModus, alarmRest, anzahlGruppen, seitUmgruppiert, schirmeBereit, warFest;
   const fest = { gierMitte: 0, gierHalb: 0, nickMin: 0, nickMax: 0 }; // gemerkter fester Sektor
   // Wirksame Regler (R11), je Takt aus befehl.streu gelesen — festes Objekt, keine neuen Objekte im Takt
@@ -267,7 +302,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     const rnd = zufall(startwert);
     phase0 = rnd(); // gemeinsamer Phasenversatz des Musters (nur Optik, deterministisch)
     takt = 0; zeit = 0; letzterModus = null; alarmRest = 0; anzahlGruppen = 1; seitUmgruppiert = 1e9; schirmeBereit = false; warFest = false;
-    Object.assign(fest, STANDARD_SEKTOR);
+    Object.assign(fest, STANDARD);
     for (const s of schirmVorrat) grundRaum(s);
     uG.fill(0); uN.fill(0); uR.fill(0); nG.fill(0); nN.fill(0); nOk.fill(0);
     kastenVor.fill(-2); ueb.fill(0); uOk.fill(0); lageVor.fill(-1);
@@ -284,8 +319,9 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     if (!abfangen(m, z.pos, z.vel, v0, aus)) { statistik.unloesbar++; return -1; }
     if (aus.t * v0 < K.zuenderStrecke || aus.t > K.zuender[1] || aus.t * v0 > rw) return -1;
     const dx = aus.x - m.x, dy = aus.y - m.y, dz = aus.z - m.z, d = L(dx, dy, dz);
-    const nick = Math.asin(dy / d), lim = LAFETTEN[i].nick ?? K.nick;
-    if (nick < lim[0] || nick > lim[1]) return -1;
+    // R14: Grenzen im Turm-Rahmen (Gier + Nick; R13 nur Nick über Welt-y — unten montierte Türme wählten Ziele über
+    // dem Schiff, Türme mit Gier-Grenze Ziele hinter dem Rumpf und warteten 0,5 s auf `gesperrt`)
+    if (!reicht(i, dx, dy, dz)) return -1;
     const G = K.gewichte;
     const ex = z.pos.x - M.x, ey = z.pos.y - M.y, ez = z.pos.z - M.z, e = L(ex, ey, ez) || 1;
     const nah = -(z.vel.x * ex + z.vel.y * ey + z.vel.z * ez) / e / K.tempoBezug;
@@ -319,7 +355,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
    *  Lagenmitte). */
   function streiche(b, m, v0, k, s, j, dt) {
     const c = s.lagen[j], cx = c.x - M.x, cy = c.y - M.y, cz = c.z - M.z, cr = L(cx, cy, cz) || 1;
-    const lg = Math.atan2(cx, cz), ln = Math.min(Math.asin(klemme(cy / cr, -1, 1)), F.nickMax);
+    const lg = Math.atan2(cx, cz), ln = klemme(Math.asin(klemme(cy / cr, -1, 1)), -F.nickMax, F.nickMax);
     // WARUM eigene Phasen je Achse: sonst laufen alle Türme zeitversetzt dieselbe geschlossene Kurve ab → Linie statt
     // Fläche. Gier-Phase k·0,382 (goldener Schnitt, R9): je zwei Türme eines Kastens liegen weit auseinander.
     // R12: Phasen je Raum aufintegriert (musterTakt) statt zeit / Periode — WARUM: die Periode wächst mit der Raumgröße;
@@ -382,8 +418,12 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
         for (let i = 0; i < n; i++) {
           if (nahTurm[i] >= 0) continue;
           const tz = turmZustand?.[i], m = tz?.muendung ?? ersatzM[i];
-          // gesperrt (Nachbar-Sperre) zählt als 400 m weiter weg → anderer Turm übernimmt, wenn es einen gibt
-          const p = ziele[best].pos, d = L(p.x - m.x, p.y - m.y, p.z - m.z) + (tz?.gesperrt ? 400 : 0);
+          // gesperrt (Nachbar-Sperre) zählt als 400 m weiter weg → anderer Turm übernimmt, wenn es einen gibt.
+          // R14: außerhalb der Grenzen (Turm-Rahmen) gar nicht — WARUM: am Schiff sieht die Hälfte der Türme (oben/unten)
+          // den Eindringling nie; zugeteilt richtete er sich nur gegen den Anschlag.
+          const p = ziele[best].pos;
+          if (!reicht(i, p.x - m.x, p.y - m.y, p.z - m.z)) continue;
+          const d = L(p.x - m.x, p.y - m.y, p.z - m.z) + (tz?.gesperrt ? 400 : 0);
           if (d < btD) { btD = d; bt = i; }
         }
         if (bt < 0) break;
@@ -418,13 +458,14 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     // WARUM nicht immer: der Vorhalt soll im v0-Umschalt-Takt sofort stimmen (Test I) — darunter ist die Gier-Rate
     // ≤ Großkreis / cos 69° (Drohne 150 m/s in 500 m → ≤ 48°/s) und der Turm folgt.
     // Frisch zugeteilt (nOk 0): Befehl direkt aufs Ziel (das Einschwenken übernimmt das Richten des Turms wie R7).
-    const pg = Math.atan2(px, pz), pn = Math.asin(klemme(py / d, -1, 1));
+    // R14: im Turm-Rahmen (unten montiert liegt der Zenit unter dem Schiff) — s = 1 oben, −1 unten
+    const s = sgn[i], pg = Math.atan2(s * px, pz), pn = Math.asin(klemme(s * py / d, -1, 1));
     if (nOk[i] === 0 || (nOk[i] === 1 && pn <= F.nickMax && nN[i] <= F.nickMax)) { nOk[i] = 1; nG[i] = pg; nN[i] = pn; return; }
     const U = F.bremse, mg = U.gier * nahDt, mn = U.nick * nahDt, dg = winkelDiff(pg, nG[i]), dn = pn - nN[i];
     if (Math.abs(dg) <= mg && Math.abs(dn) <= mn) { nOk[i] = 1; nG[i] = pg; nN[i] = pn; return; }
     nOk[i] = 2; nG[i] = winkelDiff(nG[i] + klemme(dg, -mg, mg), 0); nN[i] += klemme(dn, -mn, mn);
     const cn = Math.cos(nN[i]);
-    b.punkt.x = m.x + Math.sin(nG[i]) * cn * d; b.punkt.y = m.y + Math.sin(nN[i]) * d; b.punkt.z = m.z + Math.cos(nG[i]) * cn * d;
+    b.punkt.x = m.x + s * Math.sin(nG[i]) * cn * d; b.punkt.y = m.y + s * Math.sin(nN[i]) * d; b.punkt.z = m.z + Math.cos(nG[i]) * cn * d;
     b.feuer = false;
   }
 
@@ -471,9 +512,9 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     }
     for (let a = 0; a < nb; a++) sd += bK[a] * bD[a];
     const l = L(sx, sy, sz) || 1;
-    // WARUM Nick ≤ 1,2 rad (69°): nahe am Zenit dreht die Gier-Achse eines Turms, der neben BATTERIE_MITTE steht, beliebig
-    // schnell (Messung R9: Kasten bei 81° Nick → Befehle bis 150°/s Gier)
-    s.sollGier = Math.atan2(sx, sz); s.sollNick = Math.min(Math.asin(klemme(sy / l, -1, 1)), F.nickMax);
+    // WARUM |Nick| ≤ 1,2 rad (69°): nahe am Zenit dreht die Gier-Achse eines Turms, der neben der Mitte steht, beliebig
+    // schnell (Messung R9: Kasten bei 81° Nick → Befehle bis 150°/s Gier); R14: ebenso am Nadir (Zenit der unten montierten)
+    s.sollGier = Math.atan2(sx, sz); s.sollNick = klemme(Math.asin(klemme(sy / l, -1, 1)), -F.nickMax, F.nickMax);
     const mD = sd / sw;
     s.sollAbstand = klemme(mD - F.vorne, F.abstand[0], F.abstand[1]);
     let vg = 0, vn = 0, vr = 0;
@@ -532,7 +573,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     if (!schirmeBereit) {
       // Start: Standard-Sektor, damit die erste Bewegung weich aus der Mitte kommt
       for (const s of schirmVorrat) {
-        s.gier = s.sollGier = STANDARD_SEKTOR.gierMitte; s.nick = s.sollNick = (STANDARD_SEKTOR.nickMin + STANDARD_SEKTOR.nickMax) / 2;
+        s.gier = s.sollGier = STANDARD.gierMitte; s.nick = s.sollNick = (STANDARD.nickMin + STANDARD.nickMax) / 2;
         s.abstand = s.sollAbstand = 800; s.breite = s.sollBreite = 150; s.hoehe = s.sollHoehe = 80; s.tiefeHalb = s.sollTiefe = 100;
         s.vx = s.vy = s.vz = s.svx = s.svy = s.svz = 0; s.tempo = s.sollTempo = 130; s.lagenAbstand = 100;
         richtungZurBatterie(s, s.laengs);
@@ -592,7 +633,8 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
       //    Türme nach x (−X-Türme → Kasten mit kleinerer Gier)
       //    WARUM nicht mehr alle 2 s (Befund Prüfer R9): jeder Wechsel eines Rohrs ließ seinen Befehl springen — nur noch
       //    beim Umgruppieren oder wenn ein Kasten weniger als minTuerme Rohre hat; bestehende Zuordnung bleibt bevorzugt
-      if (seitUmgruppiert === 0 || zuWenigTuerme()) verteileTuerme();
+      // R14: zusätzlich alle 0,5 s, wenn ein Turm seinen Raum nicht mehr erreicht (am Prüfstand nie)
+      if (seitUmgruppiert === 0 || zuWenigTuerme() || (takt % 30 === 0 && falschZugeteilt())) verteileTuerme();
     }
     // 5) träge nachführen: Glättung τ, Drehtempo ≤ maxDreh, Abstand ≤ maxAbstandTempo, Größe τ 1 s
     const al = 1 - Math.exp(-dt / F.tau), a1 = 1 - Math.exp(-dt / F.tauGroesse);
@@ -668,11 +710,26 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     }
   }
 
+  /** R14: Soll-Mitte von Raum k von Turm i aus erreichbar (Turm-Rahmen, über die Ersatz-Mündung)? */
+  function raumReicht(i, k) {
+    const s = schirmVorrat[k], c = Math.cos(s.sollNick), A = s.sollAbstand, m = ersatzM[i];
+    return reicht(i, M.x + Math.sin(s.sollGier) * c * A - m.x, M.y + Math.sin(s.sollNick) * A - m.y, M.z + Math.cos(s.sollGier) * c * A - m.z);
+  }
+  /** Anzahl der Türme, die Raum k erreichen (R14). */
+  function reichAnzahl(k) { let a = 0; for (let i = 0; i < n; i++) if (raumReicht(i, k)) a++; return a; }
+
   function zuWenigTuerme() {
     if (anzahlGruppen < 2) return false;
     kBel.fill(0);
     for (let i = 0; i < n; i++) if (gruppeTurm[i] < anzahlGruppen) kBel[gruppeTurm[i]]++;
-    for (let k = 0; k < anzahlGruppen; k++) if (kBel[k] < F.minTuerme) return true;
+    // R14: ein Raum, den weniger als minTuerme Türme erreichen, gilt mit allen erreichenden als voll — WARUM: sonst
+    // verteilte die KI am Schiff jeden Takt neu (unter dem Schiff sieht nur die untere Hälfte hin)
+    for (let k = 0; k < anzahlGruppen; k++) if (kBel[k] < F.minTuerme && kBel[k] < reichAnzahl(k)) return true;
+    return false;
+  }
+  /** R14: sitzt ein Turm in einem Raum, den er nicht erreicht (Raum gewandert, Schiff gedreht)? */
+  function falschZugeteilt() {
+    for (let i = 0; i < n; i++) { const g = gruppeTurm[i]; if (g >= 0 && g < anzahlGruppen && !raumReicht(i, g)) return true; }
     return false;
   }
 
@@ -695,11 +752,26 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
     kBel.fill(0);
     for (let a = 0; a < n; a++) {
       const i = turmNachX[a], g = gruppeTurm[i];
-      if (g >= 0 && g < nK && kBel[g] < kAnz[g]) kBel[g]++; else gruppeTurm[i] = -1;
+      if (g >= 0 && g < nK && kBel[g] < kAnz[g] && raumReicht(i, g)) kBel[g]++; else gruppeTurm[i] = -1;
     }
+    // R14: nur in Räume, die der Turm erreicht (Prüfstand: alle → wie R13)
     for (let q = 0; q < nK; q++) {
       const k = kOrd[q];
-      for (let a = 0; a < n && kBel[k] < kAnz[k]; a++) { const i = turmNachX[a]; if (gruppeTurm[i] === -1) { gruppeTurm[i] = k; kBel[k]++; } }
+      for (let a = 0; a < n && kBel[k] < kAnz[k]; a++) { const i = turmNachX[a]; if (gruppeTurm[i] === -1 && raumReicht(i, k)) { gruppeTurm[i] = k; kBel[k]++; } }
+    }
+    // Rest (Kontingent voll oder kein erreichbarer Raum mit Platz): erreichbarer Raum mit dem größten Gewicht je Turm,
+    // sonst der schwerste Raum (der Turm wartet am Anschlag, bis sich die Lage dreht)
+    for (let a = 0; a < n; a++) {
+      const i = turmNachX[a];
+      if (gruppeTurm[i] !== -1) continue;
+      let best = -1, bestV = -Infinity, schwer = 0;
+      for (let k = 0; k < nK; k++) {
+        const w = schirmVorrat[k].gewicht;
+        if (w > schirmVorrat[schwer].gewicht) schwer = k;
+        const v = w / (kBel[k] + 1);
+        if (raumReicht(i, k) && v > bestV) { bestV = v; best = k; }
+      }
+      gruppeTurm[i] = best >= 0 ? best : schwer; kBel[gruppeTurm[i]]++;
     }
   }
 
@@ -794,7 +866,7 @@ export function erstelleTurmKi({ startwert = 202 } = {}) {
         gesperrtZeit[i] = tz?.gesperrt ? gesperrtZeit[i] + dt : 0;
         // aktuelle Rohrrichtung (für das Winkel-Gewicht)
         let rx, ry, rz;
-        if (tz && tz.gier !== undefined) { const cn = Math.cos(tz.nick); rx = Math.sin(tz.gier) * cn; ry = Math.sin(tz.nick); rz = Math.cos(tz.gier) * cn; }
+        if (tz && tz.gier !== undefined) { const cn = Math.cos(tz.nick); rx = sgn[i] * Math.sin(tz.gier) * cn; ry = sgn[i] * Math.sin(tz.nick); rz = Math.cos(tz.gier) * cn; }
         else { const qx = b.punkt.x - m.x, qy = b.punkt.y - m.y, qz = b.punkt.z - m.z, q = L(qx, qy, qz) || 1; rx = qx / q; ry = qy / q; rz = qz / q; }
 
         let cur = zielSlot[i], curWert = -1;
