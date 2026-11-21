@@ -1,8 +1,8 @@
 // ZWECK: Flak-Simulation der Prüfstand-Batterie: Türme richten (Grenzen, Richtgeschwindigkeit), Zwillingsrohre im
 //        Wechsel feuern, Streuung mit festem Startwert, Streukugel je Granate (Runde 8), Geschoss-Pool, Zeitzünder
 //        (Annäherungszünder abschaltbar), Flächenschaden + Splitterwolke an ALLEN Zielen im Wirkradius.
-// LIEFERT: FLAK (Zahlen) · erstelleFlak({ startwert, lafetten }) → { tuerme, geschosse, splitter, ereignisse, schritt(dt, befehle, ziele),
-//          zuruecksetzen(), pruefsumme(), einstellen(waffe), einstellung } — Felder siehe Protokoll Runde 6, Entscheidung 3.
+// LIEFERT: FLAK (Zahlen) · erstelleFlak({ startwert, lafetten, schiff? }) → { tuerme, geschosse, splitter, ereignisse, schritt(dt, befehle, ziele),
+//          zuruecksetzen(), pruefsumme(), einstellen(waffe), einstellung, setzeRahmen(r), rahmen (nur lesen), erreichbar(i, g, n) } — Felder siehe Protokoll Runde 6, Entscheidung 3.
 //          WAFFEN_REGLER (Export, R11): { deckelQuer, deckelTiefe: { min, max, standard, schritt, text } } — die Seite setzt
 //          befehl.waffe, flaklabor.js ruft je Takt flak.einstellen(befehl.waffe) (fehlt/NaN → Standard aus FLAK, geklemmt).
 // REGEL: fester Schritt 1/60 s, kein Math.random (zufall je Turm), keine neuen Objekte im Schritt (Pools, Ereignis-Vorrat).
@@ -15,8 +15,20 @@
 //        (fehlt → = streuKugel). Deckel FLAK.deckelQuer/-QuerLeucht/-Tiefe · d; jede Kürzung zählt geschosse.gedeckelt.
 //        Sperr-Schutz (R12): versetzte Granaten nie unter den Mindest-Nick der Nachbar-Sperre (zählt geschosse.unterSperre).
 //        Detonations-Ereignis trägt `streu` (m) = größere benutzte Halbachse (Grafik streut die Zusatz-Explosionen damit).
+// AM SCHIFF (R14, Entscheidungen 3–5): erstelleFlak({ startwert, lafetten, schiff: { hindernisse, rumpf, mitte,
+//        mindestAbstand } }) — lafetten = Flaktürme des Schiffs in SCHIFFS-LOKALKOORDINATEN (turmDaten, oben/unten),
+//        hindernisse = ALLE Türme (schwere als Hindernis), rumpf(lafette) → Mindest-Nick je Gier-Sektor im Turm-Rahmen
+//        (Sektor k deckt gier ∈ [−π + k·2π/n, −π + (k+1)·2π/n)), mitte = Schiffs-Lokalpunkt für den Mindestabstand.
+//        flak.setzeRahmen({ pos, rot: {x,y,z,w}, vel }) je Schritt NACH dem Schiffsschritt, VOR KI und flak.schritt.
+//        Befehls-`punkt` in Schiffs-Lokal; t.muendung lokal (für die KI), t.muendungWelt in Welt. Granaten, Ereignisse,
+//        Splitter in WELT; neue Granate = R·Rohr·v0 + Schiffstempo, vorPos aus dem vorigen Rahmen (Interpolation).
+//        Mit Rahmen keine Detonation näher als mindestAbstand (150 m) an der Schiffsmitte (Zünder verlängert).
+//        Die Flak schadet nur `ziele` — das eigene Schiff gehört nicht hinein (Gefecht-Welt).
+//        Ohne schiff/Rahmen läuft der Prüfstand-Zweig bitgleich zu R13 (gleiche Werte vorausgesetzt).
+//        erreichbar(turmIndex, gier, nick) (Turm-Rahmen): Grenzen + Nachbar- + Rumpf-Sperre — für die Turm-KI.
 import { zufall } from '../zufall.js';
 import { LAFETTEN } from './lafetten.js';
+import { TURM } from '../schiffe/turm.js';
 
 export const FLAK = {
   v0: 1100,                   // m/s Standard (R9, Nutzer: „die höchste“ = Nahbereichsabwehr); je Turm über turm.v0 umschaltbar
@@ -35,9 +47,12 @@ export const FLAK = {
   // längs: Tiefe entsteht nur über die Zünderzeit (kein Winkel) → großzügig, Tiefenstaffel in Anflugrichtung.
   //       WARUM 0,80 (R10: 0,35): Tiefe 320 m ab d = 400 m; höchstens 0,9, sonst liegt der Punkt an der Mündung und der
   //       Mindestzünder (60 m) zündet die Granate direkt vor der Batterie.
+  // R14 (Nutzer: „Nimm die Konfig T1“): 1,0 / 0,9 = die Reglerenden. Folgen: ohne Leuchtspur bis 45° neben dem Rohr
+  //       (die Grafik blendet die dauerhafte Spur deshalb erst nach einer Strecke ein); längs liegt der Punkt bei d < 600 m
+  //       am Mindestzünder — am Schiff hält der Mindestabstand (150 m zur Schiffsmitte) die Detonationen vom Rumpf fern.
   deckelQuerLeucht: 0.10,
-  deckelQuer: 0.60,
-  deckelTiefe: 0.80,
+  deckelQuer: 1.00,
+  deckelTiefe: 0.90,
   // Annäherungszünder (R8 aus, Code bleibt): er war der eigentliche „Direkttreffer“ — zündete bei r + 12 m an jedem Ziel.
   annaeherung: false,
   naheZuender: 12,            // m über dem Zielradius
@@ -73,12 +88,17 @@ export const FLAK = {
     // trifft im Nahbereich (Kugel ≤ 35 m) jeden Vorstoß — 55 m: 1 von 13 Vorstößen überlebt (Startwert 101).
     // Getestet (Labor, 1100 m/s, 5 min): 10 Varianten × 1–3 Startwerte; gewählt mit Panzer 0,13 (DROHNEN.vorstoss),
     // Startwerte 101 / 7 / 202: Sperr 44 / 44 / 45, Ziel 25 / 26 / 22 Abschüsse.
+    // R14 (T1-Standard, KI-Messung angr14): mit 90 HP/s nur Sperr 32–36 Abschüsse → Sperr-Splitter 90 → 115 HP/s
+    // ergibt 43–46 Abschüsse / 40–60 % Vorstöße (Entscheidung R14/1).
     { wirkRadius: 30, vollRadius: 4, schaden: 5.5, splitterRadius: 42, splitterDauer: 30, splitterDps: 18 },
-    { wirkRadius: 25, vollRadius: 6, schaden: 1.5, splitterRadius: 60, splitterDauer: 54, splitterDps: 90 },
+    { wirkRadius: 25, vollRadius: 6, schaden: 1.5, splitterRadius: 60, splitterDauer: 54, splitterDps: 115 },
   ],
-  poolSplitter: 96,
-  // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m)
-  nachbarHuelle: 3.7, nachbarHoehe: 5.2,
+  poolSplitter: 96, poolSplitterSchiff: 256, poolGeschosseSchiff: 640, // am Schiff (R14, 14 Flaktürme)
+  // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m — Werte
+  // für Größe s = 1 auf Sockel 1,4 m; am Schiff mit Größe/Sockel/Fußhöhe des Nachbarn umgerechnet, R14)
+  nachbarHuelle: 3.7, nachbarHoehe: 5.2, nachbarWeite: 40,
+  nachbarBezugSockel: 1.4, nachbarKranzJeS: 3.8, // Oberkante = nachbarHoehe + (sockel − 1,4) + (s − 1) · 3,8 + Fußhöhe
+  mindestAbstandSchiff: 150, // m zur Schiffsmitte, nur mit Rahmen (Entscheidung R14/5)
   richtGeschw: [60 * Math.PI / 180, 50 * Math.PI / 180], // rad/s [gier, nick] (Nick 50°/s ab Runde 7)
   // Leuchtspur nur auf Befehl (Runde 7, Nutzer: bei BSG sieht man sie „so gut wie nie“). befehl.leuchtspur fehlt →
   // dieser Anteil, über einen Zähler je Turm. WARUM Zähler statt Zufall: die Zufallsfolge (Streuung/Zünder) bleibt gleich.
@@ -113,10 +133,34 @@ function ereignisListe(n, bauer) {
 }
 const v3 = () => ({ x: 0, y: 0, z: 0 });
 
-export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
-  const N = FLAK.poolGeschosse;
+/** v um Quaternion q drehen (wie THREE.Vector3.applyQuaternion), Ergebnis in aus. Keine neuen Objekte. */
+function drehe(q, x, y, z, aus) {
+  const qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+  const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+  aus.x = x + qw * tx + qy * tz - qz * ty;
+  aus.y = y + qw * ty + qz * tx - qx * tz;
+  aus.z = z + qw * tz + qx * ty - qy * tx;
+  return aus;
+}
+/** Turm-Rahmen → Schiff (nur Drehung): unten montiert (rotation.z = π) heißt (x, y, z) → (−x, −y, z) (turm.js). */
+function turmZuSchiff(l, x, y, z, aus) {
+  if (l.oben === false) { aus.x = -x; aus.y = -y; } else { aus.x = x; aus.y = y; }
+  aus.z = z; return aus;
+}
+
+export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = null } = {}) {
+  // WARUM ein eigener Schalter: jede Schiffs-Regel (Granate in Grenzen klemmen, Schwenk-Schutz) ändert die Zufalls- bzw.
+  // Bahnfolge — der Prüfstand muss ohne `schiff` bitgleich zu R13 bleiben.
+  const amSchiff = !!schiff;
+  const hindernisse = schiff?.hindernisse ?? lafetten;
+  const schiffMitte = schiff?.mitte ?? { x: 0, y: 0, z: 0 };
+  const mindestAbstand = schiff?.mindestAbstand ?? FLAK.mindestAbstandSchiff;
+  // WARUM größere Vorräte am Schiff: 14 Flaktürme × 10 Schuss/s × ~2 s Flug ≈ 280 Granaten > 256; Splitter 140/s × 0,9 s.
+  // Der Prüfstand behält seine Größen (die Platzwahl geht in die Prüfsumme ein).
+  const N = amSchiff ? (schiff.poolGeschosse ?? FLAK.poolGeschosseSchiff) : FLAK.poolGeschosse;
   const geschosse = {
     max: N, anzahlAktiv: 0, verworfen: 0,
+    abstandVerlaengert: 0, // Granaten, deren Zünder der Mindestabstand zur Schiffsmitte verlängert hat (R14, nur Zähler)
     unterSperre: 0, // Granaten, die der Sperr-Schutz auf den Mindest-Nick angehoben hat (R12, nur Zähler)
     gedeckelt: 0, // Schüsse, deren Streuung (quer oder längs) der Deckel gekürzt hat (R10: stumme Kürzung sichtbar machen)
     streu: new Float32Array(N), // benutzte Streuung je Granate (m), geht ans Detonations-Ereignis
@@ -131,38 +175,83 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     bruch: new Float64Array(N),
   };
   const ereignisse = {
-    schuesse: ereignisListe(FLAK.vorratEreignisse, () => ({ turmId: 0, rohr: 0, pos: v3(), richtung: v3() })),
+    // turmIndex = Platz in tuerme[] (Grafik-Felder), turmId = Schiffs-Turm-id. vorPos = Mündung im vorigen Rahmen
+    // (= pos ohne Rahmen), richtung = Rohrrichtung in Welt (ohne Schiffstempo), vel = Schiffstempo (Blitz/Rauch treiben mit).
+    schuesse: ereignisListe(FLAK.vorratEreignisse, () => ({ turmId: 0, turmIndex: 0, rohr: 0, pos: v3(), vorPos: v3(), richtung: v3(), vel: v3() })),
     detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.sorte[1].wirkRadius, art: 'zeit', streu: 0 })),
     treffer: ereignisListe(FLAK.vorratEreignisse, () => ({ zielId: 0, schaden: 0, pos: v3() })),
   };
-  const tuerme = lafetten.map((l) => ({
-    id: l.id, lafette: l,
+  const tuerme = lafetten.map((l, index) => ({
+    id: l.id, index, lafette: l,
     gier: 0, nick: 0, vorGier: 0, vorNick: 0, sollGier: 0, sollNick: 0,
     imBereich: false, ausgerichtet: false, bereit: true, gesperrt: false,
-    v0: FLAK.v0, reichweite: FLAK.reichweite, muendung: v3(),
+    v0: FLAK.v0, reichweite: FLAK.reichweite, muendung: v3(), muendungWelt: v3(),
     richtGeschw: FLAK.richtGeschw.slice(), streuung: FLAK.streuung, leuchtZaehler: 0,
-    abklingen: 0, rohr: 0, schuesse: 0, rnd: null,
+    abklingen: 0, rohr: 0, schuesse: 0, rnd: null, rumpf: null,
   }));
   let zeiger = 0, schrittNr = 0;
-  const NS = FLAK.poolSplitter;
+  const NS = amSchiff ? (schiff.poolSplitter ?? FLAK.poolSplitterSchiff) : FLAK.poolSplitter;
   const splitter = { max: NS, anzahlAktiv: 0, pos: new Float64Array(NS * 3), rest: new Uint16Array(NS), sorte: new Uint8Array(NS), zeiger: 0 };
-  // Nachbar-Sperrzonen je Turm: { gier, halb, nickMin } aus der Lafetten-Tabelle (einmal berechnet)
+  // Montage-Rahmen (R14): Lage des Schiffs nach dem Schiffsschritt + die des vorigen Schritts (Interpolation der Granaten)
+  const rahmen = { aktiv: false, pos: v3(), rot: { x: 0, y: 0, z: 0, w: 1 }, vel: v3(), vorPos: v3(), vorRot: { x: 0, y: 0, z: 0, w: 1 } };
+  // Nachbar-Sperrzonen je Turm: { gier, halb, nickMin } aus der Hindernis-Tabelle (einmal berechnet). Am Schiff (R14) nur
+  // Nachbarn auf derselben Rumpfseite (die andere Seite verdeckt der Rumpf), Lage im Turm-Rahmen (unten: x gespiegelt),
+  // Höhe aus Größe, Sockel und Fußhöhe des Nachbarn. WARUM die Umrechnung über Differenzen zum Bezug (s 1, Sockel 1,4):
+  // auf dem Prüfstand ergeben sich exakt die alten Zahlen (1,4 + 3,8 wäre 5,199999… statt 5,2 → nicht mehr bitgleich).
   for (const t of tuerme) {
+    const l = t.lafette, sx = l.oben === false ? -1 : 1;
     t.sperrzonen = [];
-    for (const n of lafetten) {
-      if (n === t.lafette) continue;
-      const dx = n.x - t.lafette.x, dz = n.z - t.lafette.z, d = Math.hypot(dx, dz);
-      if (d > 40) continue;
-      const frei = Math.max(1, d - t.lafette.zapfen.z - 2.7); // waagrecht vom Zapfen bis zur Hülle des Nachbarn
-      t.sperrzonen.push({ gier: Math.atan2(dx, dz), halb: Math.atan2(FLAK.nachbarHuelle, d),
-        nickMin: Math.atan2(FLAK.nachbarHoehe - t.lafette.zapfen.y, frei) });
+    for (const n of hindernisse) {
+      if (n === l || (n.id === l.id && n.x === l.x && n.z === l.z)) continue;
+      if ((n.oben === false) !== (l.oben === false)) continue;
+      const dx = (n.x - l.x) * sx, dz = n.z - l.z, d = Math.hypot(dx, dz);
+      if (d > FLAK.nachbarWeite) continue;
+      const ns = n.s ?? 1, fuss = l.oben === false ? l.y - n.y : n.y - l.y; // Fuß des Nachbarn „vom Rumpf weg“
+      const hoehe = FLAK.nachbarHoehe + ((n.sockel ?? FLAK.nachbarBezugSockel) - FLAK.nachbarBezugSockel) + (ns - 1) * FLAK.nachbarKranzJeS + fuss;
+      const frei = Math.max(1, d - l.zapfen.z - TURM.fussR * ns); // waagrecht vom Zapfen bis zur Hülle des Nachbarn
+      t.sperrzonen.push({ gier: Math.atan2(dx, dz), halb: Math.atan2(FLAK.nachbarHuelle * ns, d),
+        nickMin: Math.atan2(hoehe - l.zapfen.y, frei) });
     }
+    // Rumpf-Sperre (R14, Entscheidung 4): Mindest-Nick je Gier-Sektor im Turm-Rahmen, von schiff.rumpf geliefert
+    if (amSchiff && schiff.rumpf) { const r = schiff.rumpf(l); t.rumpf = r ? Float64Array.from(r.nick ?? r) : null; }
   }
-  /** Mindest-Nick für Gier g (−∞ = keine Sperre). */
+  /** Mindest-Nick für Gier g (−∞ = keine Sperre): Nachbar-Sperrzonen und (am Schiff) Rumpf-Sektoren. */
   function sperrNick(t, g) {
     let m = -Infinity;
     for (const z of t.sperrzonen) if (Math.abs(umbruch(g - z.gier)) < z.halb && z.nickMin > m) m = z.nickMin;
+    const R = t.rumpf;
+    if (R) {
+      const n = R.length; let k = Math.floor((umbruch(g) + Math.PI) / ZWEI_PI * n);
+      k = k < 0 ? 0 : k >= n ? n - 1 : k;
+      if (R[k] > m) m = R[k];
+    }
     return m;
+  }
+  /** Kann Turm i (Index in tuerme) die Richtung (gier, nick) im Turm-Rahmen erreichen und dort feuern? (für die Turm-KI) */
+  function erreichbar(i, gier, nick) {
+    const t = tuerme[i]; if (!t) return false;
+    const l = t.lafette;
+    if (l.gier[1] < Math.PI - 1e-6 && Math.abs(umbruch(gier - l.gier[0])) > l.gier[1]) return false;
+    if (nick < l.nick[0] || nick > l.nick[1]) return false;
+    return nick >= sperrNick(t, gier);
+  }
+  /** Montage-Rahmen des Schiffs setzen (je Schritt nach dem Schiffsschritt). null → Prüfstand (Turm-Rahmen = Welt). */
+  function setzeRahmen(r) {
+    if (!r) { rahmen.aktiv = false; return; }
+    const war = rahmen.aktiv, q = rahmen.aktiv ? rahmen : r;
+    rahmen.vorPos.x = q.pos.x; rahmen.vorPos.y = q.pos.y; rahmen.vorPos.z = q.pos.z;
+    rahmen.vorRot.x = q.rot.x; rahmen.vorRot.y = q.rot.y; rahmen.vorRot.z = q.rot.z; rahmen.vorRot.w = q.rot.w;
+    rahmen.pos.x = r.pos.x; rahmen.pos.y = r.pos.y; rahmen.pos.z = r.pos.z;
+    rahmen.rot.x = r.rot.x; rahmen.rot.y = r.rot.y; rahmen.rot.z = r.rot.z; rahmen.rot.w = r.rot.w;
+    rahmen.vel.x = r.vel?.x ?? 0; rahmen.vel.y = r.vel?.y ?? 0; rahmen.vel.z = r.vel?.z ?? 0;
+    rahmen.aktiv = true;
+    if (!war) for (const t of tuerme) weltMuendung(t);
+  }
+  /** t.muendung (lokal) → t.muendungWelt (ohne Rahmen: Kopie). */
+  function weltMuendung(t) {
+    const m = t.muendung, w = t.muendungWelt;
+    if (!rahmen.aktiv) { w.x = m.x; w.y = m.y; w.z = m.z; return; }
+    drehe(rahmen.rot, m.x, m.y, m.z, w); w.x += rahmen.pos.x; w.y += rahmen.pos.y; w.z += rahmen.pos.z;
   }
   const MITTE = []; // Mitte zwischen den Rohren je Lafette (einmal angelegt)
   // Eingestellte Deckel (R11). WARUM an der Instanz statt in FLAK: zwei Flak-Instanzen (Tests, später Koop) dürfen sich nicht
@@ -178,7 +267,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
 
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
-    geschosse.gedeckelt = 0; geschosse.unterSperre = 0; geschosse.streu.fill(0);
+    geschosse.gedeckelt = 0; geschosse.unterSperre = 0; geschosse.abstandVerlaengert = 0; geschosse.streu.fill(0);
+    rahmen.aktiv = false; // die Gefecht-Welt setzt ihn im nächsten Schritt neu
     einstellung.deckelQuer = FLAK.deckelQuer; einstellung.deckelTiefe = FLAK.deckelTiefe; // Umschalter mit zurücksetzen (Lehre R8)
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
     zeiger = 0; schrittNr = 0;
@@ -189,18 +279,22 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
       t.imBereich = t.ausgerichtet = t.gesperrt = false; t.bereit = true;
       t.abklingen = 0; t.rohr = 0; t.schuesse = 0;
       t.rnd = zufall((startwert + t.id * 7919) >>> 0);
-      muendungWelt(t, -1, t.muendung);
+      muendungLokal(t, -1, t.muendung); weltMuendung(t);
     }
     ereignisse.schuesse.leeren(); ereignisse.detonationen.leeren(); ereignisse.treffer.leeren();
   }
 
-  /** Mündung in Welt-Koord. (rohr −1 = Mitte zwischen beiden Rohren). Kette wie bauteile.js turm(). */
-  function muendungWelt(t, rohr, aus) {
+  /** Mündung in Montage-Koord. (Prüfstand = Welt, am Schiff = Schiffs-Lokal; rohr −1 = Mitte zwischen beiden Rohren).
+   *  Kette wie bauteile.js turm(); unten montiert: Turm-Rahmen (x, y, z) → (−x, −y, z). */
+  const tv = v3();
+  function muendungLokal(t, rohr, aus) {
     const l = t.lafette, sg = Math.sin(t.gier), cg = Math.cos(t.gier), sn = Math.sin(t.nick), cn = Math.cos(t.nick);
     const m = rohr < 0 ? MITTE[l.id] ??= { x: 0, z: l.muendungen[0].z } : l.muendungen[rohr];
     // Wiege: (m.x, mz·sin n, mz·cos n), dann Zapfen-Versatz, dann um Y gedreht (gier)
     const a = m.x, b = l.zapfen.y + m.z * sn, c = l.zapfen.z + m.z * cn;
-    aus.x = l.x + a * cg + c * sg; aus.y = l.y + b; aus.z = l.z - a * sg + c * cg;
+    if (l.oben !== false) { aus.x = l.x + a * cg + c * sg; aus.y = l.y + b; aus.z = l.z - a * sg + c * cg; return aus; }
+    turmZuSchiff(l, a * cg + c * sg, b, -a * sg + c * cg, tv);
+    aus.x = l.x + tv.x; aus.y = l.y + tv.y; aus.z = l.z + tv.z;
     return aus;
   }
 
@@ -309,8 +403,11 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     const p = b && b.punkt;
     if (!p) { t.imBereich = t.ausgerichtet = t.gesperrt = false; return; }
 
-    // Sollwinkel vom Zapfen aus (Gier um die Kranzachse, Nick vom Wiegen-Drehpunkt)
-    const dx = p.x - l.x, dz = p.z - l.z, dy = p.y - (l.y + l.zapfen.y);
+    // Sollwinkel vom Zapfen aus (Gier um die Kranzachse, Nick vom Wiegen-Drehpunkt), im TURM-Rahmen
+    // (unten montiert: x und y gespiegelt, turm.js — der Prüfstand rechnet unverändert)
+    let dx = p.x - l.x, dy;
+    const dz = p.z - l.z;
+    if (l.oben === false) { dx = -dx; dy = (l.y - p.y) - l.zapfen.y; } else dy = p.y - (l.y + l.zapfen.y);
     const h = Math.max(0.1, Math.hypot(dx, dz) - l.zapfen.z);
     const entf = Math.hypot(h, dy);
     let sollG = Math.atan2(dx, dz), sollN = Math.atan2(dy, h);
@@ -320,7 +417,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     let gesperrt = false;
     if (!volleDrehung && Math.abs(relSoll) > gHalb) { relSoll = Math.sign(relSoll) * gHalb; gesperrt = true; }
     if (sollN < nMin) { sollN = nMin; gesperrt = true; } else if (sollN > nMax) { sollN = nMax; gesperrt = true; }
-    // Nachbar-Sperre: Soll zeigt flach auf einen Nachbarturm → Nick klemmen, nicht feuern
+    // Nachbar-Sperre (am Schiff auch Rumpf-Sperre): Soll zeigt flach auf ein Hindernis → Nick klemmen, nicht feuern
     const nSperr = sperrNick(t, gMitte + relSoll);
     if (sollN < nSperr) { sollN = nSperr; gesperrt = true; }
     t.sollGier = gMitte + relSoll; t.sollNick = sollN; t.gesperrt = gesperrt;
@@ -329,13 +426,22 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     // Richten mit begrenzter Geschwindigkeit. WARUM ohne Umbruch bei Grenzen: der Turm darf nicht durch die Sperrzone drehen.
     const dG = volleDrehung ? umbruch(t.sollGier - t.gier) : relSoll - umbruch(t.gier - gMitte);
     const mg = t.richtGeschw[0] * dt, mn = t.richtGeschw[1] * dt;
-    t.gier = umbruch(t.gier + Math.max(-mg, Math.min(mg, dG)));
-    const dN = t.sollNick - t.nick;
+    const neuG = umbruch(t.gier + Math.max(-mg, Math.min(mg, dG)));
+    let nZiel = t.sollNick;
+    if (amSchiff) {
+      // Schwenk-Schutz (R14): liegt die nächste Gier über Rumpf/Nachbar, erst das Rohr heben, dann weiterdrehen.
+      // WARUM: sonst streicht das Rohr beim Schwenken sichtbar durch den eigenen Rumpf. Kann der Nick nicht weiter
+      // (Grenze), dreht der Turm trotzdem (kein Festhängen); gefeuert wird dort ohnehin nicht (Ist-Prüfung unten).
+      const nNeu = sperrNick(t, neuG);
+      if (nNeu > nZiel) nZiel = Math.min(nMax, nNeu);
+      if (t.nick >= nNeu - 1e-9 || t.nick >= nMax - 1e-9) t.gier = neuG;
+    } else t.gier = neuG;
+    const dN = nZiel - t.nick;
     t.nick += Math.max(-mn, Math.min(mn, dN));
 
     const fehlG = umbruch(sollG - t.gier) * Math.cos(t.nick), fehlN = Math.atan2(dy, h) - t.nick;
     t.ausgerichtet = Math.hypot(fehlG, fehlN) <= (b.toleranz ?? 0.01);
-    muendungWelt(t, -1, t.muendung);
+    muendungLokal(t, -1, t.muendung);
 
     // WARUM auch die IST-Lage prüfen: beim Schwenken streicht das Rohr evtl. flach über den Nachbarn
     if (t.nick < sperrNick(t, t.gier)) { t.gesperrt = true; t.imBereich = false; }
@@ -343,7 +449,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     const i = freiesGeschoss();
     if (i < 0) { geschosse.verworfen++; return; }
     const rohr = t.rohr; t.rohr ^= 1; t.abklingen = FLAK.schussAbstand; t.bereit = false; t.schuesse++;
-    muendungWelt(t, rohr, tmp);
+    muendungLokal(t, rohr, tmp);
     const v0 = t.v0;
     // Leuchtspur VOR der Streuung festlegen: sie bestimmt den Querdeckel (R10). Der Zähler nutzt keinen Zufall.
     let leucht = b.leuchtspur;
@@ -351,9 +457,11 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     // Streu-Ellipsoid (R8 Kugel, R10 Ellipsoid): Punkt gleichverteilt in der Einheitskugel — genau 3 Zufallszahlen
     // (Richtung + Kubikwurzel-Radius) —, dann längs der Schusslinie mit rt, quer mit rq gestreckt. rq = rt → alte Kugel.
     // WARUM Versatz als Winkeldifferenz auf die Rohrrichtung: der Turm richtet nur auf p (Richttempo), jede Granate
-    // bekommt ihren eigenen Punkt, der Richtfehler des Turms bleibt erhalten.
+    // bekommt ihren eigenen Punkt, der Richtfehler des Turms bleibt erhalten. Alles im Turm-Rahmen (unten gespiegelt).
     let kG = 0, kN = 0, zuender, zStreu;
-    const qx0 = p.x - tmp.x, qy0 = p.y - tmp.y, qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
+    let qx0 = p.x - tmp.x, qy0 = p.y - tmp.y;
+    const qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
+    if (l.oben === false) { qx0 = -qx0; qy0 = -qy0; }
     const wunschQ = b.streuKugel || 0, wunschT = b.streuTiefe ?? wunschQ;
     const rq = Math.min(wunschQ, (leucht ? FLAK.deckelQuerLeucht : einstellung.deckelQuer) * dp);
     const rt = Math.min(wunschT || 0, einstellung.deckelTiefe * dp);
@@ -371,32 +479,65 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
       zuender = b.zuender ?? entf / v0; zStreu = b.zielId == null ? FLAK.zuenderStreuSperr : FLAK.zuenderStreu;
     }
     // Streuung: zwei Achsen, je Dreiecksverteilung (Summe zweier Zufallszahlen) → dichte Mitte, weicher Rand
-    const g = t.gier + kG + (t.rnd() + t.rnd() - 1) * t.streuung / Math.max(0.2, Math.cos(t.nick));
+    let g = t.gier + kG + (t.rnd() + t.rnd() - 1) * t.streuung / Math.max(0.2, Math.cos(t.nick));
     let n = t.nick + kN + (t.rnd() + t.rnd() - 1) * t.streuung;
+    if (amSchiff) {
+      // Am Schiff (R14): auch die versetzte Granate bleibt in den Grenzen der Lafette (sie stehen für den Rumpf).
+      if (!volleDrehung) { const rel = umbruch(g - gMitte); if (rel > gHalb) g = gMitte + gHalb; else if (rel < -gHalb) g = gMitte - gHalb; }
+      if (n < nMin) n = nMin; else if (n > nMax) n = nMax;
+    }
     // Sperr-Schutz (R12): der Ellipsoid-Versatz lenkt die Granate bis zu 45° vom Rohr ab, die Sperre prüft aber nur das
     // Rohr. WARUM: sonst fliegt eine nach unten versetzte Granate durch den Nachbarturm. Kein Zufall → Folge bleibt gleich.
     // WARUM immer (Prüfer R12, vorher nur bei kN < 0): auch der Gier-Versatz kG und die Rohrstreuung legen die Granate
     // seitlich in die Sperrzone des Nachbarn — maßgeblich ist die tatsächliche Gier g der Granate, nicht die des Rohrs.
+    // Am Schiff gilt dieselbe Regel für die Rumpf-Sperre (sperrNick enthält sie).
     const sperrMin = sperrNick(t, g);
     if (n < sperrMin) { n = sperrMin; geschosse.unterSperre++; }
-    const cn = Math.cos(n), rx = Math.sin(g) * cn, ry = Math.sin(n), rz = Math.cos(g) * cn;
+    const cn = Math.cos(n);
+    let rx = Math.sin(g) * cn, ry = Math.sin(n);
+    const rz = Math.cos(g) * cn;
+    if (l.oben === false) { rx = -rx; ry = -ry; } // Turm-Rahmen → Schiff
     zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMinStrecke / v0, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * zStreu);
+    if (rahmen.aktiv) {
+      // Mindestabstand (R14/5): im Schiffsrahmen fliegt die Granate geradlinig mit v0 (das Schiffstempo erbt sie).
+      // Liegt der Zündort näher als mindestAbstand an der Schiffsmitte, zündet sie erst beim Austritt aus der Kugel.
+      const wx = tmp.x - schiffMitte.x, wy = tmp.y - schiffMitte.y, wz = tmp.z - schiffMitte.z;
+      const st = zuender * v0, px = wx + rx * st, py = wy + ry * st, pz = wz + rz * st, R2 = mindestAbstand * mindestAbstand;
+      if (px * px + py * py + pz * pz < R2) {
+        const bb = wx * rx + wy * ry + wz * rz, c = wx * wx + wy * wy + wz * wz - R2;
+        zuender = (-bb + Math.sqrt(Math.max(0, bb * bb - c))) / v0; geschosse.abstandVerlaengert++;
+      }
+    }
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
     geschosse.sperr[i] = b.zielId == null ? 1 : 0;
     geschosse.leucht[i] = leucht ? 1 : 0;
     if (leucht) geschosse.anzahlLeucht++;
-    geschosse.pos[j] = geschosse.vorPos[j] = tmp.x;
-    geschosse.pos[j + 1] = geschosse.vorPos[j + 1] = tmp.y;
-    geschosse.pos[j + 2] = geschosse.vorPos[j + 2] = tmp.z;
-    geschosse.vel[j] = rx * v0; geschosse.vel[j + 1] = ry * v0; geschosse.vel[j + 2] = rz * v0;
+    const s = ereignisse.schuesse.neu();
+    if (rahmen.aktiv) {
+      // Schiffs-Lokal → Welt: Mündung mit dem aktuellen Rahmen, vorPos mit dem vorigen (die Grafik interpoliert die
+      // Granate dann genau wie das Schiffsmodell), Tempo = gedrehtes Rohr · v0 + Schiffstempo.
+      drehe(rahmen.rot, tmp.x, tmp.y, tmp.z, s.pos); s.pos.x += rahmen.pos.x; s.pos.y += rahmen.pos.y; s.pos.z += rahmen.pos.z;
+      drehe(rahmen.vorRot, tmp.x, tmp.y, tmp.z, s.vorPos); s.vorPos.x += rahmen.vorPos.x; s.vorPos.y += rahmen.vorPos.y; s.vorPos.z += rahmen.vorPos.z;
+      drehe(rahmen.rot, rx, ry, rz, s.richtung);
+      s.vel.x = rahmen.vel.x; s.vel.y = rahmen.vel.y; s.vel.z = rahmen.vel.z;
+      geschosse.pos[j] = s.pos.x; geschosse.pos[j + 1] = s.pos.y; geschosse.pos[j + 2] = s.pos.z;
+      geschosse.vorPos[j] = s.vorPos.x; geschosse.vorPos[j + 1] = s.vorPos.y; geschosse.vorPos[j + 2] = s.vorPos.z;
+      geschosse.vel[j] = s.richtung.x * v0 + rahmen.vel.x; geschosse.vel[j + 1] = s.richtung.y * v0 + rahmen.vel.y; geschosse.vel[j + 2] = s.richtung.z * v0 + rahmen.vel.z;
+    } else {
+      geschosse.pos[j] = geschosse.vorPos[j] = tmp.x;
+      geschosse.pos[j + 1] = geschosse.vorPos[j + 1] = tmp.y;
+      geschosse.pos[j + 2] = geschosse.vorPos[j + 2] = tmp.z;
+      geschosse.vel[j] = rx * v0; geschosse.vel[j + 1] = ry * v0; geschosse.vel[j + 2] = rz * v0;
+      s.pos.x = s.vorPos.x = tmp.x; s.pos.y = s.vorPos.y = tmp.y; s.pos.z = s.vorPos.z = tmp.z;
+      s.richtung.x = rx; s.richtung.y = ry; s.richtung.z = rz;
+      s.vel.x = s.vel.y = s.vel.z = 0;
+    }
     geschosse.alter[i] = 0;
     // WARUM ganze Schritte + Bruch: Zähler ohne Zeitrundung (Gleichlauf), Zündort trotzdem auf den Meter genau
     const schritte = zuender / dt, rest = Math.max(1, Math.ceil(schritte - 1e-9));
     geschosse.rest[i] = rest; geschosse.bruch[i] = Math.min(1, Math.max(0, schritte - (rest - 1)));
-    const s = ereignisse.schuesse.neu();
-    s.turmId = t.id; s.rohr = rohr; s.pos.x = tmp.x; s.pos.y = tmp.y; s.pos.z = tmp.z;
-    s.richtung.x = rx; s.richtung.y = ry; s.richtung.z = rz;
+    s.turmId = t.id; s.turmIndex = t.index; s.rohr = rohr;
   }
 
   /** befehle[i] gehört zu tuerme[i] (Turm-Reihenfolge); fehlt er, hält der Turm still. */
@@ -406,6 +547,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
     splitterSchritt(dt, ziele);           // Nachwirkung älterer Detonationen (die neue wirkt in diesem Schritt sofort)
     geschosseSchritt(dt, ziele);          // erst fliegen (neue Geschosse starten an der Mündung, sichtbar ab diesem Bild)
     for (let i = 0; i < tuerme.length; i++) turmSchritt(tuerme[i], dt, befehle ? befehle[i] : null);
+    for (let i = 0; i < tuerme.length; i++) weltMuendung(tuerme[i]); // auch stillstehende Türme fahren mit dem Schiff
   }
 
   /** FNV-1a über Turmwinkel, Geschosse und Ereigniszahlen (Gleichlauf-Prüfung). */
@@ -420,5 +562,6 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN } = {}) {
   }
 
   zuruecksetzen();
-  return { tuerme, geschosse, splitter, ereignisse, schritt, zuruecksetzen, pruefsumme, einstellen, einstellung, get schrittNr() { return schrittNr; } };
+  return { tuerme, geschosse, splitter, ereignisse, schritt, zuruecksetzen, pruefsumme, einstellen, einstellung, setzeRahmen, rahmen,
+    erreichbar, amSchiff, get schrittNr() { return schrittNr; } };
 }

@@ -1,8 +1,8 @@
 // ZWECK: Darstellung der Flak-Batterie: 6 Turmmodelle (Rohre drehen interpoliert, Rückstoß), Leuchtspur, Mündungsblitz,
 //        Detonationskern, Rauchwolken (Fake-Licht), große Explosion bei Drohnen-Abschuss.
-// LIEFERT: erstelleFlakGrafik(scene, camera) → { nachSchritt(flak), aktualisiere(flak, alpha, dt, zeit, lage?), explosion(pos, groesse),
-//          regler, zaehler: { spuren, gluehen, wolken, belegt, ueberschrieben, fuellVerworfen }, gruppe, maxWolken }
-//          GRAFIK_REGLER (Export): Tabelle { name: { min, max, standard, schritt, text } } — die Seite baut daraus das Reglerfeld
+// LIEFERT: erstelleFlakGrafik(scene, camera, { turmModelle }?) → { nachSchritt(flak), aktualisiere(flak, alpha, dt, zeit, lage?), explosion(pos, groesse),
+//          regler, zaehler: { spuren, gluehen, wolken, belegt, ueberschrieben, fuellVerworfen, fuellGesetzt }, gruppe, maxWolken }
+//          SPUR_IMMER_STANDARD (Export, R14: an) · GRAFIK_REGLER (Export): Tabelle { name: { min, max, standard, schritt, text } } — die Seite baut daraus das Reglerfeld
 //          und schreibt Werte in grafik.regler (R11). Standardwerte = R10-Look (bitgleich: gleiche Grafik-Zufallsfolge).
 //          lage (optional, nur lesen) = ki.lage → Füll-Flak in den Sättigungsräumen (lage.schirme).
 //          Je Detonation: Kern + Wolke + 4 Zusatz-Explosionen (R9/R10, nur Grafik, verzögert über negatives Alter),
@@ -12,6 +12,12 @@
 //        Regler wirken nur auf NEUE Effekte (WARUM: lebende Wolken springen sonst beim Ziehen). Füll-Flak hat einen eigenen
 //        Zufall und nimmt nur freie Plätze (nie lebende Wolken ersetzen) — was nicht passt, zählt fuellVerworfen.
 //        Zusätzliche Draw-Calls: 3 Effekte + 6 × 5 Turmteile (turm() aus bauteile.js, nur lesend). Keine Lichter.
+// AM SCHIFF (R14): erstelleFlakGrafik(scene, camera, { turmModelle }) — turmModelle[i] = turm()-Modell des Schiffs zu
+//        flak.tuerme[i] (drehkranz/wiege/rohre); dann KEINE eigenen Prüfstand-Türme. Felder je Turm über den Index
+//        (Ereignis turmIndex), nie über die Schiffs-Turm-id. Mit flak.rahmen.aktiv: Blitz/Mündungsrauch treiben mit dem
+//        Schiffstempo, der Spur-Schweif folgt dem Tempo relativ zum Schiff (sonst stünde er bei 200 m/s ~10° schief),
+//        lage.schirme sind Schiffs-Lokal und werden für die Füll-Flak mit dem Rahmen in Welt umgerechnet.
+//        Füll-Flak nur, solange zuletzt geschossen wurde (R14, Nutzer: „bei Feuer halt trotzdem Rauchwolken“).
 import * as THREE from 'three';
 import { turm, materialien } from '../schiff/bauteile.js';
 import { LAFETTEN } from '../../sim/waffen/lafetten.js';
@@ -22,7 +28,8 @@ import { uPixel, spurMaterial, gluehMaterial, rauchMaterial } from './shader.js'
 // WARUM 384/2048: R10 je Detonation 1 + 4 Zusatz-Explosionen; 60 Det./s × (2,8 s + 4 × 2,0 s) ≈ 650 Wolken. R11 Regler am
 //        Anschlag (Leben × 2, 6 Zusatz): 60 × (5,6 + 6 × 4 s) ≈ 1780, gemessen bis 2048 voll → 3072 (Node-Messung R11). Glühen: Füll-Flak glüht
 //        nicht, Kerne bleiben kurz.
-const MAX_SPUR = 256, MAX_GLUEH = 384, MAX_RAUCH = 3072;
+// R14 (Bollwerk, 14 Flaktürme ≈ 140 Det./s): Spur 640 (= Granaten-Vorrat am Schiff), Glühen 768 (140 × (0,66 + 6 × 0,36 s) ≈ 400 + Blitze).
+const MAX_SPUR = 640, MAX_GLUEH = 768, MAX_RAUCH = 3072;
 const SPUR_LAENGE = 25;        // m (R8, Nutzer: „kleiner“) — WARUM nicht kürzer: unter ~1 Schrittweg (17 m bei 1000 m/s) wird die Spur zur Perlenkette
 // Nahe der Kamera (Runde 7, Bildprüfer: weiße Glut vor der Batterie-Kamera): Glühen unter NAH_VOLL m gedämpft,
 // Bildschirmradius gedeckelt (Blitz klein, Kern groß). Kamera steht im Prüfstand-Blick ~30 m vom nächsten Turm.
@@ -53,19 +60,31 @@ const KERN_DAUER = 0.22, KERN_BUDGET = 28;
 const HAUPT_LEBEN = 2.8; // s, Hauptwolke einer Detonation
 // Regler (R11, Nutzer: „Schieberegler für einen rein visuellen Flak-Screen, der die Leere zwischen den Points of Action
 // füllt“ / „für die Länge der Explosionen und die Rauchentwicklung“). Nur Grafik, die Sim merkt nichts.
+// R14 (Nutzer: „Nimm die Konfig T1“): alle Standards aus konfig/flak/T1.json (R13: fuellen 0, leben 0,6, Dauer 1,6,
+// Hell 1,8, Deckkraft 0,3, Größe 1, Zusatz 4, Weite 1,5).
 export const GRAFIK_REGLER = {
-  fuellen:        { min: 0,   max: 3, standard: 0,   schritt: 0.1,  text: 'Füll-Flak (× 30 Wolken/s)' },
-  // R13 (Nutzer: „Explosionen mehr zu sehen und viel weniger Rauch“): neue Standards — Rauch kürzer/durchscheinender,
+  fuellen:        { min: 0,   max: 3, standard: 2,    schritt: 0.1,  text: 'Füll-Flak (× 30 Wolken/s)' },
+  // R13 (Nutzer: „Explosionen mehr zu sehen und viel weniger Rauch“): Rauch kürzer/durchscheinender,
   // Glut länger und heller (explosionHell neu). Rauch-Deckkraft ab 0,05 regelbar (vorher 0,2).
-  lebenFaktor:    { min: 0.3, max: 2, standard: 0.6, schritt: 0.05, text: 'Rauch-Lebensdauer (× 2,8 / 2,0 s)' },
-  explosionDauer: { min: 0.5, max: 3, standard: 1.6, schritt: 0.05, text: 'Explosionsdauer Glut (× 0,22 / 0,12 s)' },
-  explosionHell:  { min: 0.5, max: 3, standard: 1.8, schritt: 0.05, text: 'Explosion: Helligkeit/Größe der Glut' },
-  rauchDeckkraft: { min: 0.05, max: 1, standard: 0.3, schritt: 0.05, text: 'Rauch-Deckkraft' },
-  rauchGroesse:   { min: 0.5, max: 2, standard: 1,   schritt: 0.05, text: 'Rauch-Größe (× 42 m)' },
-  zusatzAnzahl:   { min: 0,   max: 6, standard: 4,   schritt: 1,    text: 'Zusatz-Explosionen je Detonation' },
-  // zusatzWeite R12 (Nutzer: „die Area größer machen … als konfigurierbaren Slider“): 0,5–6, Standard 1,5 → 30–180 m
-  zusatzWeite:    { min: 0.5, max: 6, standard: 1.5, schritt: 0.05, text: 'Zusatz-Weite (× 20–120 m)' },
+  lebenFaktor:    { min: 0.3, max: 2, standard: 0.4,  schritt: 0.05, text: 'Rauch-Lebensdauer (× 2,8 / 2,0 s)' },
+  explosionDauer: { min: 0.5, max: 3, standard: 3,    schritt: 0.05, text: 'Explosionsdauer Glut (× 0,22 / 0,12 s)' },
+  explosionHell:  { min: 0.5, max: 3, standard: 2.35, schritt: 0.05, text: 'Explosion: Helligkeit/Größe der Glut' },
+  rauchDeckkraft: { min: 0.05, max: 1, standard: 0.1, schritt: 0.05, text: 'Rauch-Deckkraft' },
+  rauchGroesse:   { min: 0.5, max: 2, standard: 0.55, schritt: 0.05, text: 'Rauch-Größe (× 42 m)' },
+  zusatzAnzahl:   { min: 0,   max: 6, standard: 6,    schritt: 1,    text: 'Zusatz-Explosionen je Detonation' },
+  // zusatzWeite R12 (Nutzer: „die Area größer machen … als konfigurierbaren Slider“): 0,5–6, Standard 1,05 (T1) → 21–126 m
+  zusatzWeite:    { min: 0.5, max: 6, standard: 1.05, schritt: 0.05, text: 'Zusatz-Weite (× 20–120 m)' },
 };
+// Leuchtspur dauerhaft (R13 Taste T; R14 Standard an, T1). Kein Regler (Schalter), steht in regler.spurImmer.
+export const SPUR_IMMER_STANDARD = true;
+// WARUM einblenden (Entscheidung R14/5): mit spurImmer bekommt auch jede Granate ohne Leuchtspur-Befehl eine Spur — die
+// fliegen mit Querdeckel 1,0 bis 45° neben dem Rohr ab. Erst ab SPUR_EIN_AB m (relativ zum Schiff) zeigen, voll ab
+// + SPUR_EIN_WEG m: dort ist der Abgang schon weit vom Rohr weg und fällt nicht mehr als „schief aus dem Rohr“ auf.
+// Echte Leuchtspur-Granaten (Deckel 0,10, gerade) bleiben ab der Mündung sichtbar.
+const SPUR_EIN_AB = 40, SPUR_EIN_WEG = 60;
+// Füll-Flak nur bis FUELL_NACHLAUF s nach dem letzten Schuss (R14). WARUM nicht bis zur letzten Detonation: fliegende
+// Granaten zünden noch ~2,3 s nach dem Halt — echte Wolken dürfen kommen, erfundene nicht.
+const FUELL_NACHLAUF = 0.5;
 // Füll-Flak: FUELL_RATE Wolken/s je Reglereinheit. Quelle A (immer): zwischen zwei Detonationen der letzten FUELL_FENSTER s,
 // die höchstens FUELL_PAAR m auseinander liegen. Quelle B (mit lage): gleichverteilt in einem Kasten von lage.schirme
 // (Lage-Mitte ± breite/hoehe quer, ± max(tiefeHalb, lagenAbstand/2) längs). WARUM kaum Glut und kein Kern: Füllwolken
@@ -101,17 +120,19 @@ function effektNetz(scene, geo, mat, name, reihe) {
   return m;
 }
 
-export function erstelleFlakGrafik(scene, camera) {
+export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
   const rnd = zufall(4711);
   const rndF = zufall(9001); // eigener Zufall der Füll-Flak — WARUM: fuellen > 0 darf die Folge der echten Effekte nicht ändern
   const regler = Object.fromEntries(Object.entries(GRAFIK_REGLER).map(([k, v]) => [k, v.standard]));
+  regler.spurImmer = SPUR_IMMER_STANDARD;
   /** Reglerwert geklemmt (die Seite schreibt frei hinein). */
   const rw = (k) => { const R = GRAFIK_REGLER[k], w = regler[k]; return Number.isFinite(w) ? klemme(w, R.min, R.max) : R.standard; };
   // ---------- Turmmodelle ----------
+  // Prüfstand: eigene Batterie aus LAFETTEN. Am Schiff: die Turm-Modelle des Schiffs (Reihenfolge = flak.tuerme).
   const gruppe = new THREE.Group(); gruppe.name = 'flak-batterie'; scene.add(gruppe);
-  const mats = materialien();
-  const modelle = LAFETTEN.map((l) => turm(gruppe, mats, l));
-  const rueck = new Float32Array(LAFETTEN.length * 2).fill(1); // s seit dem letzten Schuss je Rohr
+  const modelle = turmModelle ?? (() => { const mats = materialien(); return LAFETTEN.map((l) => turm(gruppe, mats, l)); })();
+  const NT = modelle.length;
+  const rueck = new Float32Array(NT * 2).fill(1); // s seit dem letzten Schuss je Rohr (Index = flak.tuerme-Platz)
 
   // ---------- Effekt-Vorräte ----------
   const spur = quadGeometrie({ aKopf: 3, aSchweif: 3, aHell: 1 }, MAX_SPUR, true);
@@ -125,14 +146,15 @@ export function erstelleFlakGrafik(scene, camera) {
   effektNetz(scene, spur.g, spurMaterial(), 'flak-spur', 12);
 
   // Glühen: art 0 = Mündungsblitz, 1 = Detonationskern (Granate), 2 = Abschuss-Kern (ohne Budget)
-  const G = { pos: new Float32Array(MAX_GLUEH * 3), alter: new Float32Array(MAX_GLUEH).fill(99), dauer: new Float32Array(MAX_GLUEH).fill(1),
+  // vel: Treiben (R14, Mündungsblitz fährt mit dem Schiff; sonst 0)
+  const G = { pos: new Float32Array(MAX_GLUEH * 3), vel: new Float32Array(MAX_GLUEH * 3), alter: new Float32Array(MAX_GLUEH).fill(99), dauer: new Float32Array(MAX_GLUEH).fill(1),
     groesse: new Float32Array(MAX_GLUEH), kraft: new Float32Array(MAX_GLUEH), art: new Uint8Array(MAX_GLUEH), zeiger: 0 };
   const W = { pos: new Float32Array(MAX_RAUCH * 3), vel: new Float32Array(MAX_RAUCH * 3), alter: new Float32Array(MAX_RAUCH).fill(99),
     dauer: new Float32Array(MAX_RAUCH).fill(1), r0: new Float32Array(MAX_RAUCH), rMax: new Float32Array(MAX_RAUCH),
     saat: new Float32Array(MAX_RAUCH), glut: new Float32Array(MAX_RAUCH), deckkraft: new Float32Array(MAX_RAUCH), zeiger: 0 };
-  const mRauchZaehler = new Uint8Array(LAFETTEN.length); // je Turm: nur jeder MRAUCH_JEDER-te Schuss raucht
+  const mRauchZaehler = new Uint8Array(NT); // je Turm: nur jeder MRAUCH_JEDER-te Schuss raucht
   // ueberschrieben: Effekte, die der volle Ring ersetzt hat, obwohl sie noch lebten/warteten (soll 0 bleiben)
-  const zaehler = { spuren: 0, gluehen: 0, wolken: 0, ueberschrieben: 0, fuellVerworfen: 0, belegt: 0 }; // belegt: lebende + wartende Wolken (letztes Bild)
+  const zaehler = { spuren: 0, gluehen: 0, wolken: 0, ueberschrieben: 0, fuellVerworfen: 0, fuellGesetzt: 0, belegt: 0 }; // belegt: lebende + wartende Wolken (letztes Bild)
 
   /** Nächster freier Platz ab dem Ring-Zeiger. WARUM Suche (R9): kurze (Mündungsrauch 0,3 s) und lange Effekte
    *  (Abschuss 5 s) mischen sich — ein reiner Ring ersetzte lebende Wolken, obwohl der Vorrat nur halb voll war.
@@ -145,9 +167,10 @@ export function erstelleFlakGrafik(scene, camera) {
     const i = V.zeiger; V.zeiger = (i + 1) % max; zaehler.ueberschrieben++;
     return i;
   }
-  function neuesGluehen(x, y, z, groesse, dauer, kraft, art, verzoegerung = 0) {
+  function neuesGluehen(x, y, z, groesse, dauer, kraft, art, verzoegerung = 0, vx = 0, vy = 0, vz = 0) {
     const i = freierPlatz(G, MAX_GLUEH);
     G.pos[i * 3] = x; G.pos[i * 3 + 1] = y; G.pos[i * 3 + 2] = z;
+    G.vel[i * 3] = vx; G.vel[i * 3 + 1] = vy; G.vel[i * 3 + 2] = vz;
     G.alter[i] = -verzoegerung; G.dauer[i] = dauer; G.groesse[i] = groesse; G.kraft[i] = kraft; G.art[i] = art;
   }
   function neueWolke(x, y, z, r0, rMax, dauer, vx = 0, vy = 0, vz = 0, glut = 1, deckkraft = WOLKE_DECKKRAFT, verzoegerung = 0, groesseStreuen = true) {
@@ -164,16 +187,20 @@ export function erstelleFlakGrafik(scene, camera) {
   /** Nach JEDEM flak.schritt aufrufen: Ereignisse des Schritts in die Effekt-Vorräte übernehmen. */
   function nachSchritt(flak) {
     const e = flak.ereignisse;
+    if (e.schuesse.length) schussUhr = uhr;
     for (const s of e.schuesse) {
-      neuesGluehen(s.pos.x + s.richtung.x * 1.2, s.pos.y + s.richtung.y * 1.2, s.pos.z + s.richtung.z * 1.2, BLITZ_M, BLITZ_S, 1, 0);
+      // WARUM vorPos und Tempo (R14): das Schiffsmodell wird zwischen vorigem und aktuellem Schritt gezeichnet — an der
+      // Mündung des vorigen Rahmens beginnend und mit dem Schiff treibend bleibt der Blitz am Rohr (Prüfstand: vorPos = pos, vel 0).
+      const p = s.vorPos ?? s.pos, v = s.vel, vx = v ? v.x : 0, vy = v ? v.y : 0, vz = v ? v.z : 0, k = s.turmIndex ?? s.turmId;
+      neuesGluehen(p.x + s.richtung.x * 1.2, p.y + s.richtung.y * 1.2, p.z + s.richtung.z * 1.2, BLITZ_M, BLITZ_S, 1, 0, 0, vx, vy, vz);
       // Mündungsrauch: kleiner Puff, treibt etwas mit dem Rohr — WARUM: ohne Leuchtspur soll man trotzdem sehen, dass
       // geschossen wird. WARUM nur jeder 3. Schuss: bei 10 Schuss/s standen sonst ~6 Puffs je Turm übereinander (Wurst).
-      if (++mRauchZaehler[s.turmId] >= MRAUCH_JEDER) {
-        mRauchZaehler[s.turmId] = 0;
-        neueWolke(s.pos.x + s.richtung.x * 2, s.pos.y + s.richtung.y * 2, s.pos.z + s.richtung.z * 2, 0.8, MRAUCH_M, MRAUCH_S,
-          s.richtung.x * 6, s.richtung.y * 6, s.richtung.z * 6, 0, MRAUCH_DECKKRAFT); // ohne Innenglut: grauer Hauch
+      if (k < NT && ++mRauchZaehler[k] >= MRAUCH_JEDER) {
+        mRauchZaehler[k] = 0;
+        neueWolke(p.x + s.richtung.x * 2, p.y + s.richtung.y * 2, p.z + s.richtung.z * 2, 0.8, MRAUCH_M, MRAUCH_S,
+          s.richtung.x * 6 + vx, s.richtung.y * 6 + vy, s.richtung.z * 6 + vz, 0, MRAUCH_DECKKRAFT); // ohne Innenglut: grauer Hauch
       }
-      rueck[s.turmId * 2 + s.rohr] = 0;
+      if (k < NT) rueck[k * 2 + s.rohr] = 0;
     }
     if (!e.detonationen.length) return;
     const leben = rw('lebenFaktor'), dauer = rw('explosionDauer'), deck = rw('rauchDeckkraft'), gr = rw('rauchGroesse'), hell = rw('explosionHell');
@@ -219,8 +246,9 @@ export function erstelleFlakGrafik(scene, camera) {
 
   // ---------- Füll-Flak (R11) ----------
   const detRing = { pos: new Float32Array(FUELL_RING * 3), zeit: new Float32Array(FUELL_RING).fill(-1e9), zeiger: 0 };
-  let uhr = 0, fuellRest = 0;
+  let uhr = 0, fuellRest = 0, schussUhr = -1e9;
   const qa = new THREE.Vector3(), qb = new THREE.Vector3(), qe = new THREE.Vector3(), qr = new THREE.Vector3(), qo = new THREE.Vector3();
+  const rahmenQ = new THREE.Quaternion();
   const OBEN = new THREE.Vector3(0, 1, 0), fuellPunkt = new THREE.Vector3();
   /** Freier Platz ohne Ersetzen (−1 = voll). */
   function freierPlatzFuell() {
@@ -260,20 +288,25 @@ export function erstelleFlakGrafik(scene, camera) {
     aus.set(L.x, L.y, L.z).addScaledVector(qr, u * b).addScaledVector(qo, v * h).addScaledVector(qe, w * t);
     return true;
   }
-  function fuellFlak(dt, lage) {
+  function fuellFlak(dt, lage, flak) {
     const rate = FUELL_RATE * rw('fuellen');
-    if (rate <= 0 || !(dt > 0)) { fuellRest = 0; return; }
+    // R14: ohne Schuss in den letzten FUELL_NACHLAUF s keine Füllwolken (Feuer halt = kein erfundener Rauch)
+    if (rate <= 0 || !(dt > 0) || uhr - schussUhr > FUELL_NACHLAUF) { fuellRest = 0; return; }
+    const R = flak && flak.rahmen && flak.rahmen.aktiv ? flak.rahmen : null; // lage.schirme sind dann Schiffs-Lokal
+    if (R) rahmenQ.set(R.rot.x, R.rot.y, R.rot.z, R.rot.w);
     fuellRest = Math.min(fuellRest + rate * dt, 10); // WARUM Deckel: ein Ruckler (dt groß) soll keinen Schwall erzeugen
     const leben = rw('lebenFaktor'), deck = rw('rauchDeckkraft'), gr = rw('rauchGroesse');
     const mitRaum = !!(lage && lage.schirme && lage.schirme.length);
     while (fuellRest >= 1) {
       fuellRest -= 1;
       // halb A, halb B (mit Räumen); ohne Räume (Nahbereich/keine lage) nur A
-      const ok = (mitRaum && rndF() < 0.5) ? punktImRaum(lage, fuellPunkt) : punktZwischen(fuellPunkt);
+      const ausRaum = mitRaum && rndF() < 0.5;
+      const ok = ausRaum ? punktImRaum(lage, fuellPunkt) : punktZwischen(fuellPunkt);
       if (!ok) continue;
+      if (ausRaum && R) fuellPunkt.applyQuaternion(rahmenQ).add(R.pos); // Schiffs-Lokal → Welt (Quelle A ist schon Welt)
       const i = zaehler.belegt < MAX_RAUCH - FUELL_RESERVE ? freierPlatzFuell() : -1;
       if (i < 0) { zaehler.fuellVerworfen++; continue; }
-      zaehler.belegt++;
+      zaehler.belegt++; zaehler.fuellGesetzt++;
       setzeWolke(i, rndF, fuellPunkt.x, fuellPunkt.y, fuellPunkt.z, 4, WOLKE_R * gr * (0.5 + 0.4 * rndF()),
         ZUSATZ.leben * leben * (0.8 + 0.4 * rndF()), 0, 0, 0, FUELL_GLUT, deck, 0, false);
     }
@@ -287,7 +320,7 @@ export function erstelleFlakGrafik(scene, camera) {
 
   function aktualisiere(flak, alpha, dt, zeit, lage) {
     uhr += dt;
-    fuellFlak(dt, lage);
+    fuellFlak(dt, lage, flak);
     camera.updateMatrixWorld();
     camera.getWorldPosition(kamPos); camera.getWorldDirection(kamDir);
     const hoehe = (globalThis.innerHeight || 1080);
@@ -295,8 +328,9 @@ export function erstelleFlakGrafik(scene, camera) {
     rauchMat.uniforms.uSonne.value.copy(SONNE_RICHTUNG).transformDirection(camera.matrixWorldInverse);
 
     // Türme: interpolierte Winkel + Rückstoß
-    for (let i = 0; i < modelle.length; i++) {
+    for (let i = 0; i < NT; i++) {
       const t = flak.tuerme[i], m = modelle[i];
+      if (!t || !m) continue;
       m.drehkranz.rotation.y = t.vorGier + umbruch(t.gier - t.vorGier) * alpha;
       m.wiege.rotation.x = -(t.vorNick + (t.nick - t.vorNick) * alpha);
       for (let r = 0; r < 2; r++) {
@@ -307,18 +341,28 @@ export function erstelleFlakGrafik(scene, camera) {
 
     // Leuchtspur aus dem Geschoss-Pool (interpoliert)
     const gs = flak.geschosse, K = spur.puffer.aKopf.array, S = spur.puffer.aSchweif.array, H = spur.puffer.aHell.array;
+    // Schweif relativ zum Schiff (R14): aus dessen Sicht fliegt die Granate genau in Rohrrichtung (Prüfstand: Tempo 0)
+    const fr = flak.rahmen && flak.rahmen.aktiv ? flak.rahmen.vel : null;
+    const sx = fr ? fr.x : 0, sy = fr ? fr.y : 0, sz = fr ? fr.z : 0;
     let n = 0;
     for (let i = 0; i < gs.max && n < MAX_SPUR; i++) {
       // Spur nur für Leuchtspur-Granaten (Runde 7) — außer regler.spurImmer (R13, Knopf „Leuchtspur dauerhaft“, nur Optik)
-      if (!gs.aktiv[i] || (!gs.leucht[i] && !regler.spurImmer)) continue;
+      const echt = gs.leucht[i] === 1;
+      if (!gs.aktiv[i] || (!echt && !regler.spurImmer)) continue;
       const j = i * 3;
+      const vx = gs.vel[j] - sx, vy = gs.vel[j + 1] - sy, vz = gs.vel[j + 2] - sz, v = Math.hypot(vx, vy, vz) || 1;
+      const strecke = (gs.alter[i] + alpha) * v * SIM_DT;
+      let hell = 4;
+      if (!echt) { // dauerhafte Spur: erst nach SPUR_EIN_AB m einblenden (Entscheidung R14/5)
+        if (strecke <= SPUR_EIN_AB) continue;
+        hell = 4 * Math.min(1, (strecke - SPUR_EIN_AB) / SPUR_EIN_WEG);
+      }
       const x = gs.vorPos[j] + (gs.pos[j] - gs.vorPos[j]) * alpha, y = gs.vorPos[j + 1] + (gs.pos[j + 1] - gs.vorPos[j + 1]) * alpha,
         z = gs.vorPos[j + 2] + (gs.pos[j + 2] - gs.vorPos[j + 2]) * alpha;
-      const vx = gs.vel[j], vy = gs.vel[j + 1], vz = gs.vel[j + 2], v = Math.hypot(vx, vy, vz) || 1;
-      const l = Math.min(SPUR_LAENGE, (gs.alter[i] + alpha) * v * SIM_DT) / v;
+      const l = Math.min(SPUR_LAENGE, strecke) / v;
       K[n * 3] = x; K[n * 3 + 1] = y; K[n * 3 + 2] = z;
       S[n * 3] = x - vx * l; S[n * 3 + 1] = y - vy * l; S[n * 3 + 2] = z - vz * l;
-      H[n] = 4; n++;
+      H[n] = hell; n++;
     }
     spur.g.instanceCount = zaehler.spuren = n;
     spur.puffer.aKopf.needsUpdate = spur.puffer.aSchweif.needsUpdate = spur.puffer.aHell.needsUpdate = true;
@@ -333,6 +377,8 @@ export function erstelleFlakGrafik(scene, camera) {
     for (let i = 0; i < MAX_GLUEH; i++) {
       const a = (G.alter[i] += dt), u = a / G.dauer[i];
       if (a < 0 || u >= 1) continue; // a < 0: Zusatz-Explosion wartet noch
+      const ij = i * 3; // Treiben (R14: Mündungsblitz mit dem Schiff; sonst vel 0)
+      G.pos[ij] += G.vel[ij] * dt; G.pos[ij + 1] += G.vel[ij + 1] * dt; G.pos[ij + 2] += G.vel[ij + 2] * dt;
       let k, gr;
       if (G.art[i] === 0) { k = 1 - u; gr = G.groesse[i] * (0.7 + 0.3 * u); }
       else {

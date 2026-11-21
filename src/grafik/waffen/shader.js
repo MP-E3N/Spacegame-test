@@ -10,10 +10,11 @@ export const uPixel = { value: 0.001 };
 const additiv = { side: THREE.DoubleSide, transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending };
 
 // ---------- Leuchtspur: Band zwischen Schweif und Kopf, zur Kamera gedreht ----------
-export function spurMaterial() {
+/** Leuchtspur. farbeRand/farbeKern (R14): Angreifer-Geschosse bekommen eine eigene Farbe; Standard = Flak (orange). */
+export function spurMaterial({ breite = 0.35, farbeRand = [1.0, 0.42, 0.10], farbeKern = [1.0, 0.85, 0.55] } = {}) {
   return new THREE.ShaderMaterial({
     ...additiv,
-    uniforms: { uPixel, uBreite: { value: 0.35 } }, // m (R8: 0,7 -> 0,35, Nutzer: "kleiner")
+    uniforms: { uPixel, uBreite: { value: breite }, uRand: { value: new THREE.Vector3(...farbeRand) }, uKern: { value: new THREE.Vector3(...farbeKern) } }, // m (R8: 0,7 -> 0,35, Nutzer: "kleiner")
     vertexShader: /* glsl */`
       attribute vec3 aKopf; attribute vec3 aSchweif; attribute float aHell;
       uniform float uPixel; uniform float uBreite;
@@ -31,11 +32,12 @@ export function spurMaterial() {
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: /* glsl */`
+      uniform vec3 uRand; uniform vec3 uKern;
       varying vec2 vUv; varying float vHell;
       void main() {
         float quer = max(1.0 - abs(vUv.x), 0.0);
         float laengs = pow(max(vUv.y, 0.0), 1.6);
-        vec3 farbe = mix(vec3(1.0, 0.42, 0.10), vec3(1.0, 0.85, 0.55), laengs * quer) * vHell * quer * quer * laengs;
+        vec3 farbe = mix(uRand, uKern, laengs * quer) * vHell * quer * quer * laengs;
         gl_FragColor = vec4(min(farbe, vec3(30.0)), 1.0);
       }`,
   });
