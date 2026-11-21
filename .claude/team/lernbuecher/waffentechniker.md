@@ -43,3 +43,10 @@
   0,60: Ursache Leuchtspur-Granaten (Deckel 0,10) mit Zielkugel 320 m — per Gegenlauf (Leucht-Deckel 1 → 3,7 %)
   zugeordnet. Lehre: Kürzung erst per Gegenlauf einer Ursache zuordnen, dann den Besitzer nennen. Sperren, die nur das
   Rohr prüfen, gelten nicht für Granaten mit Versatz: im Schuss nachziehen, ohne Zufall.
+- 2026-11-21 Runde 13 — Nutzer wollte „mehr Explosion, weniger Rauch“: Kern-Budget wächst mit der Helligkeit, Taste T
+  Leuchtspur dauerhaft (nur Optik). Lehre: ein Budget muss mit seinem Regler mitwachsen.
+- 2026-11-21 Runde 14 — Rauch bei Feuer halt: Füll-Flak Quelle B las die Räume der KI, die ohne Feuer weiterbestehen →
+  Füllung nur bis 0,5 s nach dem letzten Schuss. Flak am Schiff über Montage-Rahmen (lokal rechnen, beim Abschuss in Welt
+  drehen, vorPos aus dem vorigen Rahmen): Prüfstand bitgleich, Richtungsfehler 0, Sperrverletzungen 0, 0,027 ms/Schritt.
+  Lehre: Darstellungsquellen an das echte Ereignis koppeln, nicht an den Planungszustand. Bitgleichheit: Differenzen zum
+  Bezugswert rechnen (1,4 + 3,8 ≠ 5,2). Dateien kommen mit CRLF — Ersetzungsskripte müssen \r\n behandeln.
