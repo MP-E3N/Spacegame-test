@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schwarmfront · Gefechtstest</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="/src/menue/menue.css" />
+  <link rel="stylesheet" href="/src/gefecht/gefecht.css" />
+</head>
+<body>
+  <canvas id="leinwand"></canvas>
+  <div id="hud">
+    <!-- Steuer-Station wie im Freiflug (src/hud.js liest diese ids) -->
+    <div id="station">
+      <div class="kopf">STEUER · BT-12 BOLLWERK</div>
+      <div class="zeile"><div id="hebel"><div id="hebel-null"></div><div id="hebel-balken"></div></div>
+        <div class="werte">
+          <div class="gross"><span id="fahrt">0</span><small>m/s</small></div>
+          <div id="hebel-wert">0 %</div>
+          <div id="daempfer">DÄMPFER EIN</div>
+          <div id="nachbrenner">NACHBRENNER</div>
+          <div id="drift"></div>
+          <div id="rumpf">RUMPF 100 %</div>
+        </div>
+      </div>
+    </div>
+    <!-- Gefecht (Runde 14): Lage + Flak-Bedienung -->
+    <div id="gefecht">
+      <div class="kopf">GEFECHT · NAHBEREICHSABWEHR</div>
+      <div id="g-alarm"></div>
+      <div class="reihe"><span>Welle</span><b id="g-welle">–</b></div>
+      <div class="reihe"><span>Angreifer im Anflug</span><b id="g-angreifer">0</b></div>
+      <div class="reihe"><span>Abschüsse</span><b id="g-abschuesse">0</b></div>
+      <div class="reihe"><span>Treffer am Rumpf</span><b id="g-treffer">0</b></div>
+      <div class="reihe"><span>Flak</span><b id="g-flak">Sperrfeuer · frei</b></div>
+      <div class="reihe klein"><span>Bildzeit</span><b id="g-bildzeit">–</b></div>
+    </div>
+    <div id="hilfe">
+      <b>W</b>/<b>S</b> Schubhebel &nbsp; <b>X</b> Hebel 0 &nbsp; <b>Umschalt</b> Nachbrenner &nbsp; <b>T</b> Trägheitsdämpfer<br>
+      <b>A</b>/<b>D</b> gieren &nbsp; <b>↑</b>/<b>↓</b> Nase &nbsp; <b>Q</b>/<b>E</b> rollen &nbsp; <b>←</b>/<b>→</b> seitlich &nbsp; <b>R</b>/<b>F</b> hoch/runter<br>
+      <b>Leertaste</b> Flak frei / halt &nbsp; <b>1</b> Sperrfeuer &nbsp; <b>2</b> Zielfeuer &nbsp; <b>L</b> Leuchtspur dauerhaft<br>
+      <b>C</b> Kamera &nbsp; <b>Maus ziehen</b> umsehen, <b>Rad</b> Zoom &nbsp; <b>N</b> Neustart &nbsp; <b>H</b> Hilfe &nbsp; <b>Esc</b> Menü
+    </div>
+    <div id="meldung"></div>
+  </div>
+  <div id="laden">Mache das Bollwerk gefechtsklar …</div>
+  <script type="module" src="/src/gefecht/gefecht.js"></script>
+  <script type="module" src="/src/menue/zurueck.js"></script>
+</body>
+</html>
