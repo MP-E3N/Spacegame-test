@@ -160,6 +160,9 @@ const netz = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.castSha
  */
 export function turm(gruppe, mats, t) {
   const s = t.s, P = TURM, h = t.sockel;
+  // R14: kleine Türme (PDC, s ≤ 0,7) werfen mit Rohren und Wiege keinen Schatten. WARUM: jedes Netz kostet einen
+  // zweiten Draw-Call im Schattendurchgang (+10 PDC = +100 Draw-Calls); 0,2-m-Rohrschatten sieht man kaum.
+  const schatten = s > 0.7;
   const g = new THREE.Group(); g.name = 'turm' + t.id;
   // Sockel (fest). WARUM Schürze: auf schrägem Rumpf bleibt unter dem Lagerring sonst ein Spalt (Spaltmaß-Test).
   const fest = [nur(new THREE.CylinderGeometry(P.ringR * s, P.fussR * s, P.ringH * s, 20).translate(0, h + P.ringH * s / 2, 0))];
@@ -177,11 +180,12 @@ export function turm(gruppe, mats, t) {
   for (const m of t.muendungen) {
     mantel.push(rohrZ(P.mantelR * s, P.mantelL * s, m.x, 0, P.mantelZ * s, 8));
     const r = netz(boxUv(rohrZ(P.rohrR * s, P.rohrL * s, m.x, 0, P.rohrZ * s, 8)), mats.metall, 'rohr' + rohre.length);
+    r.castShadow = schatten;
     wiege.add(r); rohre.push(r);
     const o = new THREE.Object3D(); o.name = 'muendung' + muendungen.length; o.position.set(m.x, m.y, m.z);
     wiege.add(o); muendungen.push(o);
   }
-  wiege.add(netz(boxUv(mergeGeometries(mantel)), mats.metall, 'wiege'));
+  const w = netz(boxUv(mergeGeometries(mantel)), mats.metall, 'wiege'); w.castShadow = schatten; wiege.add(w);
 
   g.position.set(t.x, t.y, t.z);
   if (!t.oben) g.rotation.z = Math.PI;
