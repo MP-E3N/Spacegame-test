@@ -33,4 +33,5 @@
 #meldungen .m[data-nr] { cursor: pointer; }
 #meldungen .m[data-nr]:hover { background: rgba(224, 160, 64, 0.1); }
 
-#hilfe.werft-hilfe { top: auto; bottom: 16px; left: 50%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
+/* WARUM begrenzt: zwischen den Tafeln bleiben, nicht unter den Menü-Knopf rechts unten laufen */
+#hilfe.werft-hilfe { top: auto; bottom: 16px; left: 260px; right: 300px; text-align: center; font-size: 11px; line-height: 1.8; }

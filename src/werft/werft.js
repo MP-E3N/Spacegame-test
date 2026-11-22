@@ -10,10 +10,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { erstelleRenderer } from '../grafik/renderer.js';
 import { materialien } from '../grafik/schiff/bauteile.js';
-import { schiffNetz, modulGeometrie } from '../grafik/schiff/module.js';
+import { schiffNetz, modulGeometrie, lageMatrix } from '../grafik/schiff/module.js';
 import { MODULE, KATALOG } from '../sim/werft/module.js';
 import { BEISPIEL } from '../sim/werft/beispiel.js';
-import { baue, andockLage, kandidaten, loesche, naechsteNr, wende, migriere } from '../sim/werft/zusammenbau.js';
+import { baue, andockLage, kandidaten, loesche, naechsteNr, wende, migriere, erlaubteDreh } from '../sim/werft/zusammenbau.js';
 
 const $ = (id) => document.getElementById(id);
 const ZWISCHEN = 'schwarmfront-werft-entwurf';
@@ -56,10 +56,6 @@ function kopie(x) { return JSON.parse(JSON.stringify(x)); }
 function ladeZwischenstand() {
   try { const e = JSON.parse(localStorage.getItem(ZWISCHEN)); return e && Array.isArray(e.teile) ? e : null; } catch { return null; }
 }
-const lageMatrix = (lage, ziel = new THREE.Matrix4()) => {
-  const [a, b, c] = lage.m, t = lage.t;
-  return ziel.set(a[0], a[1], a[2], t[0], b[0], b[1], b[2], t[1], c[0], c[1], c[2], t[2], 0, 0, 0, 1);
-};
 
 // ---------------- Ändern ----------------
 function aendere(neu, { merken = true } = {}) {
@@ -216,8 +212,11 @@ function waehleModul(id) {
 function dreheAuswahl() {
   const t = entwurf.teile.find((x) => x.nr === auswahl);
   if (!t?.an) return;
-  const p = KATALOG[t.modul]?.andock.find((a) => a.id === t.punkt);
-  const erlaubt = p?.dreh ?? [0];
+  const eltern = entwurf.teile.find((x) => x.nr === t.an.nr);
+  const pK = KATALOG[t.modul]?.andock.find((a) => a.id === t.punkt);
+  const pE = KATALOG[eltern?.modul]?.andock.find((a) => a.id === t.an.punkt);
+  const erlaubt = pK && pE ? erlaubteDreh(pE, pK) : [0];
+  if (erlaubt.length < 2) { zeigeMeldungKurz('Dieses Teil lässt sich hier nicht drehen'); return; }
   const i = erlaubt.indexOf(t.dreh ?? 0);
   aendere({ ...entwurf, teile: entwurf.teile.map((x) => x.nr === auswahl ? { ...x, dreh: erlaubt[(i + 1) % erlaubt.length] } : x) });
 }
