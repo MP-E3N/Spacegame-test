@@ -6,15 +6,21 @@
 //      Ring-Schluss, ungeordnete Liste, Gleichlauf, tief eingefrorene Eingaben.
 //   4) loesche, naechsteNr, kandidaten.
 //   5) Datei-Ablage (server/ablage.js): Handler mit nachgebautem req/res in einem Temp-Ordner.
+//   6) Echter Katalog (module.js) + BEISPIEL: Form, Nähte, Gegenstücke, Beispielschiff, Gegenproben, alle Kandidaten,
+//      Draw-Calls von schiffNetz().
 //   Jede Gegenprobe (Zeile „Gegenprobe …“) füttert die Prüfung mit absichtlich falschen Daten und MUSS anschlagen.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
-// REGEL: Test-Katalog steht hier im Test (unabhängig vom echten Katalog); Teil 2 (echter KATALOG + BEISPIEL) folgt.
+// REGEL: 1–4 mit eigenem Test-Katalog (unabhängig vom echten Katalog), 6 gegen den echten.
+import * as THREE from 'three';
 import { Readable } from 'node:stream';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LAGEN, EINHEIT, andockLage, baue, kandidaten, loesche, naechsteNr, wende, dreheV } from '../src/sim/werft/zusammenbau.js';
+import { LAGEN, EINHEIT, andockLage, baue, kandidaten, loesche, naechsteNr, wende, dreheV, erlaubteDreh } from '../src/sim/werft/zusammenbau.js';
 import { ablage } from '../server/ablage.js';
+import { MODULE as KMODULE, KATALOG, NORM } from '../src/sim/werft/module.js';
+import { BEISPIEL } from '../src/sim/werft/beispiel.js';
+import { schiffNetz } from '../src/grafik/schiff/module.js';
 
 const zeilen = [];
 let harte = 0;
@@ -357,6 +363,121 @@ async function rufe(handler, method, url, stuecke = []) {
   } finally {
     await rm(wurzel, { recursive: true, force: true });
   }
+}
+
+// ---------- 6) Echter Katalog + BEISPIEL ----------
+const istAchse = (v) => Array.isArray(v) && v.length === 3 && v.filter((x) => x === 0).length === 2 && v.some((x) => Math.abs(x) === 1);
+{
+  // Form
+  const form = [], ids = KMODULE.map((m) => m.id);
+  if (new Set(ids).size !== ids.length) form.push('ids doppelt');
+  if (Object.keys(KATALOG).length !== ids.length || ids.some((id) => KATALOG[id]?.id !== id)) form.push('KATALOG ≠ MODULE');
+  let punkte = 0;
+  for (const m of KMODULE) {
+    const pids = m.andock.map((p) => p.id);
+    if (new Set(pids).size !== pids.length) form.push(`${m.id}: Punkt-ids doppelt`);
+    for (const p of m.andock) {
+      punkte++;
+      const wo = `${m.id}.${p.id}`;
+      if (!istAchse(p.n) || !istAchse(p.u) || p.n.reduce((s, x, i) => s + x * p.u[i], 0) !== 0) form.push(`${wo}: n/u`);
+      if (!p.p.every((v) => Number.isFinite(v) && Number.isInteger(v * 2))) form.push(`${wo}: Raster ${p.p}`);
+      if (!['S', 'M', 'L'].includes(p.groesse) || !['rumpf', 'anbau', 'turm'].includes(p.art)) form.push(`${wo}: Größe/Art`);
+      if (p.stecker && p.art === 'rumpf') form.push(`${wo}: Stecker an Rumpffläche`);
+      if (!Array.isArray(p.dreh) || !p.dreh.length || !p.dreh.every((d) => [0, 1, 2, 3].includes(d))) form.push(`${wo}: dreh`);
+    }
+    if (!m.quader?.length) form.push(`${m.id}: keine Quader`);
+    for (const q of m.quader ?? []) if (![0, 1, 2].every((i) => Number.isFinite(q.min[i]) && Number.isFinite(q.max[i]) && q.min[i] < q.max[i])) form.push(`${m.id}: Quader ${JSON.stringify(q)}`);
+    for (const k of m.kugeln ?? []) if (![k.x, k.y, k.z, k.r].every(Number.isFinite) || !(k.r > 0)) form.push(`${m.id}: Kugel`);
+    if (m.art === 'turm' && (m.andock.filter((p) => p.stecker).length !== 1)) form.push(`${m.id}: Stecker ≠ 1`);
+  }
+  zeile(`Katalog-Form (${KMODULE.length} Module, ${punkte} Punkte): ids, n/u, Raster, Quader, Kugeln, Stecker`, '0 Fehler', form.length ? form.join(' | ') : 0, form.length === 0);
+  const ohneKugel = KMODULE.filter((m) => !(m.kugeln ?? []).length).map((m) => m.id);
+  zeile('Katalog: Module ohne Kollisionskugel', 'Info', ohneKugel.join(', ') || '–', true, false);
+
+  // Gegenstücke: Rumpf = gleiche Größe irgendwo sonst; sonst Buchse braucht Stecker gleicher Größe/Art und umgekehrt
+  const sorten = new Map();
+  for (const m of KMODULE) for (const p of m.andock) {
+    const k = `${p.groesse}/${p.art}/${p.art === 'rumpf' ? '–' : p.stecker ? 'Stecker' : 'Buchse'}`;
+    (sorten.get(k) ?? sorten.set(k, new Set()).get(k)).add(m.id);
+  }
+  const ohne = [];
+  for (const [k, mods] of sorten) {
+    const [g, a, r] = k.split('/');
+    const gegen = r === '–' ? k : `${g}/${a}/${r === 'Stecker' ? 'Buchse' : 'Stecker'}`;
+    if (!sorten.has(gegen) || (r === '–' && mods.size < 2 && KMODULE.find((m) => mods.has(m.id)).andock.filter((p) => p.groesse === g && p.art === a).length < 2)) ohne.push(k);
+  }
+  zeile('Katalog: jede Größe/Art/Buchse-Stecker hat ein Gegenstück', [...sorten.keys()].sort().join(' '), ohne.length ? 'ohne: ' + ohne.join(', ') : 0, ohne.length === 0);
+
+  // Nähte: Rumpffläche liegt in x = y = 0 und ein Loft endet dort genau im NORM-Querschnitt; kein Quader ragt über die Ebene
+  const naht = [];
+  for (const m of KMODULE) for (const p of m.andock.filter((q) => q.art === 'rumpf')) {
+    const N = NORM[p.groesse], z = p.p[2];
+    const ok = p.p[0] === 0 && p.p[1] === 0 && p.n[2] !== 0 && (m.teile ?? []).some((t) => {
+      const q = t.ab[0].z === z ? t.ab[0] : t.ab[t.ab.length - 1].z === z ? t.ab[t.ab.length - 1] : null;
+      return q && q.w === N.w && q.h === N.h && (q.x ?? 0) === 0 && (q.y ?? 0) === 0 && t.fase === N.fase;
+    });
+    if (!ok) naht.push(`${m.id}.${p.id}`);
+    for (const q of m.quader) if ((p.n[2] > 0 ? q.max[2] - z : z - q.min[2]) > 1e-9) naht.push(`${m.id}.${p.id}: Quader über Ebene`);
+  }
+  zeile('Nähte: Rumpfflächen = NORM-Querschnitt, kein Quader über der Ebene', '0', naht.length ? naht.join(', ') : 0, naht.length === 0);
+  // Gegenprobe Naht: Querschnitt eines Endes um 0,5 m verbreitert → muss auffallen
+  {
+    const m = kopie(KATALOG.rumpf_m_kurz), p = m.andock.find((q) => q.id === 'vorn'), t = m.teile.find((x) => x.ab.some((q) => q.z === p.p[2]));
+    t.ab.find((q) => q.z === p.p[2]).w += 0.5;
+    const N = NORM[p.groesse], ok = m.teile.some((x) => { const q = x.ab.find((a) => a.z === p.p[2]); return q && q.w === N.w && q.h === N.h; });
+    zeile('Gegenprobe Naht: Querschnitt +0,5 m breit', 'rot', ok ? 'grün' : 'rot', !ok);
+  }
+
+  // BEISPIEL
+  const b = baue(BEISPIEL, KATALOG), b2 = baue(tiefFrieren(kopie(BEISPIEL)), KATALOG);
+  zeile('BEISPIEL: Teile | Meldungen | flugfähig', '25 | keine | ja', `${b.teile.length} | ${schluessel(b.meldungen) || 'keine'} | ${b.flugfaehig ? 'ja' : 'nein'}`,
+    b.teile.length === 25 && BEISPIEL.teile.length === 25 && b.meldungen.length === 0 && b.flugfaehig);
+  zeile('BEISPIEL: Gleichlauf (zweimal gleich, eingefroren)', 'gleich', JSON.stringify(b) === JSON.stringify(b2) ? 'gleich' : 'ABWEICHUNG', JSON.stringify(b) === JSON.stringify(b2));
+  // WARUM über die Anzahl: der Ring schließt zwischen Hangar und seinem eigenen Elternteil (gleiches Paar wie die Baumkante)
+  const baumKanten = BEISPIEL.teile.filter((t) => t.an).length, ringe = b.verbunden.length - baumKanten;
+  const hintenFrei = b.freiePunkte.filter((p) => p.nr === 5 && /_hinten$/.test(p.punkt) && p.art === 'anbau').length;
+  zeile('BEISPIEL: Ring-Schlüsse (Hangar-Innenpunkte) | Maße L×B×H m', '2, 5.bb/sb_hinten zu', `${ringe}, frei ${hintenFrei} | ${b.laenge.toFixed(1)} × ${b.breite.toFixed(1)} × ${b.hoehe.toFixed(1)}`, ringe === 2 && hintenFrei === 0);
+
+  // Gegenproben am Beispiel
+  const ab = (f) => { const e = kopie(BEISPIEL); f(e.teile); return baue(e, KATALOG); };
+  const g1 = ab((t) => { t.find((x) => x.nr === 16).dreh = 0; });
+  const g2 = ab((t) => { t.find((x) => x.nr === 7).dreh = 2; });
+  const g3 = ab((t) => { t.push({ nr: 25, modul: 'turm_flak', an: { nr: 3, punkt: 'bb' }, punkt: 'fuss', dreh: 0 }); });
+  const hat = (bb, code, nr) => bb.meldungen.some((m) => m.code === code && m.nr === nr);
+  zeile('Gegenprobe: Kommando-Turm (16) dreh 0 → ueberschneidung', 'ueberschneidung:16', schluessel(g1.meldungen), hat(g1, 'ueberschneidung', 16));
+  zeile('Gegenprobe: Hangar (7) dreh 2 → dreh_verboten', 'dreh_verboten:7', schluessel(g2.meldungen), hat(g2, 'dreh_verboten', 7));
+  zeile('Gegenprobe: Turm auf Rumpf-Seitenpunkt (anbau) → passt_nicht', 'passt_nicht:25', schluessel(g3.meldungen), hat(g3, 'passt_nicht', 25));
+
+  // Jedes Modul als Wurzel + an jedem passenden freien Punkt des Beispiels in jeder erlaubten Drehung
+  const absturz2 = [], schief2 = [], unerlaubt = [];
+  let wurzelOk = 0, versuche = 0, mitUeber = 0;
+  for (const m of KMODULE) {
+    try { baue({ version: 1, teile: [{ nr: 0, modul: m.id }] }, KATALOG); wurzelOk++; } catch (f) { absturz2.push(`${m.id} als Wurzel: ${f.message}`); }
+    for (const c of kandidaten(b, KATALOG, m.id)) {
+      const eltern = b.teile.find((t) => t.nr === c.an.nr), pE = KATALOG[eltern.modul].andock.find((p) => p.id === c.an.punkt), pK = m.andock.find((p) => p.id === c.punkt);
+      if (JSON.stringify(c.dreh) !== JSON.stringify(erlaubteDreh(pE, pK))) unerlaubt.push(`${m.id}@${c.an.nr}.${c.an.punkt}: dreh`);
+      for (const d of c.dreh) {
+        versuche++;
+        let r;
+        try { r = baue({ ...kopie(BEISPIEL), teile: [...kopie(BEISPIEL.teile), { nr: 25, modul: m.id, an: c.an, punkt: c.punkt, dreh: d }] }, KATALOG); }
+        catch (f) { absturz2.push(`${m.id}@${c.an.nr}.${c.an.punkt} d${d}: ${f.message}`); continue; }
+        const neu = r.teile.find((t) => t.nr === 25);
+        if (!neu || abst(wende(neu.lage, pK.p), c.frei.p) >= 1e-3 || abst(dreheV(neu.lage.m, pK.n), c.frei.n.map((x) => -x)) !== 0) schief2.push(`${m.id}@${c.an.nr}.${c.an.punkt} d${d}`);
+        const andere = r.meldungen.filter((x) => x.stufe === 'fehler' && x.code !== 'ueberschneidung');
+        if (andere.length) unerlaubt.push(`${m.id}@${c.an.nr}.${c.an.punkt} d${d}: ${schluessel(andere)}`);
+        if (r.meldungen.some((x) => x.code === 'ueberschneidung')) mitUeber++;
+      }
+    }
+  }
+  zeile(`Alle Module als Wurzel + ${versuche} Kandidaten (Modul × Punkt × dreh): kein Absturz`, `0 (Wurzel ${KMODULE.length})`, absturz2.length ? absturz2.slice(0, 3).join(' | ') : `0 (Wurzel ${wurzelOk})`, absturz2.length === 0 && wurzelOk === KMODULE.length);
+  zeile('Kandidaten: Andockpunkte decken sich, n entgegen', '0 schief', schief2.length ? schief2.slice(0, 3).join(', ') : 0, schief2.length === 0);
+  zeile('Kandidaten: keine Fehler außer Überschneidung, dreh = erlaubteDreh', '0', unerlaubt.length ? unerlaubt.slice(0, 3).join(' | ') + ` (${unerlaubt.length})` : 0, unerlaubt.length === 0);
+  zeile('Kandidaten mit Überschneidung (nur Zahl)', 'Info', `${mitUeber} von ${versuche}`, true, false);
+
+  // Draw-Calls (three läuft in Node; Materialien als einfache Platzhalter, materialien() bräuchte Canvas)
+  const mats = new Proxy({}, { get: (z, k) => (z[k] ??= new THREE.MeshStandardMaterial()) });
+  const gr = schiffNetz(b.teile, mats);
+  zeile('BEISPIEL: Draw-Calls schiffNetz (inkl. Schatten)', '≤ 60', `${gr.userData.drawCalls} (${gr.userData.netze} Netze, ${Math.round(gr.userData.dreiecke)} Dreiecke)`, gr.userData.drawCalls <= 60);
 }
 
 console.table(zeilen);
