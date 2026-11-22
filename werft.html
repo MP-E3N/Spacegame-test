@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schwarmfront · Werft</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="/src/menue/menue.css" />
+  <link rel="stylesheet" href="/src/werft/werft.css" />
+</head>
+<body>
+  <!-- Werft (Runde 15, Nutzer: „Shipbuilding-Editor … Baukasten mit Andockpunkten“). Module links wählen, an einem
+       leuchtenden Andockpunkt am Schiff ansetzen (Vorschau = Geist), klicken. Code: src/werft/werft.js -->
+  <canvas id="leinwand"></canvas>
+  <div id="hud">
+    <div id="palette" class="tafel">
+      <div class="kopf">WERFT · MODULE</div>
+      <div id="modulliste"></div>
+    </div>
+    <div id="entwurf" class="tafel">
+      <div class="kopf">ENTWURF</div>
+      <label>Name <input id="e-name" maxlength="40" spellcheck="false" /></label>
+      <label>Kennung <input id="e-kennung" maxlength="8" spellcheck="false" /></label>
+      <div class="knoepfe">
+        <button id="k-speichern" title="Strg+S">Speichern</button>
+        <select id="k-laden"><option value="">Laden …</option></select>
+        <button id="k-neu">Neu</button>
+        <button id="k-beispiel">Beispiel</button>
+      </div>
+      <div id="e-datei" class="klein"></div>
+      <div class="kopf zwischen">WERTE</div>
+      <div id="werte"></div>
+      <div id="status"></div>
+      <div id="meldungen"></div>
+    </div>
+    <div id="hilfe" class="werft-hilfe">
+      <b>Klick</b> Modul links wählen, dann leuchtenden Punkt am Schiff anklicken &nbsp; <b>R</b> drehen &nbsp;
+      <b>T</b> andere Seite des Moduls &nbsp; <b>Rechtsklick</b> / <b>Esc</b> Auswahl ab<br>
+      <b>Klick</b> aufs Schiff = Teil wählen &nbsp; <b>Entf</b> löschen (mit Anbauten) &nbsp; <b>R</b> Teil drehen &nbsp;
+      <b>Strg+Z</b>/<b>Strg+Y</b> rückgängig/wieder &nbsp; <b>P</b> Andockpunkte &nbsp; <b>F</b> Kamera aufs Schiff &nbsp; <b>H</b> Hilfe
+    </div>
+    <div id="meldung"></div>
+  </div>
+  <div id="laden">Werft wird hergerichtet …</div>
+  <script type="module" src="/src/werft/werft.js"></script>
+  <script type="module" src="/src/menue/zurueck.js"></script>
+</body>
+</html>

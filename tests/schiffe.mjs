@@ -2,7 +2,7 @@
 //   1) Spaltmaß jedes Turms: Fußpunkt liegt bündig auf dem ECHTEN Loft (Strahltest auf die Grafik-Geometrie,
 //      feiner als fusspunkt() abtastet) und die Schürze reicht bis zum tiefsten Punkt der Standfläche.
 //   2) Feld == alter Erzeuger aus grafik/asteroiden.js (Runde 4, hier eingefroren), Abweichung < 1e-9.
-//   3) src/sim/** importiert nichts aus grafik/; src/sim/schiffe/ und feld.js auch kein three (reine Daten).
+//   3) src/sim/** importiert nichts aus grafik/; src/sim/schiffe/, werft/ und feld.js auch kein three (reine Daten).
 //   4) Kugel-Deckung des Rumpfs (Rumpfpunkte höchstens 1,5 m außerhalb einer Kugel) — WARN unter 85 %; Überstand als Info.
 //   5) Rumpftreffer (R14): Strahlen innerhalb Grenzen + rumpfSperre() treffen die echten Lofts nicht.
 //   6) Abdeckung (R14, Bollwerk): 2000 Richtungen — jede von ≥ 1 Flak-Turm erreichbar; Ziel ≥ 80 % von ≥ 2.
@@ -97,14 +97,15 @@ function alterErzeuger() { // Kopie aus grafik/asteroiden.js (Stand Runde 4) —
         if (code.includes(verboten)) schlecht.push(`${n}: ${verboten}`);
       }
       for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g)) {
-        // WARUM three nur in schiffe/ + feld.js verboten: sim/schiff.js (Flugsystem) nutzt Vector3/Quaternion, das ist erlaubt
-        const reinDaten = p.includes('schiffe') || n === 'feld.js';
+        // WARUM three nur in schiffe/, werft/ (R15) + feld.js verboten: sim/schiff.js (Flugsystem) nutzt Vector3/Quaternion,
+        // das ist erlaubt. Ordnernamen mit Trennern prüfen — sonst hinge das Ergebnis am Pfad des Projektordners.
+        const reinDaten = /[\\/](schiffe|werft)[\\/]/.test(p) || n === 'feld.js';
         if (m[1].includes('grafik') || (reinDaten && (m[1] === 'three' || m[1].startsWith('three/')))) schlecht.push(`${n}: ${m[1]}`);
       }
     }
   };
   lauf(new URL('../src/sim', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-  zeile('src/sim ohne grafik-Importe, Math.random, DOM (schiffe/, feld.js ohne three)', '0', schlecht.length ? schlecht.join(', ') : '0', schlecht.length === 0);
+  zeile('src/sim ohne grafik-Importe, Math.random, DOM (schiffe/, werft/, feld.js ohne three)', '0', schlecht.length ? schlecht.join(', ') : '0', schlecht.length === 0);
 }
 
 // ---------- 4) Kugel-Deckung ----------

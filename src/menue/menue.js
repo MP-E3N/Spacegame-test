@@ -1,4 +1,4 @@
-// ZWECK: Startmenü (Runde 14) — Auswahl Gefechtstest / Flak-Labor / Freiflug, Tastatur + Maus, ruhiges Sternenfeld.
+// ZWECK: Startmenü (Runde 14) — Auswahl Gefechtstest / Flak-Labor / Freiflug / Werft (R15), Tastatur + Maus, ruhiges Sternenfeld.
 // LIEFERT: nichts (Seitenskript). Die Unterseiten binden src/menue/zurueck.js ein (Esc = zurück zum Menü).
 // REGEL: Kein three — das Menü soll sofort da sein. Sterne mit eigenem kleinen Zufall (Optik, keine Sim).
 

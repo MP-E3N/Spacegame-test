@@ -1,0 +1,36 @@
+/* ZWECK: Werft-Seite (Runde 15) — Modul-Palette links, Entwurf/Werte/Meldungen rechts, Hilfe unten. Stil wie die Konsolen. */
+.tafel { position: absolute; top: 16px; background: var(--grund); border: 1px solid var(--linie); padding: 10px 12px; pointer-events: auto;
+  font-size: 12px; color: #c9a060; max-height: calc(100vh - 120px); overflow-y: auto; }
+.tafel .kopf { font-size: 11px; letter-spacing: 0.15em; color: var(--bern-matt); border-bottom: 1px solid var(--linie); padding-bottom: 6px; margin-bottom: 8px; }
+.tafel .kopf.zwischen { margin-top: 12px; }
+.tafel .klein { font-size: 11px; color: var(--bern-matt); min-height: 1.2em; margin-top: 4px; }
+
+#palette { left: 16px; width: 230px; }
+#palette .gruppe { font-size: 10px; letter-spacing: 0.15em; color: var(--bern-matt); margin: 10px 0 4px; }
+#palette .modul { display: flex; justify-content: space-between; gap: 8px; padding: 4px 6px; border: 1px solid transparent; cursor: pointer; }
+#palette .modul:hover { border-color: var(--linie); }
+#palette .modul.aktiv { border-color: var(--bern); color: #f2c070; background: rgba(224, 160, 64, 0.12); }
+#palette .modul.passt-nicht { opacity: 0.4; }
+#palette .modul small { color: var(--bern-matt); white-space: nowrap; }
+#palette .groesse { display: inline-block; min-width: 1.4em; text-align: center; border: 1px solid var(--linie); margin-right: 6px; font-size: 10px; }
+
+#entwurf { right: 16px; width: 270px; }
+#entwurf label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+#entwurf input, #entwurf select, #entwurf button { font: inherit; color: #f2c070; background: rgba(0, 0, 0, 0.5); border: 1px solid var(--linie); padding: 3px 6px; }
+#entwurf input { width: 150px; }
+#entwurf button { cursor: pointer; }
+#entwurf button:hover, #entwurf select:hover { border-color: var(--bern); }
+.knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.knoepfe select { max-width: 110px; }
+#werte .reihe { display: flex; justify-content: space-between; line-height: 1.6; }
+#werte .reihe b { color: #f2c070; font-weight: normal; }
+#status { margin: 10px 0 6px; padding: 4px 8px; text-align: center; letter-spacing: 0.15em; border: 1px solid var(--linie); }
+#status.gut { color: #9ad27a; border-color: rgba(154, 210, 122, 0.5); }
+#status.schlecht { color: #e06040; border-color: rgba(224, 96, 64, 0.6); }
+#meldungen .m { padding: 3px 6px; margin-bottom: 3px; border-left: 3px solid; cursor: default; line-height: 1.35; }
+#meldungen .m.fehler { border-color: #e06040; color: #e8907a; }
+#meldungen .m.warnung { border-color: var(--bern); color: #c9a060; }
+#meldungen .m[data-nr] { cursor: pointer; }
+#meldungen .m[data-nr]:hover { background: rgba(224, 160, 64, 0.1); }
+
+#hilfe.werft-hilfe { top: auto; bottom: 16px; left: 50%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
