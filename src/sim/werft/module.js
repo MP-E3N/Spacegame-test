@@ -14,7 +14,7 @@
 //   - quader = Hüllquader jedes Lofts/jeder Kiste/jeder Düse (Überschneidung, E5). Grafik darf höchstens 0,5 m darüber
 //     hinausragen (dünne Luken, Leisten). teile[].mat und kisten[].mat sind Grafik-Hinweise (Material-Eimer).
 //   - Spiegelpaare _bb/_sb (E4) entstehen aus gespiegelten Daten (x → −x), nie per Spiegelmatrix.
-import { fusspunkt } from '../schiffe/rumpf.js';
+import { fusspunkt, masse } from '../schiffe/rumpf.js';
 import { TURM, turmDaten } from '../schiffe/turm.js';
 
 export const NORM = { M: { w: 10, h: 8, fase: 0.3 }, L: { w: 18, h: 13, fase: 0.3 } };
@@ -259,6 +259,33 @@ const huelle = (t) => {
   return { min, max };
 };
 
+/**
+ * Hüllquader eines Lofts in Scheiben: gleichbleibende Abschnitte am Stück, veränderliche (Bug, Übergang, Verjüngung)
+ * in Scheiben ≤ SCHEIBE m. WARUM: ein Quader über das ganze Loft nimmt den größten Querschnitt für die ganze Länge —
+ * am Übergang meldete das einen Turm unter dem schmalen M-Ende als Überschneidung (R15). Querschnitte sind linear
+ * zwischen den Stützstellen, also liegt das Maximum einer Scheibe an ihren Enden.
+ */
+const SCHEIBE = 5;
+const gleich = (a, b) => a.w === b.w && a.h === b.h && (a.x ?? 0) === (b.x ?? 0) && (a.y ?? 0) === (b.y ?? 0);
+function scheiben(t) {
+  const liste = [];
+  for (let i = 0; i < t.ab.length - 1; i++) {
+    const a = t.ab[i], b = t.ab[i + 1], n = gleich(a, b) ? 1 : Math.ceil((b.z - a.z) / SCHEIBE - 1e-9);
+    for (let k = 0; k < n; k++) {
+      const za = a.z + (b.z - a.z) * k / n, zb = a.z + (b.z - a.z) * (k + 1) / n;
+      liste.push(huelle({ ...t, ab: [masse(t.ab, za), masse(t.ab, zb)].map((q, j) => ({ ...q, z: j ? zb : za })) }));
+    }
+  }
+  // gleichbleibende Nachbarscheiben zusammenlegen (weniger Quader)
+  const raus = [];
+  for (const q of liste) {
+    const v = raus[raus.length - 1];
+    if (v && v.max[2] === q.min[2] && [0, 1].every((k) => v.min[k] === q.min[k] && v.max[k] === q.max[k])) v.max[2] = q.max[2];
+    else raus.push(q);
+  }
+  return raus;
+}
+
 /** Lafette → Platte (Loft, an teile angehängt), Turmpunkt und Sperrkreis für aufbauten(). */
 function lafette(rumpf, l) {
   const r = LAFETTE * Math.SQRT2; // WARUM Umkreis: die Platte ist quadratisch, ihre Ecken sollen nicht schweben
@@ -295,7 +322,7 @@ function fertig(r) {
     teile.push(e.platte); punkte.push(e.punkt); (l.oben ? sperren.oben : sperren.unten).push(e.sperre);
   }
   const quader = r.quader ? r.quader.slice() : [];
-  for (const t of teile) quader.push(huelle(t));
+  for (const t of teile) quader.push(...scheiben(t));
   for (const k of r.kisten ?? []) quader.push({ min: [k.x - k.b / 2, k.y - k.h / 2, k.z - k.t / 2], max: [k.x + k.b / 2, k.y + k.h / 2, k.z + k.t / 2] });
   for (const d of r.duesen ?? []) {
     const [x, y, z] = d.p, q = d.r * 1.2;
