@@ -31,3 +31,11 @@
 - **Regel:** Übernommen wird nur der Typ (großer Träger: Panzerkopf, Hals, Startdecks an Auslegern, Triebwerksblock).
   Silhouette, Proportionen, Triebwerksanordnung, Decks, Details, Name und Beschriftung sind eigen.
   Keine Bilder/Texturen/Logos aus Vorlagen übernehmen. (Keine Rechtsberatung — im Zweifel weiter abwandeln.)
+
+## E-006 Verschweißen mit three-bvh-csg (2026-11-22, Runde 16)
+- Nutzerwunsch: eigene Formen modellieren (Körper ziehen, Trapeze ansetzen, Übergänge eckig → rund) und Teile
+  „verschweißen, damit sie zu einem Teil werden“. Nutzer hat der neuen Bibliothek ausdrücklich zugestimmt.
+- **Gewählt:** `three-bvh-csg` 0.0.18 + `three-mesh-bvh` 0.9.18 (beide MIT, Peer `three` ≥ 0.179) für Boolesche
+  Vereinigung/Differenz (Plus-/Minus-Körper). Nur in der Grafik (`src/grafik/form/*`), nie in `src/sim/`.
+- **Warum:** innen liegende Flächen verschwinden, Ausschneiden (Schächte, Luken) wird möglich; eigene CSG wäre Wochen.
+- **Alternative:** nur Gruppieren ohne Bibliothek (sichtbar ähnlich, kein Ausschneiden) — vom Nutzer verworfen.
