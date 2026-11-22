@@ -25,3 +25,7 @@
   Messung: Nähte 0, S-Spalt 0,000 m, 12 Draw-Calls für 25 Module, ≤ 6,4 ms je Modul, Bollwerk/Ambos bitgleich.
   Lehren: Was die Grafik zufällig anbaut, muss als Zone in den Daten stehen. Quader dünner als 2 × Schrumpf kippen um.
   „Nachbarn ausnehmen“ blendet den Turm im eigenen Elternmodul aus. Veränderliche Lofts → Quader in Scheiben ≤ 5 m.
+- 2026-11-22 Runde 16 (Form-Werkstatt) — Lofts als Dreieckssuppe → toCreasedNormals 30° → mergeVertices (harte Kanten
+  getrennt, Lage geschlossen). CSG in Sätzen nicht berührender Körper (30 Körper: 3 statt 39 Schritte, ~5× schneller).
+  Schweißzugabe 1–3 mm nach Listenplatz (id % 3 versagte bei regelmäßiger Nummerierung). Offene Kanten nur mit T-Stoß-Teilung
+  zählen. Lehre: Annahmen der Frühwarnung erst messen (Zugabe half bei deckungsgleichen Flächen, nicht bei bündigen).

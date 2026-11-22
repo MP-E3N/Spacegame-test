@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runde 15 nur lokal committet**).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15 + 16 nur lokal committet**).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
 ## Worum es geht
@@ -11,8 +11,8 @@ Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spiele
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
 
-## Stand jetzt (2026-11-22, nach Runde 15) — hier einsteigen
-**Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–4 / Pfeile + Enter / Klick; aus jeder
+## Stand jetzt (2026-11-22, nach Runde 16) — hier einsteigen
+**Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–5 / Pfeile + Enter / Klick; aus jeder
 Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
    (Steuerung wie Freiflug) und gegen Wellen von Kanonenbooten bestehen (4 → 6 → 8, Rotten zu zweit, Autokanone mit
@@ -33,6 +33,17 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
    Rechnung `src/sim/werft/zusammenbau.js` (rein), Katalog `src/sim/werft/module.js` (15 Module), Grafik
    `src/grafik/schiff/module.js` (12 Draw-Calls). Regeln E1–E9 im Protokoll `.claude/team/protokolle/2026-11-22-runde15.md`.
    Debug: `spiel.bau`, `spiel.entwurf`, `spiel.setze(modul, {nr, punkt}, punkt, dreh)`, `spiel.bildpunkt(nr)`, `spiel.ansicht([x,y,z])`.
+   R16: lädt beim Start alle Formen aus `konfig/formen/` → Palette ganz oben „Eigene Formen“.
+5. **Form-Werkstatt** (`werkstatt.html`, `src/werkstatt/werkstatt.js`, Runde 16) — Nutzer: „wirklich eigene Formen machen —
+   Rechtecke ziehen, Trapeze ansetzen, verschweißen, Übergänge eckig → rund“. Körper aus Vorlagen (Quader, Platte, Trapez,
+   Keil, Zylinder, Kegel, Rumpf eckig → rund, Rumpf-Anschluss M/L = Werft-Norm) ansetzen; Griffe W schieben / E drehen /
+   S Größe (Raster 0,5 m / 15°, Strg = frei); rechts je **Spant** (Querschnitt) Breite, Höhe, Rundung, Fase, Versatz, Lage
+   (Regler + Zahlenfeld; Haken „auf alle Spanten“). Plus/Minus (Minus schneidet aus, roter Geist), „gespiegelt“ (Kopie an
+   x = 0), Material, Andockpunkte (+), V verschweißt/Einzelteile, Strg+Z/Y, Speichern → `konfig/formen/<name>.json`,
+   „In die Werft“. Beispiele: Brückenturm, Rumpfstück rund, Triebwerksgondel.
+   Daten `src/sim/form/form.js` (rein; Regeln F1–F9 im Protokoll `…/2026-11-22-runde16.md`), Grafik `src/grafik/form/*`
+   (Loft, CSG mit **three-bvh-csg**, E-006), Beispiele `src/sim/form/beispiele.js`.
+   Debug: `spiel.form`, `spiel.info` (ms, offeneKanten), `spiel.setze(vorlage)`, `spiel.spant(feld, wert)`, `spiel.waehle(id)`.
 
 **Wichtige Sim-Module:** `src/sim/waffen/flak.js` (Granaten, Streu-Ellipsoid, Flächenschaden, Montage-Rahmen, Sperren),
 `src/sim/waffen/lafetten.js` (Prüfstand + `schiffsLafetten()`), `src/sim/ki/turmziel.js` (Sperrfeuer = Sättigungsräume mit
@@ -41,6 +52,11 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 `angreifergeschosse.js`. Regler-Tabellen (je Besitzer, eine Quelle): `STREU_REGLER`, `WAFFEN_REGLER`, `GRAFIK_REGLER`.
 
 **Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
+- **Form-Werkstatt:** Nutzer-Urteil einholen (Modellier-Gefühl). Nicht per Maus geprüft: W schieben, S Größe ziehen.
+  Ideen: Spant direkt im Bild ziehen (Griffe an den Ecken), Kantenrundung zwischen Körpern, Web Worker bei > 100 ms,
+  **Funktionen** der Formen (Turm, Triebwerk, Hangar) — vom Nutzer für „später“ genannt. Konsole: three-bvh-csg meldet
+  `BVH: "maxLeafSize" deprecated` je Schritt (harmlos). Gondel (28,5 m) passt an WS-01 nur anstelle der Panzerplatten.
+  `konfig/schiffe/Beispiel1.json` (13:32) stammt vermutlich vom Nutzer — nicht löschen.
 - **Werft:** Nutzer-Urteil einholen. Nächster Schritt wäre der **Probeflug**: gebautes Schiff im Freiflug/Gefecht fliegen
   (Flugwerte aus Masse/Schub, Kollision aus `kugeln`, Türme aus `tuerme[].lage` — Flak-Sperre `rumpfSperre` kann
   gedrehte Module noch nicht, braucht vollen Turm-Rahmen). Nicht im Bild geprüft: Neu → Kommando → Rumpf per Maus,

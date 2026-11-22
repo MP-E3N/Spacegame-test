@@ -13,3 +13,6 @@
 - 2026-11-22 Runde 15 (Werft) — Befund „Anwählen + Entf löscht nicht“ war ein Fehlklick: Screenshot 800×600, Leinwand
   1024×768. Für Klicks auf kleine Teile `spiel.bildpunkt(nr)` nutzen (CSS-Pixel) und vor/nach jedem Schritt
   `spiel.bau.teile.length` messen. Budget reichte für 2 von 5 Punkten → Speichern/Laden in eine eigene Runde legen.
+- 2026-11-22 Runde 16 (Werkstatt) — Regler ohne Namen: per left_click_drag ziehen, Werte über spiel.form prüfen. Nach
+  Zahlenfeld-Eingabe liegt der Fokus noch im Feld → vor Tastentests auf die Bühne klicken. spiel.info (csg, offeneKanten)
+  belegt einen Schnitt besser als ein Screenshot.

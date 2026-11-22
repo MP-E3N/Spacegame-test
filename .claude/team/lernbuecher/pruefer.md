@@ -34,3 +34,6 @@
   Listenreihenfolge (nur im Fall mit zwei Wurzeln sichtbar), Rumpf mit Turmpunkt auf Turmpunkt (→ Buchse/Stecker). Lehren:
   „ungeordnete Liste“ mit allen Fehlerfällen und allen Verschiebungen prüfen; Gegenproben so wählen, dass die Prüfung
   anschlagen kann; Andock-Drehungen brauchen eine Bezugsachse. 55 Zeilen, 0,4 s.
+- 2026-11-22 Runde 16 (Form-Werkstatt) — Nahtpunkte zwischen Profil-Ecken auf doppelte Punkte prüfen; Spiegelung (det −1)
+  dreht die Wicklung. Sollwerte aus der exakten Formel (Prismatoid), nicht aus dem aktuellen Verhalten (Kegel-Zeile hielt
+  +7 % Trapezfehler fest und wurde beim Beheben rot). 63 Zeilen, 1,2 s.

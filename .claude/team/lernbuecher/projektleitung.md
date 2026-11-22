@@ -45,3 +45,7 @@
   meinem Code vor dem Merge. Geometrie-Prüfregeln (Hüllquader, Nachbarn) erst am echten Katalog belastbar — drei
   Nachbesserungen. Spieltester-Befund „Muss“ war Fehlklick (Screenshot 800×600 ≠ Leinwand 1024×768) → selbst nachstellen,
   dann Rückmeldung im UI statt Fehlerjagd. Alte Worktree-Ordner r14-* löschen darf der Auto-Modus nicht → Nutzer fragen.
+- 2026-11-22 Runde 16 (Form-Werkstatt) — Nutzer wollte nach R15 „wirklich selbst modellieren“: per Rückfrage drei
+  Entscheidungen (Modellier-Art, Bibliothek, Ziel) geklärt, Bibliothek erst nach Zustimmung + E-006. Schnittstelle form.js
+  vorab selbst → paralleles Bauen ohne Warten. Regler-Bereiche nicht schätzen, selbst mit der Maus ziehen (Spieltest-Muss).
+  Ganze Runde mit SendMessage an die R15-Agenten (0 neue Aufrufe). Lange Doku-Skripte als Datei, nicht als Shell-Heredoc.
