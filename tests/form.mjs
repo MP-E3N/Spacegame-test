@@ -1,10 +1,12 @@
-// ZWECK: Prüfungen ohne Browser für die Form-Werkstatt (Runde 16, `node tests/form.mjs`), Teil 1 = Mathematik in
-//        src/sim/form/form.js; Teil 2 (Grafik: Verschweißen, wasserdicht, Zeiten) folgt.
+// ZWECK: Prüfungen ohne Browser für die Form-Werkstatt (Runde 16, `node tests/form.mjs`): Mathematik in
+//        src/sim/form/form.js und Grafik (src/grafik/form/*: Loft, Verschweißen, Werft-Anbindung).
 //   1) Profil: 32 Punkte, gegen den Uhrzeigersinn, Start rechts oben, keine Nullkanten, Kreis ±1 %, Anschluss = Werft-NORM.
 //   2) Zufallsfelder → alles endlich; normalisiere idempotent und ohne Änderung der Eingabe.
 //   3) drehMatrix gegen three (Euler 'XYZ') bis 1e-12, Vielfache von 90° exakt; huelle gegen three-Box3; volumen.
 //   4) pruefe: jeder Code; Andockpunkte einrasten (F3); formId (F4); Version (F5).
 //   5) formZuModul → baue() der Werft: Startteil, Anschluss-Form an rumpf_m_kurz (Fuge, keine Überschneidung), Gleichlauf.
+//   6) form.js rein. 7) Grafik: roher Loft je Vorlage dicht + Volumen (Prismatoid), Beispielformen verschweißt (dicht,
+//      Zeit, Volumen gegen Abtastung, gleiches Netz), Gegenproben Spiegel/Zugabe, Werft-Entwurf mit allen Beispielformen.
 //   Jede Gegenprobe (Zeile „Gegenprobe …“) füttert die Prüfung mit absichtlich falschen Daten und MUSS anschlagen.
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 import * as THREE from 'three';
@@ -16,6 +18,16 @@ import { baue, andockLage, LAGEN, EINHEIT, wende, dreheV } from '../src/sim/werf
 import { dateiname } from '../server/ablage.js';
 import { profil } from '../src/grafik/schiff/bauteile.js';
 import { zufall } from '../src/grafik/zufall.js';
+import { koerperGeometrie, koerperNetz, lageMatrix4 } from '../src/grafik/form/koerper.js';
+import { formGeometrie, offeneKanten } from '../src/grafik/form/schweissen.js';
+import { registriereForm, schiffNetz } from '../src/grafik/schiff/module.js';
+import { BEISPIEL_FORMEN } from '../src/sim/form/beispiele.js';
+import { BEISPIEL } from '../src/sim/werft/beispiel.js';
+const T_START = performance.now();
+// WARUM: three-bvh-csg ruft three-mesh-bvh mit der alten Option maxLeafSize auf → eine Warnung je CSG-Schritt (Hunderte
+// Zeilen). Nur genau diese Meldung wird gezählt statt gedruckt (Info-Zeile am Ende), alle anderen Warnungen bleiben sichtbar.
+const bvh = { warnungen: 0 }, warnAlt = console.warn;
+console.warn = (...a) => (String(a[0]).startsWith('BVH: "maxLeafSize"') ? bvh.warnungen++ : warnAlt(...a));
 
 const zeilen = [];
 let harte = 0;
@@ -63,10 +75,10 @@ function profilMass(s) {
   }
   zeile(`Profil: ${spanten.length} Spanten — 32 Punkte, gegen Uhrzeigersinn, Start rechts oben, endlich`, '0 falsch', falsch.length ? falsch.slice(0, 2).join(' | ') : 0, falsch.length === 0);
   zeile('Profil: kürzeste Kante (keine Nullkanten)', '> 0,001 m', `${kurzMin.toFixed(4)} m (${kurzWo})`, kurzMin > 1e-3);
-  // WARUM weich: F1 verspricht ≥ 6 cm, gilt aber nur für die Kanten ZWISCHEN den Ecken; innerhalb einer scharfen Ecke
-  // (Einzug 3 cm, 7 Teilstücke) sind die Kanten ~6 mm — Befund an die Projektleitung, keine Nullkante
+  // F1 (korrigiert nach Befund R16): innerhalb einer scharfen Ecke sind ~6 mm gewollt, Nullkanten verboten
+  // (Einzug 3 cm, 7 Teilstücke) — kürzeste Kante der Quader-Vorlage darum > 1 mm, nicht ≥ 5 cm
   const quader = profilMass(VORLAGEN.quader.spanten[0]).kurz;
-  zeile('Profil: kürzeste Kante ≥ 5 cm (F1, Quader-Vorlage)', '≥ 0,05 m', quader.toFixed(4), quader >= 0.05, false);
+  zeile('Profil: kürzeste Kante Quader-Vorlage (F1: ~6 mm in der Ecke, keine Nullkante)', '> 0,001 m', quader.toFixed(4), quader > 1e-3);
   const gegen = profilMass({ z: 0, b: 0.06, h: 0.06, rundung: 1 }); // ohne normalisiere: b < 0,1 → Einzug ≤ 0
   zeile('Gegenprobe Profil: b = 0,06 ohne normalisiere → Kantenprüfung rot', 'rot', gegen.kurz > 1e-3 ? 'grün' : `rot (${gegen.kurz.toExponential(1)})`, !(gegen.kurz > 1e-3));
 
@@ -241,7 +253,7 @@ const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] *
   const achsen = ns.every((p) => [p.n, p.u].every((a) => a.filter((x) => x === 0).length === 2 && a.some((x) => Math.abs(x) === 1)) && p.n.reduce((s, x, i) => s + x * p.u[i], 0) === 0 && p.p.every((x) => Number.isInteger(x * 2)));
   zeile('Andockpunkte einrasten (Raster, n/u-Achsen, u ⟂ n, Größe/Art, Stecker, dreh, id ≤ 20)', '0 Abweichungen', abw.length ? abw.join(', ') : 0, abw.length === 0 && achsen);
   const minus0 = ns[0].p.some((x) => Object.is(x, -0));
-  zeile('Andock-Raster: −0,24 → 0 (nicht −0)', '0', minus0 ? '−0 (nur Schönheit, JSON = 0)' : '0', true, false);
+  zeile('Andock-Raster: −0,24 → 0 (nicht −0)', '0', minus0 ? '−0' : '0', !minus0);
 
   // formId (F4)
   const gleich = [['A b', 'a-b', 'A_B', '  a  b  ', 'a---b'], ['Bär', 'Bär', 'BÄR'], ['', '***', '   ']];
@@ -312,11 +324,11 @@ const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] *
   const bs = baue({ version: 1, teile: [{ nr: 0, modul: 'rumpf_m_kurz' }, { nr: 1, modul: spiess.id, an: { nr: 0, punkt: 'hinten' }, punkt: 'vorn', dreh: 0 },
     { nr: 2, modul: mod.id, an: { nr: 0, punkt: 'vorn' }, punkt: 'hinten', dreh: 0 }] }, K2);
   zeile('Gegenprobe Überschneidung: Spieß-Form durch den Rumpf in Teil 2', 'ueberschneidung:2', ue(bs) || 'keine', ue(bs) === 'ueberschneidung:2');
-  // Befund an die Projektleitung (E5): ragt ein Form-Körper NUR in seinen direkten Nachbarn (über die eigene Andockebene
-  // hinaus), enthält der Quader den Fugenpunkt → ausgenommen. Katalog-Module schließt tests/werft.mjs aus („Quader über der
-  // Ebene“), für eigene Formen prüft das niemand. WARUM weich: Regel E5 erlaubt es bisher.
-  const bn = baue({ version: 1, teile: [{ nr: 0, modul: 'rumpf_m_kurz' }, { nr: 1, modul: spiess.id, an: { nr: 0, punkt: 'hinten' }, punkt: 'vorn', dreh: 0 }] }, K2);
-  zeile('Spieß-Form 20 m in den direkten Nachbarn (nur dieser) → Meldung', '≥ 1 Meldung', ue(bn) || 'keine', ue(bn) !== '', false);
+  // F9 (nach Befund R16): ragt ein Plus-Körper über die Ebene eines Rumpf-Andockpunkts, warnt pruefe (ragt_ueber_fuge) —
+  // die Werft selbst nimmt den Fugen-Quader weiter aus (E5), darum muss die Werkstatt es melden.
+  const spiessForm = { ...kopie(anschluss), name: 'Spiess', koerper: [{ ...neuerKoerper('anschluss_m', 0), spanten: [{ z: -10, b: 20, h: 16, fase: 0.3 }, { z: 30, b: 20, h: 16, fase: 0.3 }] }] };
+  const rf = pruefe(normalisiere(spiessForm)).filter((x) => x.code === 'ragt_ueber_fuge'), rfOk = pruefe(normalisiere(anschluss)).filter((x) => x.code === 'ragt_ueber_fuge');
+  zeile('Spieß-Form ragt 20 m über die Fuge → pruefe ragt_ueber_fuge | bündiger Anschluss → keine', 'ragt_ueber_fuge:0 | –', `${schluessel(rf) || 'keine'} | ${schluessel(rfOk) || '–'}`, schluessel(rf) === 'ragt_ueber_fuge:0' && rfOk.length === 0);
   // Versionsmeldung bleibt bei formZuModul nicht hängen, pruefe meldet sie
   const v2 = { ...kopie(anschluss), version: 2 };
   zeile('Gegenprobe Version 2: pruefe meldet version, Modul trotzdem baubar', 'version | gebaut', `${schluessel(pruefe(normalisiere(v2)).filter((x) => x.code === 'version')) || 'keine'} | ${formZuModul(v2).quader.length ? 'gebaut' : 'leer'}`,
@@ -331,6 +343,146 @@ const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] *
   const importe = [...text.matchAll(/(?:from\s+|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g)].map((x) => x[1]).filter((x) => x === 'three' || x.startsWith('three') || x.includes('grafik'));
   zeile('src/sim/form/form.js ohne three/grafik-Importe', '0', importe.join(', ') || 0, importe.length === 0);
 }
+
+// ---------- 7) Grafik ----------
+/** Vorzeichenbehaftetes Netzvolumen Σ det(a−o, b−o, c−o)/6 (indiziert oder nicht); geschlossen ⇔ unabhängig von o. */
+function netzVolumen(geos, o = [0, 0, 0]) {
+  let v = 0;
+  for (const g of Array.isArray(geos) ? geos : Object.values(geos)) {
+    const p = g.attributes.position.array, ix = g.index?.array, n = ix ? ix.length : p.length / 3;
+    const P = (i) => { const j = (ix ? ix[i] : i) * 3; return [p[j] - o[0], p[j + 1] - o[1], p[j + 2] - o[2]]; };
+    for (let i = 0; i < n; i += 3) {
+      const a = P(i), b = P(i + 1), c = P(i + 2);
+      v += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+  }
+  return v;
+}
+const flaeche2 = (pts) => { let a = 0; for (let i = 0; i < pts.length; i++) { const q = pts[(i + 1) % pts.length]; a += pts[i][0] * q[1] - q[0] * pts[i][1]; } return a / 2; };
+/** Exaktes Volumen eines linearen Lofts (Prismatoid je Spant-Paar: dz/6 · (A0 + 4·Amitte + A1)) — aus den Profilpunkten. */
+function prismatoid(k) {
+  let v = 0;
+  for (let i = 1; i < k.spanten.length; i++) {
+    const a = profilPunkte(k.spanten[i - 1]), b = profilPunkte(k.spanten[i]), mid = a.map((p, j) => [(p[0] + b[j][0]) / 2, (p[1] + b[j][1]) / 2]);
+    v += (k.spanten[i].z - k.spanten[i - 1].z) / 6 * (flaeche2(a) + 4 * flaeche2(mid) + flaeche2(b));
+  }
+  return v;
+}
+/** Volumen einer Form durch Abtastung (Gitter in der Hülle, Punkt-in-Körper aus den DATEN: linearer Loft, konvexe Profile). */
+function abtastVolumen(roh, n = 48) {
+  const form = normalisiere(roh); form.koerper = form.koerper.filter((k) => k.spanten.length >= 2);
+  const liste = koerperListe(form).map(({ k, lage }) => ({ k, lage, h: huelle(k, lage), prof: k.spanten.map(profilPunkte) }));
+  const innen = ({ k, lage, h, prof }, q) => {
+    if (q.some((x, i) => x < h.min[i] || x > h.max[i])) return false;
+    const s = [lage.spiegel ? -q[0] : q[0], q[1], q[2]].map((x, i) => x - lage.t[i]);
+    const p = [0, 1, 2].map((j) => lage.m[0][j] * s[0] + lage.m[1][j] * s[1] + lage.m[2][j] * s[2]); // mᵀ·s
+    const sp = k.spanten; if (p[2] < sp[0].z || p[2] > sp[sp.length - 1].z) return false;
+    let i = 1; while (i < sp.length - 1 && sp[i].z < p[2]) i++;
+    const t = (p[2] - sp[i - 1].z) / (sp[i].z - sp[i - 1].z), A = prof[i - 1], B = prof[i];
+    for (let j = 0; j < PROFIL_N; j++) { // konvex, gegen den Uhrzeigersinn → links jeder Kante
+      const j2 = (j + 1) % PROFIL_N, ax = A[j][0] + (B[j][0] - A[j][0]) * t, ay = A[j][1] + (B[j][1] - A[j][1]) * t;
+      const bx = A[j2][0] + (B[j2][0] - A[j2][0]) * t, by = A[j2][1] + (B[j2][1] - A[j2][1]) * t;
+      if ((bx - ax) * (p[1] - ay) - (by - ay) * (p[0] - ax) < 0) return false;
+    }
+    return true;
+  };
+  const plus = liste.filter((x) => x.k.op === 'plus'), minus = liste.filter((x) => x.k.op === 'minus');
+  const H = plus.map((x) => x.h).reduce((a, b) => ({ min: a.min.map((v, i) => Math.min(v, b.min[i])), max: a.max.map((v, i) => Math.max(v, b.max[i])) }));
+  const d = [0, 1, 2].map((i) => (H.max[i] - H.min[i]) / n);
+  let drin = 0;
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) {
+    const q = [H.min[0] + (a + 0.5) * d[0], H.min[1] + (b + 0.5) * d[1], H.min[2] + (c + 0.5) * d[2]];
+    if (plus.some((x) => innen(x, q)) && !minus.some((x) => innen(x, q))) drin++;
+  }
+  return drin * d[0] * d[1] * d[2];
+}
+const alsSuppe = (g) => ({ x: g.index ? g.toNonIndexed() : g });
+{
+  // Roher Loft je Vorlage: dicht, Volumen = Prismatoid; volumen() (Trapezregel) als Info
+  const offen = [], volFalsch = [], trapez = [];
+  for (const [name] of Object.entries(VORLAGEN)) {
+    const k = normalisiere({ koerper: [neuerKoerper(name, 0)] }).koerper[0], g = koerperGeometrie(k);
+    const ok = offeneKanten(alsSuppe(g));
+    if (ok.kanten || ok.flaeche > 1e-6) offen.push(`${name}: ${ok.kanten}`);
+    const vn = netzVolumen([g]), vp = prismatoid(k);
+    if (Math.abs(vn / vp - 1) > 1e-4) volFalsch.push(`${name} ${vn.toFixed(2)}/${vp.toFixed(2)}`);
+    trapez.push(`${name} ${(100 * (volumen(k) / vn - 1)).toFixed(1)}`);
+  }
+  zeile(`Roher Loft je Vorlage (${Object.keys(VORLAGEN).length}): offene Kanten`, '0', offen.join(', ') || 0, offen.length === 0);
+  zeile('Roher Loft: Netzvolumen = Prismatoid aus den Profilen', '< 0,01 %', volFalsch.join(', ') || 'alle', volFalsch.length === 0);
+  // WARUM nur Info: volumen() nimmt die Trapezregel (Masse-Anzeige), bei Verjüngung überschätzt sie (Kegel +6,8 %)
+  zeile('volumen() gegen Netz je Vorlage in % (Info, Trapezregel)', 'Info', trapez.join(' · '), true, false);
+
+  // Gegenprobe Spiegel: Körper an x 3, gespiegelte Lage per applyMatrix4 OHNE Wicklung umzudrehen → Volumen negativ
+  const k = normalisiere({ koerper: [{ ...neuerKoerper('quader', 0, { pos: [3, 0, 0] }), spiegel: true }] }).koerper[0];
+  const lage = koerperListe({ koerper: [k] })[1].lage;
+  const falsch = netzVolumen([koerperGeometrie(k).clone().applyMatrix4(lageMatrix4(lage))]), richtig = netzVolumen([koerperNetz(k, lage)]);
+  zeile('Spiegelkopie (koerperNetz) Volumen | Gegenprobe ohne Wicklungstausch', `≈ +${prismatoid(k).toFixed(0)} | negativ`, `${richtig.toFixed(1)} | ${falsch.toFixed(1)}`,
+    Math.abs(richtig / prismatoid(k) - 1) < 1e-4 && falsch < 0);
+
+  // Beispielformen verschweißt
+  const zeiten = [], dicht = [], gleich = [], vol = [], volInfo = [];
+  for (const f of BEISPIEL_FORMEN) {
+    formGeometrie(f); // Aufwärmen (Zwischenspeicher, JIT)
+    const laeufe = [0, 1, 2].map(() => formGeometrie(f)), ms = laeufe.map((g) => g.info.ms).sort((a, b) => a - b);
+    zeiten.push({ name: f.name, median: ms[1], max: ms[2], csg: laeufe[0].info.csg, dreiecke: laeufe[0].info.dreiecke });
+    const g = laeufe[0], i = g.info;
+    if (i.offeneKanten !== 0 || !(i.flaechenschluss < 1e-6)) dicht.push(`${f.name}: ${i.offeneKanten} (${(i.offeneLaenge * 100).toFixed(1)} cm), Schluss ${i.flaechenschluss.toExponential(1)}`);
+    const h = (x) => Object.entries(x).map(([m, q]) => m + ':' + Array.from(q.attributes.position.array).join(',')).join('|');
+    if (h(laeufe[1]) !== h(g) || h(laeufe[2]) !== h(g)) gleich.push(f.name);
+    const v0 = netzVolumen(g), v1 = netzVolumen(g, [500, -300, 700]), ref = abtastVolumen(f);
+    if (Math.abs(v0 - v1) / Math.abs(v0) > 1e-6) dicht.push(`${f.name}: Volumen hängt vom Ursprung ab (Leck)`);
+    const abw = 100 * (v0 / ref - 1);
+    if (Math.abs(abw) > 2) vol.push(`${f.name} ${abw.toFixed(2)} %`);
+    volInfo.push(`${f.name} ${v0.toFixed(0)}/${ref.toFixed(0)} m³ (${abw.toFixed(2)} %)`);
+  }
+  zeile('Beispielformen verschweißt: 0 offene Kanten, Flächenschluss 0, kein Leck', '0', dicht.join(' | ') || 0, dicht.length === 0);
+  zeile('Beispielformen: Zeit Median aus 3 (nach Aufwärmen)', '≤ 100 ms', zeiten.map((z) => `${z.name} ${z.median.toFixed(0)} ms`).join(' · '), zeiten.every((z) => z.median <= 100));
+  zeile('Beispielformen: Spitze | CSG-Schritte | Dreiecke (Info)', 'Info', zeiten.map((z) => `${z.max.toFixed(0)} ms/${z.csg}/${z.dreiecke}`).join(' · '), true, false);
+  zeile('Beispielformen: Volumen gegen Abtastung der Daten (48³)', '±2 %', vol.join(', ') || volInfo.join(' · '), vol.length === 0);
+  zeile('Beispielformen: gleiche Eingabe → gleiches Netz (3 Läufe)', '0 abweichend', gleich.join(', ') || 0, gleich.length === 0);
+
+  // Gegenprobe Zugabe: Prüfform mit 30 Körpern (Rumpf, überlappende Platten, Seitenkästen, Schlitze — Messform des Schiffbauers)
+  const pruefform = (n) => {
+    const kk = [neuerKoerper('rumpf', 0)];
+    for (let i = 1; i < n; i++) {
+      const z = -18 + (i * 37) % 36, art = i % 3;
+      if (art === 0) kk.push({ ...neuerKoerper('platte', i, { mat: 'dunkel' }), pos: [0, 6.2, z], spanten: [{ z: -2, b: 8, h: 1, fase: 0.5 }, { z: 2, b: 8, h: 1, fase: 0.5 }] });
+      else if (art === 1) kk.push({ ...neuerKoerper('quader', i, { mat: 'metall' }), pos: [7.5, 0, z], spiegel: true, spanten: [{ z: -1.5, b: 2, h: 3, fase: 0.3 }, { z: 1.5, b: 2, h: 3, fase: 0.3 }] });
+      else kk.push({ ...neuerKoerper('quader', i, { op: 'minus', mat: 'schacht' }), pos: [0, -6, z], spanten: [{ z: -1, b: 4, h: 1.2 }, { z: 1, b: 4, h: 1.2 }] });
+    }
+    return { name: 'pruef' + n, art: 'rumpf', koerper: kk };
+  };
+  formGeometrie(pruefform(30));
+  const mit = formGeometrie(pruefform(30)).info, ohne = formGeometrie(pruefform(30), { zugabe: false }).info;
+  zeile('Prüfform 30 Körper mit Zugabe: offene Kanten | Zeit (F6 ≤ 400 ms)', '0 | ≤ 400 ms', `${mit.offeneKanten} | ${mit.ms.toFixed(0)} ms`, mit.offeneKanten === 0 && mit.ms <= 400);
+  zeile('Gegenprobe Prüfform 30 OHNE Zugabe → offene Kanten', '> 0 (rot)', `${ohne.offeneKanten} (${(ohne.offeneLaenge * 100).toFixed(0)} cm)`, ohne.offeneKanten > 0);
+
+  // Werft: alle drei Beispielformen in WS-01 — Rumpfstück zwischen Kommando (0) und kurzem Rumpf (3), Brückenturm auf 3.oben,
+  // Gondeln statt der vier Panzerplatten am langen Rumpf (1). WARUM dort: die Gondel ist 28,5 m lang; an den freien
+  // Seitenpunkten des kurzen Rumpfs (16 m) ragt sie in den Übergang, an 1.*_hinten in die Panzerplatten 9/11 (gemessen).
+  const mods = BEISPIEL_FORMEN.map((f) => { const m = formZuModul(f); registriereForm(m, formGeometrie(f)); return m; });
+  const [turm, stueck, gondel] = mods, KAT = { ...KATALOG, ...Object.fromEntries(mods.map((m) => [m.id, m])) };
+  const teile = kopie(BEISPIEL.teile).filter((t) => ![9, 10, 11, 12].includes(t.nr)).map((t) => t.nr === 3 ? { ...t, an: { nr: 25, punkt: 'hinten' } } : t);
+  teile.push({ nr: 25, modul: stueck.id, an: { nr: 0, punkt: 'hinten' }, punkt: 'vorn', dreh: 0 },
+    { nr: 26, modul: turm.id, an: { nr: 3, punkt: 'oben' }, punkt: 'fuss', dreh: 0 },
+    { nr: 27, modul: gondel.id, an: { nr: 1, punkt: 'bb_hinten' }, punkt: 'innen', dreh: 0 },
+    { nr: 28, modul: gondel.id, an: { nr: 1, punkt: 'sb_hinten' }, punkt: 'innen', dreh: 2 });
+  let b, absturz = '';
+  try { b = baue({ ...kopie(BEISPIEL), teile }, KAT); } catch (e) { absturz = e.message; }
+  const fehler = b ? b.meldungen.filter((x) => x.stufe === 'fehler') : [];
+  zeile('Werft: WS-01 (ohne Platten) + Rumpfstück + Brückenturm + 2 Gondeln — baue', '25 Teile, 0 Fehler', absturz || `${b.teile.length} Teile, ${schluessel(fehler.map((x) => ({ code: x.code, id: x.nr }))) || '0 Fehler'}, Warnungen ${schluessel(b.meldungen.filter((x) => x.stufe !== 'fehler').map((x) => ({ code: x.code, id: x.nr }))) || 0}`,
+    !absturz && b.teile.length === 25 && fehler.length === 0);
+  // Gegenprobe: Gondeln an den Seiten des kurzen Rumpfs → ueberschneidung mit dem Übergang
+  const eng = teile.map((t) => t.nr === 27 ? { ...t, an: { nr: 3, punkt: 'bb' } } : t.nr === 28 ? { ...t, an: { nr: 3, punkt: 'sb' } } : t);
+  const be = baue({ ...kopie(BEISPIEL), teile: eng }, KAT), ue2 = be.meldungen.filter((x) => x.code === 'ueberschneidung').map((x) => x.nr).sort();
+  zeile('Gegenprobe Werft: Gondeln am kurzen Rumpf → ueberschneidung 27, 28', 'rot', ue2.join(', ') || 'keine', ue2.join() === '27,28');
+  const mats = new Proxy({}, { get: (z, k) => (z[k] ??= new THREE.MeshStandardMaterial()) });
+  const gr = b ? schiffNetz(b.teile, mats) : null, mitForm = b ? schiffNetz(b.teile.filter((t) => !t.modul.startsWith('form_')), mats) : null;
+  zeile('Werft: schiffNetz mit Formen — Draw-Calls | Dreiecke mehr als ohne Formen', '≤ 60 | > 0', gr ? `${gr.userData.drawCalls} | +${Math.round(gr.userData.dreiecke - mitForm.userData.dreiecke)}` : '–',
+    !!gr && gr.userData.drawCalls <= 60 && gr.userData.dreiecke > mitForm.userData.dreiecke);
+}
+zeile('Laufzeit tests/form.mjs | unterdrückte BVH-Warnungen „maxLeafSize“ (Info)', 'Info', `${((performance.now() - T_START) / 1000).toFixed(1)} s | ${bvh.warnungen}`, true, false);
 
 console.table(zeilen);
 console.log(harte ? `${harte} FEHLER` : 'Alle harten Prüfungen ok.');
