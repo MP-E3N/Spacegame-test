@@ -3,7 +3,8 @@
 // LIEFERT: baue(entwurf, katalog) · andockLage(elternLage, pE, pK, dreh) · kandidaten(bau, katalog, modulId)
 //          · LAGEN (24 Drehungen) · EINHEIT · wende(lage, p) · dreheV(m, v) · migriere(entwurf)
 //          · naechsteNr(entwurf) · loesche(entwurf, nr) · VERSION
-// REGEL (Protokoll R15, E1–E6): Punkt { id, p, n, u, groesse, art, dreh: [..] }. Andocken: R·n_K = −n_E, R·u_K = u_E,
+// REGEL (Protokoll R15, E1–E6, E9): Punkt { id, p, n, u, groesse, art, dreh: [..], stecker? } — bei art ≠ rumpf passt
+//        nur Buchse (Elternteil) an Stecker (Kind). Andocken: R·n_K = −n_E, R·u_K = u_E,
 //        danach `dreh` Vierteldrehungen um n_E (rechtsdrehend). Matrix m zeilenweise, ganzzahlig, det +1.
 //        Lage { m, t }: Welt = m·p + t. Ein Teil je Punkt; deckungsgleiche passende Punkte fremder Teile = verbunden.
 //        Fehler machen den Entwurf „nicht flugfähig“, er bleibt aber speicherbar (Starfield-Lehre aus der Recherche).
@@ -83,7 +84,10 @@ function findeModul(katalog, id) {
   for (const m of Object.values(katalog)) if (m.ersetzt?.includes(id)) return m;
   return null;
 }
-const passt = (a, b) => a.groesse === b.groesse && a.art === b.art;
+/** Passt Punkt b (Kind) an Punkt a (Eltern)? Gleiche Größe + Art; außer bei Rumpfflächen nur Buchse an Stecker (E9). */
+const passt = (a, b) => a.groesse === b.groesse && a.art === b.art && (a.art === 'rumpf' || (!a.stecker && !!b.stecker));
+/** Ring-Schluss: Reihenfolge der beiden Punkte egal. */
+const passtBeide = (a, b) => passt(a, b) || passt(b, a);
 
 /** Hüllquader eines Moduls in Weltlage (achsparallel exakt, weil Lagen 90°-Drehungen sind). */
 function weltQuader(lage, q, schrumpf) {
@@ -110,7 +114,10 @@ export function baue(entwurf, katalog) {
 
   // --- nr eindeutig, Module bekannt ---
   const nachNr = new Map();
-  for (const t of roh) {
+  // WARUM sortiert: Ergebnis darf nicht von der Listenreihenfolge abhängen (Prüfer R15) — Startteil = kleinste nr,
+  // bei doppelter nr gewinnt das Teil mit dem kleineren JSON-Text
+  const sortiert = [...roh].map((t) => [t, JSON.stringify(t) ?? '']).sort((a, b) => (a[0]?.nr ?? 0) - (b[0]?.nr ?? 0) || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0)).map((x) => x[0]);
+  for (const t of sortiert) {
     if (!Number.isInteger(t?.nr)) { fehler('nr_doppelt', 'Teil ohne gültige Nummer'); continue; }
     if (nachNr.has(t.nr)) { fehler('nr_doppelt', `Nummer ${t.nr} kommt doppelt vor`, t.nr); continue; }
     nachNr.set(t.nr, t);
@@ -164,12 +171,12 @@ export function baue(entwurf, katalog) {
   let frei = [];
   for (const g of teile) for (const p of g.def.andock) {
     if (g.belegt.has(p.id)) continue;
-    frei.push({ nr: g.nr, punkt: p.id, p: wende(g.lage, p.p), n: dreheV(g.lage.m, p.n), u: dreheV(g.lage.m, p.u), groesse: p.groesse, art: p.art, dreh: p.dreh ?? [0] });
+    frei.push({ nr: g.nr, punkt: p.id, p: wende(g.lage, p.p), n: dreheV(g.lage.m, p.n), u: dreheV(g.lage.m, p.u), groesse: p.groesse, art: p.art, stecker: !!p.stecker, dreh: p.dreh ?? [0] });
   }
   const zu = new Set();
   for (let i = 0; i < frei.length; i++) for (let j = i + 1; j < frei.length; j++) {
     const a = frei[i], b = frei[j];
-    if (a.nr === b.nr || zu.has(i) || zu.has(j) || !passt(a, b) || punkt(a.n, b.n) !== -1) continue;
+    if (a.nr === b.nr || zu.has(i) || zu.has(j) || !passtBeide(a, b) || punkt(a.n, b.n) !== -1) continue;
     const d = minus(a.p, b.p);
     if (punkt(d, d) < FUGE * FUGE) { zu.add(i); zu.add(j); kanten.push([a.nr, b.nr]); }
   }
