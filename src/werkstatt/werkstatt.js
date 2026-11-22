@@ -327,7 +327,7 @@ function zeigeWerte() {
   const reihen = [
     ['Körper', form.koerper.length], ['Länge · Breite · Höhe', `${zahl(mass[2])} · ${zahl(mass[0])} · ${zahl(mass[1])} m`],
     ['Masse (geschätzt)', zahl(modul.werte.masse, 0) + ' t'], ['Andockpunkte', form.andock.length],
-    ['Verschweißen', !verschweisst ? 'aus (Einzelteile)' : schweissInfo ? `${zahl(schweissInfo.ms, 0)} ms${schweissInfo.dreiecke ? ' · ' + zahl(schweissInfo.dreiecke, 0) + ' Dreiecke' : ''}` : '…'],
+    ['Verschweißen', !verschweisst ? 'aus (Einzelteile)' : schweissInfo ? `${zahl(schweissInfo.ms, 0)} ms${schweissInfo.dreiecke ? ' · ' + zahl(schweissInfo.dreiecke, 0) + ' Dreiecke' : ''}${schweissInfo.offeneKanten ? ' · ' + schweissInfo.offeneKanten + ' offene Kanten' : ''}` : '…'],
   ];
   $('werte').innerHTML = reihen.map(([a, b]) => `<div class="reihe"><span>${a}</span><b>${b}</b></div>`).join('');
   const liste = $('meldungen'); liste.innerHTML = '';
