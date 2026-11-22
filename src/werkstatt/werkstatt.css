@@ -1,0 +1,39 @@
+/* ZWECK: Form-Werkstatt (Runde 16) — Vorlagen + Körperliste links, Form/Körper/Spant/Andockpunkte rechts. Stil wie die Werft. */
+@import url('../werft/werft.css');
+
+#links { left: 16px; width: 220px; }
+#rechts { right: 16px; width: 300px; }
+#vorlagen { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+#vorlagen button, #koerperliste .k { font: inherit; font-size: 11px; color: #c9a060; background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--linie); padding: 4px 6px; cursor: pointer; text-align: left; }
+#vorlagen button:hover, #koerperliste .k:hover { border-color: var(--bern); color: #f2c070; }
+#koerperliste { display: flex; flex-direction: column; gap: 3px; }
+#koerperliste .k { display: flex; justify-content: space-between; }
+#koerperliste .k.aktiv { border-color: var(--bern); color: #f2c070; background: rgba(224, 160, 64, 0.12); }
+#koerperliste .k .minus { color: #e8907a; }
+#koerperliste .k small { color: var(--bern-matt); }
+
+#rechts label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 8px; }
+#rechts input, #rechts select, #rechts button { font: inherit; font-size: 11px; color: #f2c070; background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--linie); padding: 2px 5px; }
+#rechts input[type='number'] { width: 100%; box-sizing: border-box; }
+#rechts input#f-name { width: 160px; }
+#rechts button { cursor: pointer; }
+#rechts button:hover { border-color: var(--bern); }
+#rechts label.haken { justify-content: flex-start; color: var(--bern-matt); }
+.reihe2 { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+#k-op.minus { color: #e8907a; border-color: rgba(224, 96, 64, 0.6); }
+.gitter3 { display: grid; grid-template-columns: 64px 1fr 1fr 1fr; gap: 4px; align-items: center; margin-bottom: 4px; font-size: 11px; color: var(--bern-matt); }
+.knopfreihe { float: right; display: inline-flex; gap: 3px; }
+.knopfreihe button { padding: 0 6px !important; }
+#k-tafel.aus { display: none; }
+
+#spant .regler { display: grid; grid-template-columns: 64px 1fr 48px; gap: 6px; align-items: center; font-size: 11px; color: var(--bern-matt); margin-bottom: 3px; }
+#spant .regler input[type='range'] { width: 100%; accent-color: #e0a040; }
+#spant .regler b { color: #f2c070; font-weight: normal; text-align: right; }
+
+#andock .punkt { border-left: 3px solid var(--linie); padding: 3px 6px; margin-bottom: 4px; }
+#andock .punkt .zeile { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; margin-bottom: 3px; }
+#andock .punkt input[type='number'] { width: 52px !important; }
+
+#hilfe.werkstatt-hilfe { top: auto; bottom: 16px; left: 250px; right: 330px; text-align: center; font-size: 11px; line-height: 1.8; }
