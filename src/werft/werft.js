@@ -105,11 +105,14 @@ function baueMarken() {
     if (passend && !aktiv) continue; // WARUM ausblenden: nur Punkte zeigen, an die das gewählte Modul passt
     const n = new THREE.Vector3(...f.n), p = new THREE.Vector3(...f.p).addScaledVector(n, 0.25);
     const r = MARKE_R[f.groesse] ?? 2;
-    const mat = new THREE.MeshBasicMaterial({ color: FARBE[f.art] ?? 0xffffff, transparent: true, opacity: passend ? 0.75 : 0.45, side: THREE.DoubleSide, depthWrite: false });
+    // WARUM beim Setzen ohne Tiefentest: Spieltest R15 — aus der Startansicht waren die Punkte verdeckt/zu klein
+    const durch = !!passend;
+    const mat = new THREE.MeshBasicMaterial({ color: FARBE[f.art] ?? 0xffffff, transparent: true, opacity: passend ? 0.6 : 0.45, side: THREE.DoubleSide, depthWrite: false, depthTest: !durch });
     const scheibe = new THREE.Mesh(markenGeo, mat);
-    const ring = new THREE.Mesh(markenRing, new THREE.MeshBasicMaterial({ color: FARBE[f.art] ?? 0xffffff, side: THREE.DoubleSide }));
+    const ring = new THREE.Mesh(markenRing, new THREE.MeshBasicMaterial({ color: FARBE[f.art] ?? 0xffffff, side: THREE.DoubleSide, depthTest: !durch, transparent: durch }));
     for (const m of [scheibe, ring]) {
-      m.position.copy(p); m.scale.setScalar(r);
+      m.position.copy(p); m.userData.r = r * (passend ? 1.6 : 1); m.scale.setScalar(m.userData.r);
+      if (durch) m.renderOrder = 10;
       m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
       m.userData.frei = f;
       markenGruppe.add(m);
@@ -198,6 +201,8 @@ $('leinwand').addEventListener('pointerup', (e) => {
   }
   auswahl = teilUnterZeiger();
   zeigeAuswahl();
+  const t = bau.teile.find((x) => x.nr === auswahl);
+  zeigeMeldungKurz(t ? `${KATALOG[t.modul].name} (Teil ${t.nr}) gewählt — Entf löscht, R dreht, Esc hebt auf` : '');
 });
 $('leinwand').addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -208,6 +213,11 @@ function abwaehlen() {
 function waehleModul(id) {
   gewaehlt = gewaehlt === id ? null : id; auswahl = null; ziel = null; seite = 0; drehung = 0;
   zeigeAuswahl(); zeigeGeist(); baueMarken(); zeigePalette();
+  if (!gewaehlt) return;
+  const name = KATALOG[gewaehlt].name;
+  if (!bau.teile.length) { zeigeMeldungKurz(`${name}: irgendwo ins Bild klicken — wird das Startteil`); return; }
+  const n = new Set(kandidaten(bau, KATALOG, gewaehlt).map((k) => k.an.nr + '.' + k.an.punkt)).size;
+  zeigeMeldungKurz(n ? `${name}: ${n} passende Punkt${n > 1 ? 'e' : ''} leuchten — darüberfahren, klicken` : `${name}: kein freier Punkt am Schiff passt`);
 }
 function dreheAuswahl() {
   const t = entwurf.teile.find((x) => x.nr === auswahl);
@@ -364,6 +374,7 @@ let bildzeitSumme = 0, bilder = 0;
 function schleife() {
   const t0 = performance.now();
   steuer.update();
+  if (gewaehlt) { const puls = 1 + 0.18 * Math.sin(t0 * 0.006); for (const m of markenGruppe.children) m.scale.setScalar(m.userData.r * puls); }
   bild.zeichnen();
   bildzeitSumme += performance.now() - t0; bilder++;
   requestAnimationFrame(schleife);
@@ -374,6 +385,13 @@ requestAnimationFrame(schleife);
 window.spiel = {
   get entwurf() { return kopie(entwurf); },
   get bau() { return bau; },
+  get auswahl() { return auswahl; },
+  /** Bildschirmpunkt (CSS-Pixel) der Mitte von Teil nr — für Klicktests. */
+  bildpunkt(nr) {
+    const k = pickKaesten.find((x) => x.nr === nr); if (!k) return null;
+    const v = k.box.getCenter(new THREE.Vector3()).project(camera), r = $('leinwand').getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+  },
   lade(e) { abwaehlen(); aendere(kopie(e)); fokus(); },
   waehle: waehleModul,
   /** Modul ohne Maus ansetzen: an = { nr, punkt }, punkt = eigener Punkt. */
