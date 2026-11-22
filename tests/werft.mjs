@@ -48,7 +48,8 @@ const P = (id, p, n, u, groesse, art, dreh) => ({ id, p, n, u, groesse, art, dre
 const Q = (min, max) => ({ min, max });
 const M = (id, art, quader, andock, extra = {}) => ({ id, name: id, art, quader, andock, kugeln: [{ x: 0, y: 0, z: 0, r: 5 }], werte: { masse: 10, panzer: 1 }, ...extra });
 const turmPunkt = (p) => P('oben', p, Y, Z, 'S', 'turm', ALLE);
-const fuss = (art = 'turm') => P('fuss', [0, 0, 0], NY, Z, 'S', art, ALLE);
+// E9: Fußpunkte von Turm/Anbau sind Stecker (Kind), Turmpunkte an Rümpfen Buchsen (Standard)
+const fuss = (art = 'turm') => ({ ...P('fuss', [0, 0, 0], NY, Z, 'S', art, ALLE), stecker: true });
 const MODULE = [
   M('kommando_m', 'kommando', [Q([-10, -8, -10.75], [10, 8, 10])], [P('hinten', [0, 0, -10], NZ, Y, 'M', 'rumpf', RUMPF), turmPunkt([0, 8, 0])]),
   M('bug_m', 'bug', [Q([-10, -8, -10.75], [10, 8, 10])], [P('hinten', [0, 0, -10], NZ, Y, 'M', 'rumpf', RUMPF), turmPunkt([0, 8, 0])]),
@@ -63,6 +64,10 @@ const MODULE = [
 // Gegenprobe Ring-Schluss: Rumpf, dessen Bug-Punkt 2 mm zu weit vorn liegt
 const schief = kopie(MODULE.find((m) => m.id === 'rumpf_m')); schief.id = schief.name = 'rumpf_schief'; schief.andock[0].p = [0, 0, 20.002];
 MODULE.push(schief);
+// Träger: hängt mit „vorn“ am Kommando-Heck; sein Haken (Turmpunkt, n −Y) liegt genau auf dem Turmpunkt des Kommandos
+const traegerModul = (id, stecker) => M(id, 'rumpf', [Q([-10, -8, -10], [10, 8, 10])],
+  [P('vorn', [0, 0, 10], Z, Y, 'M', 'rumpf', RUMPF), { ...P('haken', [0, 8, 20], NY, Z, 'S', 'turm', ALLE), ...(stecker && { stecker: true }) }]);
+MODULE.push(traegerModul('traeger_m', false), traegerModul('traeger_stecker', true));
 const KAT = tiefFrieren(Object.fromEntries(MODULE.map((m) => [m.id, m])));
 
 // ---------- 1) LAGEN ----------
@@ -189,6 +194,7 @@ const FAELLE = [
 ];
 {
   const falsch = [], nichtWeg = [], ungeordnet = [];
+  let reihenfolgen = 0;
   const abgedeckt = new Set();
   for (const [name, kaputt, soll, heil] of FAELLE) {
     const b = baueSicher(name, kaputt), ist = schluessel(b.meldungen);
@@ -200,21 +206,22 @@ const FAELLE = [
     if (b.flugfaehig !== !b.meldungen.some((m) => m.stufe === 'fehler')) stufeFalsch.push(`${name}: flugfaehig`);
     const h = baueSicher(name + ' (behoben)', heil);
     if (h.meldungen.length) nichtWeg.push(`${name}: ${schluessel(h.meldungen)}`);
-    // Ungeordnete Liste: umgekehrte Reihenfolge muss dasselbe Ergebnis geben
-    const umgekehrt = tiefFrieren({ ...kopie(kaputt), teile: kopie(kaputt.teile).reverse() });
-    // WARUM Meldungen sortiert: ihre Reihenfolge folgt der Liste (harmlos, gleiche Eingabe → gleiche Reihenfolge)
-    const ordne = (x) => JSON.stringify({ ...x, meldungen: [...x.meldungen].sort((p, q) => JSON.stringify(p) < JSON.stringify(q) ? -1 : 1) });
-    if (ordne(baueSicher(name + ' (umgekehrt)', umgekehrt)) !== ordne(b)) ungeordnet.push(name);
+    // Ungeordnete Liste (E9-Nachtrag): jede Reihenfolge → dasselbe Ergebnis, auch Meldungen in derselben Reihenfolge.
+    // Geprüft: umgekehrt + alle zyklischen Verschiebungen.
+    const ref = JSON.stringify(b), n = kaputt.teile.length;
+    for (let s = 0; s <= n; s++) {
+      const liste = kopie(kaputt.teile);
+      const neu = s === n ? liste.reverse() : [...liste.slice(s), ...liste.slice(0, s)];
+      if (JSON.stringify(baueSicher(`${name} (Reihenfolge ${s})`, tiefFrieren({ ...kopie(kaputt), teile: neu }))) !== ref) { ungeordnet.push(`${name} [${s === n ? 'umgekehrt' : 'ab ' + s}]`); break; }
+      reihenfolgen++;
+    }
   }
   const fehlend = [...FEHLER, ...WARNUNG].filter((c) => !abgedeckt.has(c));
   zeile(`Meldungen: ${FAELLE.length} kleinste Entwürfe → genau die erwarteten Codes`, '0 falsch', falsch.length ? falsch.join(' | ') : 0, falsch.length === 0);
   zeile('Meldungen: alle 16 Codes aus E6 mindestens einmal ausgelöst', 'alle', fehlend.length ? 'fehlt: ' + fehlend.join(', ') : 'alle', fehlend.length === 0);
   zeile('Meldungen: Stufe passt zum Code, Text vorhanden, flugfaehig = keine Fehler', '0 falsch', stufeFalsch.length ? stufeFalsch.join(', ') : 0, stufeFalsch.length === 0);
   zeile('Meldungen: behobene Entwürfe meldungsfrei', '0', nichtWeg.length ? nichtWeg.join(' | ') : 0, nichtWeg.length === 0);
-  // WARUM weich nur für wurzel/nr_doppelt: Befund an die Projektleitung (Startteil bzw. behaltenes Doppel hängt an der
-  // Listenreihenfolge, beides schon Fehler-Entwürfe) — jede andere Abweichung ist hart
-  zeile('Ungeordnete Liste (umgekehrt) → gleiches Ergebnis', '0 abweichend', ungeordnet.length ? ungeordnet.join(', ') : 0, ungeordnet.length === 0,
-    !ungeordnet.every((n) => n.startsWith('wurzel') || n.startsWith('nr_doppelt')));
+  zeile(`Ungeordnete Liste: ${reihenfolgen} Reihenfolgen → gleiche Lagen + Meldungen`, '0 abweichend', ungeordnet.length ? ungeordnet.join(', ') : 0, ungeordnet.length === 0);
 }
 
 // Gegenprobe der Fall-Prüfung: eine absichtlich falsche Erwartung muss als „falsch“ zählen
@@ -280,12 +287,19 @@ const ring = (letztes) => tiefFrieren({ name: 'ring', version: 1, teile: [
   const bau = baue(BASIS, KAT), ohneHeck = baue(aus(ohne(2)), KAT), leerBau = baue({ version: 1, teile: [] }, KAT);
   const k = [kandidaten(bau, KAT, 'turm_s').length, kandidaten(bau, KAT, 'rumpf_m').length, kandidaten(ohneHeck, KAT, 'rumpf_m').length,
     kandidaten(ohneHeck, KAT, 'heck_m').length, kandidaten(ohneHeck, KAT, 'rumpf_l').length, kandidaten(bau, KAT, 'gibt_es_nicht').length, kandidaten(leerBau, KAT, 'turm_s').length];
-  zeile('kandidaten: Turm | Rumpf | Rumpf ohne Heck | Heck ohne Heck | L | unbekannt | leer', '1 | 1 | 3 | 1 | 0 | 0 | 0', k.join(' | '), k.join() === '1,1,3,1,0,0,0');
-  // WARUM Rumpf = 1 bzw. 3: der Turmpunkt „oben“ des Rumpfs passt (S/turm) auf den freien Turmpunkt des Kommandos — siehe nächste Zeile
+  // WARUM Rumpf = 0 bzw. 2: der Turmpunkt „oben“ des Rumpfs ist eine Buchse und passt nicht auf die Buchse des Kommandos (E9)
+  zeile('kandidaten: Turm | Rumpf | Rumpf ohne Heck | Heck ohne Heck | L | unbekannt | leer', '1 | 0 | 2 | 1 | 0 | 0 | 0', k.join(' | '), k.join() === '1,0,2,1,0,0,0');
+  // Befund 2 (Teil 1): Rumpf mit seinem Turmpunkt kopfüber auf den Turmpunkt des Kommandos → passt_nicht
   const kopf = baue(tiefFrieren({ version: 1, teile: [{ nr: 0, modul: 'kommando_m' }, { nr: 1, modul: 'rumpf_m', an: { nr: 0, punkt: 'oben' }, punkt: 'oben', dreh: 0 }] }), KAT);
   const kf = kopf.meldungen.filter((m) => m.stufe === 'fehler' && m.code !== 'kein_heck');
-  // WARUM weich: Befund an die Projektleitung (Punkt-Rolle fehlt), Regel E2 erlaubt es bisher
-  zeile('Rumpf mit seinem Turmpunkt auf Turmpunkt gesetzt → Fehler', '≥ 1 Fehler', schluessel(kf) || 'keiner', kf.length > 0, false);
+  zeile('Rumpf mit seinem Turmpunkt auf Turmpunkt (Buchse an Buchse)', 'passt_nicht:1', schluessel(kf) || 'keiner', schluessel(kf) === 'passt_nicht:1');
+  // Buchse–Buchse deckungsgleich (Träger hinter dem Kommando, sein Haken liegt genau auf dessen Turmpunkt): NICHT verbunden.
+  // Gegenprobe: derselbe Träger mit Stecker-Haken → verbunden, beide Punkte verschwinden aus freiePunkte.
+  const traeger = (modul) => tiefFrieren({ version: 1, teile: [{ nr: 0, modul: 'kommando_m' }, { nr: 1, modul, an: { nr: 0, punkt: 'hinten' }, punkt: 'vorn', dreh: 0 }] });
+  const freiTurm = (b) => b.freiePunkte.filter((f) => f.art === 'turm').map((f) => `${f.nr}.${f.punkt}`).join(',') || '–';
+  const bb = baue(traeger('traeger_m'), KAT), bs = baue(traeger('traeger_stecker'), KAT);
+  zeile('Ring-Schluss Buchse–Buchse: freie Turmpunkte | Gegenprobe Stecker', '0.oben,1.haken | –', `${freiTurm(bb)} | ${freiTurm(bs)}`,
+    freiTurm(bb) === '0.oben,1.haken' && freiTurm(bs) === '–' && bs.verbunden.length === 2 && bb.verbunden.length === 1);
   // Kandidat ist an der gemeldeten Stelle wirklich andockbar: Lage per andockLage → Punkt sitzt auf dem freien Punkt
   let maxD = 0;
   for (const c of kandidaten(ohneHeck, KAT, 'rumpf_m')) {
