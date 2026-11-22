@@ -2,6 +2,7 @@
 //        BufferGeometry, zwischengespeichert) und ein ganzes gebautes Schiff → eine Gruppe mit EINEM Netz je Material.
 // LIEFERT: modulGeometrie(id) → { rumpf, dunkel, metall, … } · schiffNetz(teile, mats?, { effekte }) → THREE.Group
 //          (userData: { drawCalls, netze, dreiecke, darstellen? }) · lageMatrix(lage, ziel?) → THREE.Matrix4
+//          · registriereForm(modul, geos) (R16/F7: eigene Module aus der Form-Werkstatt) · eigenesModul(id)
 // REGEL: Daten (Querschnitte, Kisten, Düsen, Andockpunkte, Sperren) NUR aus src/sim/werft/module.js. Hier nur Aufbau und
 //        dünne Details (≤ 0,5 m über den Hüllquadern). Türme stehen in Ruhelage (gier 0, nick 0) und sind EINGESCHMOLZEN
 //        — WARUM: ein beweglicher Turm kostet 5 Netze (× 2 mit Schatten); in der Werft dreht sich nichts.
@@ -137,12 +138,41 @@ const DETAILS = {
 };
 
 const ablage = new Map();
+// R16 (F7): eigene Module aus der Form-Werkstatt — Moduldaten (formZuModul) und fertige Geometrie (formGeometrie)
+const eigene = new Map(), eigeneGeo = new Map();
+const LEER = Object.freeze({});
 
-/** Geometrie eines Moduls je Material (Modul-Koordinaten, ohne UV), zwischengespeichert. NICHT verändern (geteilt). */
+/**
+ * Eigenes Modul anmelden oder ersetzen (gleiche Id = neue Fassung). geos = { mat: BufferGeometry } in Modul-
+ * Koordinaten (z. B. formGeometrie(form)). WARUM nur position + normal, nicht indiziert: schiffNetz fügt sie mit den
+ * Katalog-Modulen zusammen (gleiche Attribute nötig) und rechnet die UVs danach in Schiffskoordinaten.
+ */
+export function registriereForm(modul, geos) {
+  const alt = eigeneGeo.get(modul.id);
+  if (alt) for (const g of Object.values(alt)) g.dispose();
+  const sauber = {};
+  for (const [name, g] of Object.entries(geos ?? {})) {
+    if (!g?.attributes?.position) continue;
+    const n = g.index ? g.toNonIndexed() : g.clone();
+    for (const a of Object.keys(n.attributes)) if (a !== 'position' && a !== 'normal') n.deleteAttribute(a);
+    if (!n.attributes.normal) n.computeVertexNormals();
+    sauber[name] = n;
+  }
+  eigene.set(modul.id, modul);
+  eigeneGeo.set(modul.id, sauber);
+}
+/** Moduldaten: Katalog oder eigenes Modul (sonst undefined). */
+export const eigenesModul = (id) => KATALOG[id] ?? eigene.get(id);
+
+/**
+ * Geometrie eines Moduls je Material (Modul-Koordinaten, ohne UV), zwischengespeichert. NICHT verändern (geteilt).
+ * Unbekannte (noch nicht registrierte eigene) Module liefern {} — sie zeichnen nichts, statt abzustürzen (F7).
+ */
 export function modulGeometrie(id) {
+  if (eigeneGeo.has(id)) return eigeneGeo.get(id);
   if (ablage.has(id)) return ablage.get(id);
   const m = KATALOG[id];
-  if (!m) throw new Error(`Werft: unbekanntes Modul „${id}“`);
+  if (!m) return LEER;
   const rnd = zufall(saat(id)), e = leereEimer();
   for (const t of m.teile) e[t.mat ?? 'rumpf'].push(lofte(t));
   for (const k of m.kisten) if (k.zeichnen !== false) e[k.mat ?? 'dunkel'].push(kiste(k.b, k.h, k.t, k.x, k.y, k.z));
@@ -176,7 +206,7 @@ export function schiffNetz(teile, mats = materialien(), { effekte = false } = {}
     for (const [name, g] of Object.entries(modulGeometrie(teil.modul))) (listen[name] ??= []).push(g.clone().applyMatrix4(m4));
     const r = teil.lage.m;
     if (effekte && r[0][2] === 0 && r[1][2] === 0 && r[2][2] === 1) {
-      for (const d of KATALOG[teil.modul].duesen) {
+      for (const d of eigenesModul(teil.modul)?.duesen ?? []) {
         v.set(...d.p).applyMatrix4(m4);
         duesen.push({ x: v.x, y: v.y, z: v.z, r: d.r, ende: v.z - 1.68 * d.r, seg: 8 });
       }
