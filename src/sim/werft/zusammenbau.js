@@ -2,7 +2,7 @@
 //        Meldungen (Fehler/Warnungen), Werte. Rein rechnend: ohne three, ohne DOM, ohne Zufall (CLAUDE.md Regel 1).
 // LIEFERT: baue(entwurf, katalog) · andockLage(elternLage, pE, pK, dreh) · kandidaten(bau, katalog, modulId)
 //          · LAGEN (24 Drehungen) · EINHEIT · wende(lage, p) · dreheV(m, v) · migriere(entwurf)
-//          · naechsteNr(entwurf) · loesche(entwurf, nr) · VERSION
+//          · naechsteNr(entwurf) · loesche(entwurf, nr) · erlaubteDreh(pE, pK) · VERSION
 // REGEL (Protokoll R15, E1–E6, E9): Punkt { id, p, n, u, groesse, art, dreh: [..], stecker? } — bei art ≠ rumpf passt
 //        nur Buchse (Elternteil) an Stecker (Kind). Andocken: R·n_K = −n_E, R·u_K = u_E,
 //        danach `dreh` Vierteldrehungen um n_E (rechtsdrehend). Matrix m zeilenweise, ganzzahlig, det +1.
@@ -94,8 +94,17 @@ const passtBeide = (a, b) => passt(a, b) || passt(b, a);
 /** Hüllquader eines Moduls in Weltlage (achsparallel exakt, weil Lagen 90°-Drehungen sind). */
 function weltQuader(lage, q, schrumpf) {
   const a = wende(lage, q.min), b = wende(lage, q.max);
-  return { min: [0, 1, 2].map((i) => Math.min(a[i], b[i]) + schrumpf), max: [0, 1, 2].map((i) => Math.max(a[i], b[i]) - schrumpf) };
+  const min = [], max = [];
+  for (let i = 0; i < 3; i++) {
+    const lo = Math.min(a[i], b[i]), hi = Math.max(a[i], b[i]);
+    // WARUM Mitte: ein Quader dünner als 2 × Schrumpf kippte sonst um (min > max) und galt als überlappend (Schiffbauer R15)
+    if (hi - lo <= 2 * schrumpf) { min.push((lo + hi) / 2); max.push((lo + hi) / 2); } else { min.push(lo + schrumpf); max.push(hi - schrumpf); }
+  }
+  return { min, max };
 }
+const enthaelt = (q, p) => [0, 1, 2].every((i) => p[i] >= q.min[i] - FUGE && p[i] <= q.max[i] + FUGE);
+/** Erlaubte Drehungen = Schnittmenge aus Eltern- und Kindpunkt (Schiffbauer R15: sonst Hangar kopfüber). */
+export const erlaubteDreh = (pE, pK) => (pK.dreh ?? [0]).filter((d) => (pE.dreh ?? [0]).includes(d));
 const ueberlapp = (a, b) => [0, 1, 2].every((i) => a.min[i] < b.max[i] && b.min[i] < a.max[i]);
 
 /**
@@ -152,10 +161,10 @@ export function baue(entwurf, katalog) {
       if (eltern.belegt.has(pE.id)) { fehler('punkt_belegt', `Andockpunkt „${pE.id}“ an Teil ${eltern.nr} ist schon belegt`, k.nr); continue; }
       const dreh = k.dreh ?? 0;
       if (!passt(pE, pK)) fehler('passt_nicht', `${modul.name} passt nicht an diesen Punkt (${pK.groesse}/${pK.art} an ${pE.groesse}/${pE.art})`, k.nr);
-      else if (!(pK.dreh ?? [0]).includes(dreh)) fehler('dreh_verboten', `${modul.name}: diese Drehung ist hier nicht erlaubt`, k.nr);
+      else if (!erlaubteDreh(pE, pK).includes(dreh)) fehler('dreh_verboten', `${modul.name}: diese Drehung ist hier nicht erlaubt`, k.nr);
       eltern.belegt.add(pE.id);
       lege(k, andockLage(eltern.lage, pE, pK, dreh));
-      kanten.push([eltern.nr, k.nr]);
+      kanten.push([eltern.nr, k.nr, wende(eltern.lage, pE.p)]);
       offen.push(k.nr);
     }
   }
@@ -180,17 +189,23 @@ export function baue(entwurf, katalog) {
     const a = frei[i], b = frei[j];
     if (a.nr === b.nr || zu.has(i) || zu.has(j) || !passtBeide(a, b) || punkt(a.n, b.n) !== -1) continue;
     const d = minus(a.p, b.p);
-    if (punkt(d, d) < FUGE * FUGE) { zu.add(i); zu.add(j); kanten.push([a.nr, b.nr]); }
+    if (punkt(d, d) < FUGE * FUGE) { zu.add(i); zu.add(j); kanten.push([a.nr, b.nr, a.p]); }
   }
   frei = frei.filter((_, i) => !zu.has(i));
   for (const f of frei) if (f.art === 'rumpf') warnung('offen_rumpf', `Offene Rumpf-Andockfläche „${f.punkt}“ an Teil ${f.nr}`, f.nr);
 
-  // --- Überschneidung (Hüllquader, Nachbarn ausgenommen) ---
-  const nachbar = new Set(kanten.map(([a, b]) => Math.min(a, b) + ':' + Math.max(a, b)));
+  // --- Überschneidung (Hüllquader) ---
+  // WARUM auch Nachbarn prüfen (Schiffbauer R15): „Nachbarn ausnehmen“ übersah den häufigsten Fehler, den Turm, der ins
+  // eigene Elternmodul ragt. Ausgenommen ist nur ein Quader-Paar, das den gemeinsamen Andockpunkt enthält (die Fuge).
+  const fugen = new Map(); // "a:b" → [Weltpunkte]
+  for (const [a, b, p] of kanten) { const s = Math.min(a, b) + ':' + Math.max(a, b); if (!fugen.has(s)) fugen.set(s, []); fugen.get(s).push(p); }
+  const rohQ = teile.map((g) => (g.def.quader ?? []).map((q) => weltQuader(g.lage, q, 0)));
   const quader = teile.map((g) => (g.def.quader ?? []).map((q) => weltQuader(g.lage, q, SCHRUMPF)));
   for (let i = 0; i < teile.length; i++) for (let j = i + 1; j < teile.length; j++) {
-    if (nachbar.has(teile[i].nr + ':' + teile[j].nr)) continue;
-    if (quader[i].some((a) => quader[j].some((b) => ueberlapp(a, b)))) {
+    const fp = fugen.get(teile[i].nr + ':' + teile[j].nr) ?? [];
+    const trifft = quader[i].some((a, ia) => quader[j].some((b, jb) => ueberlapp(a, b)
+      && !fp.some((p) => enthaelt(rohQ[i][ia], p) && enthaelt(rohQ[j][jb], p))));
+    if (trifft) {
       fehler('ueberschneidung', `${teile[j].def.name} (Teil ${teile[j].nr}) ragt in ${teile[i].def.name} (Teil ${teile[i].nr})`, teile[j].nr);
     }
   }
@@ -213,7 +228,7 @@ export function baue(entwurf, katalog) {
   return {
     teile: teile.map((g) => ({ nr: g.nr, modul: g.modul, lage: g.lage })),
     freiePunkte: frei,
-    verbunden: kanten,
+    verbunden: kanten.map(([a, b]) => [a, b]),
     kugeln: teile.flatMap((g) => (g.def.kugeln ?? []).map((k) => { const p = wende(g.lage, [k.x, k.y, k.z]); return { x: p[0], y: p[1], z: p[2], r: k.r, nr: g.nr }; })),
     tuerme: teile.filter((g) => g.def.turm).map((g) => ({ nr: g.nr, typ: g.def.turm.typ, s: g.def.turm.s, lage: g.lage })),
     duesen: teile.flatMap((g) => (g.def.duesen ?? []).map((d) => ({ p: wende(g.lage, d.p), r: d.r, nr: g.nr }))),
@@ -232,7 +247,8 @@ export function kandidaten(bau, katalog, modulId) {
   if (!modul) return [];
   const aus = [];
   for (const f of bau.freiePunkte) for (const pK of modul.andock) {
-    if (passt(f, pK)) aus.push({ an: { nr: f.nr, punkt: f.punkt }, punkt: pK.id, dreh: pK.dreh ?? [0], frei: f });
+    const dreh = erlaubteDreh(f, pK);
+    if (passt(f, pK) && dreh.length) aus.push({ an: { nr: f.nr, punkt: f.punkt }, punkt: pK.id, dreh, frei: f });
   }
   return aus;
 }
