@@ -382,7 +382,8 @@ async function ladeEigeneFormen() {
       try {
         const form = await (await fetch('/api/formen/' + encodeURIComponent(name))).json();
         const modul = formZuModul(form);
-        if (GRUND_KATALOG[modul.id]) continue; // WARUM: feste Module nie überschreiben
+        // WARUM: feste Module nie überschreiben; zwei Dateien mit gleicher Id („Rumpf A“/„Rumpf-A“, Prüfer R16) → erste gilt
+        if (KATALOG[modul.id]) { console.warn('Form übersprungen (Id schon vergeben):', name, modul.id); continue; }
         registriereForm(modul, formGeometrie(form, { schweissen: true }));
         KATALOG[modul.id] = modul;
         EIGENE.push(modul);

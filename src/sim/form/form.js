@@ -96,7 +96,7 @@ export function normalisiere(form) {
   };
 }
 const zahl = (x, d = 0) => (Number.isFinite(x) ? x : d);
-const raster = (v) => Math.round(v * 2) / 2;
+const raster = (v) => Math.round(v * 2) / 2 + 0; // + 0: kein −0
 /** Achse mit dem größten Anteil (Vorzeichen bleibt); [0,0,0] → +Z. */
 function einrasten(v) {
   const a = vec(v), i = [0, 1, 2].reduce((b, j) => (Math.abs(a[j]) > Math.abs(a[b]) ? j : b), 2), aus = [0, 0, 0];
@@ -138,6 +138,15 @@ export function pruefe(form) {
   for (const { k, lage } of koerperListe(form).filter((x) => x.k.op === 'minus')) {
     const h = huelle(k, lage);
     if (!plus.some((p) => [0, 1, 2].every((i) => h.min[i] < p.max[i] && p.min[i] < h.max[i]))) w('minus_trifft_nichts', 'Ein Minus-Körper berührt keinen Plus-Körper und schneidet nichts aus', k.id);
+  }
+  // WARUM (Prüfer R16): ein Körper, der über die Ebene eines Rumpf-Andockpunkts hinausragt, steckt in der Werft im
+  // Nachbarteil — die Überschneidungsprüfung der Werft nimmt die Fuge aus und sieht das nicht
+  for (const p of form.andock.filter((a) => a.art === 'rumpf')) {
+    const ebene = p.p[0] * p.n[0] + p.p[1] * p.n[1] + p.p[2] * p.n[2];
+    for (const { k, lage } of koerperListe(form).filter((x) => x.k.op === 'plus')) {
+      const h = huelle(k, lage), weit = [0, 1, 2].reduce((sum, i) => sum + (p.n[i] > 0 ? h.max[i] : p.n[i] < 0 ? h.min[i] : 0) * p.n[i], 0);
+      if (weit > ebene + 0.01) { w('ragt_ueber_fuge', `Körper ${k.id} ragt ${(weit - ebene).toFixed(1)} m über die Rumpf-Andockfläche „${p.id}“ — steckt in der Werft im Nachbarteil`, k.id); break; }
+    }
   }
   if (!form.andock.length) w('kein_punkt', 'Keine Andockpunkte — in der Werft nur als Startteil nutzbar');
   return m;
