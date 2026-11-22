@@ -30,3 +30,7 @@
 - 2026-11-21 Runde 14 — Schaden über zwei Module (Angreifer meldet, Gefecht-Welt zieht ab): drei Summen vergleichen
   (Rückgabe je Takt, Zähler der Welt, Statistik des Melders) plus HP-Differenz. Wrack-Test: hp = 0 von außen, 30 s laufen.
   Im Wrack-/Halt-Zweig nach Spread-Objekten je Takt suchen — Gleichlauf-Tests sehen sie nicht.
+- 2026-11-22 Runde 15 (Werft) — Eigener Test-Katalog im Test → Prüfung parallel zum Bau. Fand: Startteil hing an der
+  Listenreihenfolge (nur im Fall mit zwei Wurzeln sichtbar), Rumpf mit Turmpunkt auf Turmpunkt (→ Buchse/Stecker). Lehren:
+  „ungeordnete Liste“ mit allen Fehlerfällen und allen Verschiebungen prüfen; Gegenproben so wählen, dass die Prüfung
+  anschlagen kann; Andock-Drehungen brauchen eine Bezugsachse. 55 Zeilen, 0,4 s.

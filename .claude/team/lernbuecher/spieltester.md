@@ -10,3 +10,6 @@
 - 2026-11-21 Runde 14 — Gefecht: Live-Turmwinkel in spiel.gefecht.flak.tuerme[i], zugehöriges Modell über
   spiel.gefecht.lafetten[i].id (NICHT gleicher Index — Modell 2 ist ein schwerer Turm; falscher „dreht nicht“-Befund).
   Feuer halt: Schusszähler UND grafik.zaehler.fuellGesetzt messen, 1 s Nachlauf ist normal. bilder(6450) ≈ 2 min in ~1 s.
+- 2026-11-22 Runde 15 (Werft) — Befund „Anwählen + Entf löscht nicht“ war ein Fehlklick: Screenshot 800×600, Leinwand
+  1024×768. Für Klicks auf kleine Teile `spiel.bildpunkt(nr)` nutzen (CSS-Pixel) und vor/nach jedem Schritt
+  `spiel.bau.teile.length` messen. Budget reichte für 2 von 5 Punkten → Speichern/Laden in eine eigene Runde legen.

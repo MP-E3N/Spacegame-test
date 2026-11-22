@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`, Stand gepusht 2026-11-22).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runde 15 nur lokal committet**).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
 ## Worum es geht
@@ -11,8 +11,8 @@ Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spiele
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
 
-## Stand jetzt (2026-11-22, nach Runde 14) — hier einsteigen
-**Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–3 / Pfeile + Enter / Klick; aus jeder
+## Stand jetzt (2026-11-22, nach Runde 15) — hier einsteigen
+**Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–4 / Pfeile + Enter / Klick; aus jeder
 Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
    (Steuerung wie Freiflug) und gegen Wellen von Kanonenbooten bestehen (4 → 6 → 8, Rotten zu zweit, Autokanone mit
@@ -24,6 +24,15 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
    **Reglerfeld** links (Taste R; Streuung, Waffen-Grenzen, Optik inkl. Füll-Flak, Explosion-Helligkeit), **Konfig unter
    Namen speichern/laden** → Datei `konfig/flak/<name>.json` (Dev-Server, `vite.config.js`). **Konfig T1 = Standard.**
 3. **Freiflug** (`freiflug.html`, `src/main.js`) — Bollwerk oder Ambos (V) frei durch das Asteroidenfeld.
+4. **Werft** (`werft.html`, `src/werft/werft.js`, Runde 15) — Schiffs-Baukasten mit Andockpunkten (Nutzer: „Shipbuilding-
+   Editor“, nach Web-Recherche Variante „Baukasten“ gewählt). Modul links wählen → passende Punkte leuchten (blau Rumpf,
+   grün Anbau, gelb Turm, durch den Rumpf sichtbar) → darüberfahren zeigt Geist (grün passt / rot Fehler) → Klick setzt.
+   R drehen, T andere Seite, Klick aufs Schiff wählt, Entf löscht mit Anbauten, Strg+Z/Y, P Punkte, F Kamera. Rechts Werte,
+   FLUGFÄHIG/NICHT FLUGFÄHIG, Meldungen (Klick springt zum Teil), Speichern/Laden → `konfig/schiffe/<name>.json`
+   (`server/ablage.js`), Zwischenstand im localStorage. Start = Beispielschiff WS-01 (25 Module, flugfähig).
+   Rechnung `src/sim/werft/zusammenbau.js` (rein), Katalog `src/sim/werft/module.js` (15 Module), Grafik
+   `src/grafik/schiff/module.js` (12 Draw-Calls). Regeln E1–E9 im Protokoll `.claude/team/protokolle/2026-11-22-runde15.md`.
+   Debug: `spiel.bau`, `spiel.entwurf`, `spiel.setze(modul, {nr, punkt}, punkt, dreh)`, `spiel.bildpunkt(nr)`, `spiel.ansicht([x,y,z])`.
 
 **Wichtige Sim-Module:** `src/sim/waffen/flak.js` (Granaten, Streu-Ellipsoid, Flächenschaden, Montage-Rahmen, Sperren),
 `src/sim/waffen/lafetten.js` (Prüfstand + `schiffsLafetten()`), `src/sim/ki/turmziel.js` (Sperrfeuer = Sättigungsräume mit
@@ -32,14 +41,18 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 `angreifergeschosse.js`. Regler-Tabellen (je Besitzer, eine Quelle): `STREU_REGLER`, `WAFFEN_REGLER`, `GRAFIK_REGLER`.
 
 **Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
+- **Werft:** Nutzer-Urteil einholen. Nächster Schritt wäre der **Probeflug**: gebautes Schiff im Freiflug/Gefecht fliegen
+  (Flugwerte aus Masse/Schub, Kollision aus `kugeln`, Türme aus `tuerme[].lage` — Flak-Sperre `rumpfSperre` kann
+  gedrehte Module noch nicht, braucht vollen Turm-Rahmen). Nicht im Bild geprüft: Neu → Kommando → Rumpf per Maus,
+  Drehen per R. Andock-Marken = 2 Netze je Punkt (bei vielen freien Punkten → InstancedMesh). Mehr Module/Farben später.
+- Aufräumen: alte Ordner `../Schwarmfront-wt/r14-schatten` und `r14-schiffbauer` liegen noch (Löschen im Auto-Modus
+  abgelehnt — Nutzer fragen oder von Hand löschen).
 - Nutzer-Urteil zum Gefechtstest einholen (Spieltester R14: „Zahlen erzählen ein Gefecht, aber man sieht noch kaum, wer
   wen beschießt“) → **Kanonenboot-Modell** (Schiffbauer) statt Drohnen-Platzhalter, ggf. Zielmarkierungen im HUD.
 - Schwierigkeit/Spielziel im Gefecht (Wellen-Ende, Sieg/Niederlage, Punktestand), Angreifer als Wrack-Verhalten.
 - Flak-Labor: Feuerrate als Hebel für dichtere Sättigung; Zielfeuer-Balance (getrennte Splitter fern/nah wäre Code);
   Schadensskala ordnen (1,5–5,5 HP je Granate). Station unten links verdeckt im Labor die linken Türme.
 - Später: Stationen (Waffen/Maschine/Taktik), Koop übers Netz (Netz-Architekt).
-- Aufräumen: alte Ordner `../Schwarmfront-wt/r14-schiffbauer` und `r14-schatten` waren von Vite-Servern (Ports
-  5191–5193) eines Agenten gesperrt — nach Beenden dieser Prozesse löschen.
 
 ## Neu in Runde 6 (2026-11-15): Flak-Labor — Demo ohne Schiff
 Nutzerwunsch: „Flak-System wie bei Battlestar Galactica, kleine Demo ohne Schiff, nur die Kanonen und ein paar Objekte am

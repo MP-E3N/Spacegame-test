@@ -20,3 +20,8 @@
   unten montierte Türme brauchen gespiegelte gier-Mitte. TEILE.details als Quader, Sperre aus Ober-/Unterkanten (+0,5 m),
   Prüfung per Raycaster gegen die Lofts; Gegenprobe ohne Sperre muss rot werden. Rumpftreffer 0/33 825, Abdeckung 100 % ≥ 1
   / 99,9 % ≥ 2, Draw-Calls +100 (Schatten verdoppelt). Lehre: jedes Netz zählt doppelt (Schattendurchgang).
+- 2026-11-22 Runde 15 (Werft-Module) — 15 Module mit Normquerschnitten je Größe (M w10/h8, L w18/h13, fase 0,3),
+  Lafettenplatten aus fusspunkt(), Hüllquader mit Aufbau-Zone, Spiegelpaar Hangar, Stecker an Anbau-/Turmfüßen.
+  Messung: Nähte 0, S-Spalt 0,000 m, 12 Draw-Calls für 25 Module, ≤ 6,4 ms je Modul, Bollwerk/Ambos bitgleich.
+  Lehren: Was die Grafik zufällig anbaut, muss als Zone in den Daten stehen. Quader dünner als 2 × Schrumpf kippen um.
+  „Nachbarn ausnehmen“ blendet den Turm im eigenen Elternmodul aus. Veränderliche Lofts → Quader in Scheiben ≤ 5 m.

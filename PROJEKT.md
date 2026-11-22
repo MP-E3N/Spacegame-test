@@ -25,7 +25,12 @@ npm test           # Messflüge ohne Browser
 ## Aufbau
 | Datei | Inhalt |
 |---|---|
-| `index.html`, `src/menue/*` | **Startmenü** (Runde 14): Gefechtstest / Flak-Labor / Freiflug; `zurueck.js` = Esc-Rückweg |
+| `index.html`, `src/menue/*` | **Startmenü** (Runde 14): Gefechtstest / Flak-Labor / Freiflug / Werft (R15); `zurueck.js` = Esc-Rückweg (überspringt Esc, wenn die Seite `preventDefault` ruft) |
+| `werft.html`, `src/werft/*` | **Werft** (Runde 15): Schiffs-Baukasten mit Andockpunkten — Palette, Geist, Drehen, Löschen, Rückgängig, Werte, Meldungen, Speichern/Laden |
+| `src/sim/werft/zusammenbau.js` | Baukasten-Rechnung (rein): `baue(entwurf, katalog)`, `andockLage`, `kandidaten`, `erlaubteDreh`, `LAGEN`, `loesche`, `migriere` |
+| `src/sim/werft/module.js`, `beispiel.js` | Modul-Katalog (15 Module, Normquerschnitte M/L, Andockpunkte, Hüllquader in Scheiben) · Beispielschiff WS-01 (25 Module) |
+| `src/grafik/schiff/module.js` | `modulGeometrie(id)`, `schiffNetz(teile, mats, {effekte})` (je Material ein Netz, Türme eingeschmolzen), `lageMatrix` |
+| `server/ablage.js` | Datei-Ablage des Dev-Servers (Fabrik): `/api/flak-konfig` → `konfig/flak/`, `/api/schiffe` → `konfig/schiffe/` |
 | `freiflug.html`, `src/main.js` | Freiflug: Start, Hauptschleife (feste Sim 60 Hz + interpolierte Darstellung), `window.spiel` |
 | `gefecht.html`, `src/gefecht/*`, `src/sim/gefecht.js` | **Gefechtstest** (Runde 14): Bollwerk + 14 Flak-Türme gegen Angreifer-KI (`src/sim/ki/angreifer.js`) |
 | `src/eingabe.js` | Tastatur/Maus → `befehl` (Form wie `sim.schritt` erwartet) |
@@ -47,9 +52,15 @@ npm test           # Messflüge ohne Browser
 | `src/sim/waffen/lafetten.js`, `flak.js` | Turm-Montage (einzige Quelle) · Flak: Richten, Feuern, Geschoss-Pool, Zeit-/Annäherungszünder, Splitterwolke, Nachbar-Sperre |
 | `src/sim/ki/turmziel.js`, `zieldrohnen.js` | Turm-KI (Sperrfeuer-Muster, Zielwahl, Vorhalt) · Zieldrohnen (Bahnen, Ausweichen, Neustart) |
 | `src/grafik/waffen/flakgrafik.js`, `shader.js` | Türme, Leuchtspur, Mündungsblitz, Kern, Rauch (Fake-Licht) · `nachSchritt` je Sim-Schritt, `aktualisiere` je Bild |
+| `tests/werft.mjs` | Baukasten: Lagen, Andocken, alle Meldungs-Codes, Reihenfolge, Ring-Schluss, Ablage, echter Katalog + Beispiel, Draw-Calls |
 | `tests/waffen.mjs`, `tests/ki.mjs` | Flak-Messungen (Richtzeit, Schuss/s, Durchflug, Gleichlauf) · KI-Messungen (Vorhalt, Abdeckung, Drohnen-Langlauf) |
 
 ## Schnittstellen
+- **Werft (R15, Protokoll runde15 E1–E9):** Modul `{ id, name, art, teile, quader, kugeln, werte, duesen?, turm?, andock: [{ id, p, n, u, groesse: 'S'|'M'|'L', art: 'rumpf'|'anbau'|'turm', dreh: [..], stecker? }] }`.
+  Entwurf `{ name, kennung, version: 1, teile: [{ nr, modul, an?: { nr, punkt }, punkt?, dreh? }] }` (Baum, Startteil = kleinste nr).
+  Andocken: R·n_K = −n_E, R·u_K = u_E, dann `dreh` Vierteldrehungen um n_E; Lage `{ m (zeilenweise, ganzzahlig), t }`.
+  Passt: gleiche Größe + Art, bei art ≠ rumpf Buchse (Eltern) an Stecker (Kind); Drehung = Schnittmenge beider Punkte.
+  `baue()` → `{ teile[{nr, modul, lage}], freiePunkte, verbunden, kugeln, tuerme[{nr, typ, s, lage}], duesen, werte, laenge, breite, hoehe, meldungen[{code, stufe, text, nr?}], flugfaehig }`.
 - `erstelleSimWelt(typ)` → `{ schiff, feld, typ, daten, werte, waehle(typ), schritt(dt, befehl) → kollision, zuruecksetzen() }`
 - `erstelleSchiffSim(werte)` → `{ z, werte, schritt(dt, befehl), zuruecksetzen(), setzeWerte(w), lage(alpha, pos, rot) }`
   `befehl = { hebel, stopp, gieren, nicken, rollen, quer, hoch, nachbrenner, daempferUmschalten }`; `z.hp`, `z.zerstoert`

@@ -40,3 +40,8 @@
 - 2026-11-21 Runde 14 — Großer Wunsch (Schiff + Flak + Angreifer + Menü): Schnittstelle im Kickoff vorschlagen, in der
   Frühwarnung von allen drei Rollen schärfen lassen, dann parallel bauen; die Verdrahtung (gefecht.js, Seite) selbst nach
   dem Zusammenführen. Bauaufträge: „keine Server starten, eigene Prozesse beenden“ — sonst bleiben Worktrees gesperrt.
+- 2026-11-22 Runde 15 (Werft/Baukasten) — Nutzer fragte „bauen oder im Web schauen“: erst Recherche + zwei Varianten
+  zur Wahl (er nahm den größeren Baukasten). Prüfer mit eigenem Test-Katalog parallel zum Schiffbauer → 2 echte Fehler in
+  meinem Code vor dem Merge. Geometrie-Prüfregeln (Hüllquader, Nachbarn) erst am echten Katalog belastbar — drei
+  Nachbesserungen. Spieltester-Befund „Muss“ war Fehlklick (Screenshot 800×600 ≠ Leinwand 1024×768) → selbst nachstellen,
+  dann Rückmeldung im UI statt Fehlerjagd. Alte Worktree-Ordner r14-* löschen darf der Auto-Modus nicht → Nutzer fragen.
