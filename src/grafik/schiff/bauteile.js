@@ -89,9 +89,12 @@ const gesperrt = (liste, x, z, bw, bd) => liste.some(([sx, sz, r]) => Math.hypot
  * Aufbauten (Kisten, Lüfterblöcke) auf Ober-, Unter- und Seitenflächen eines Lofts.
  * sperreOben/sperreUnten: [[x, z, r]] — dort keine Kisten (Turm-Standflächen, Abziehbilder).
  * WARUM die Zufallszahlen trotzdem gezogen werden: sonst verschieben sich alle übrigen Kisten (Design bleibt gleich).
+ * rand (R15, Werft-Module): jede Kiste hält mit ihrer ganzen Tiefe mindestens `rand` m Abstand zu z0/z1 — WARUM: an
+ * einer Andockfläche stäche sie sonst ins Nachbarmodul. Standard null = aus (Bollwerk/Ambos bitgleich).
  */
 export function aufbauten(rnd, ab, z0, z1, eimer, { oben = true, unten = true, seiten = true, dichte = 1, fase = 0.25, skala = 1,
-  sperreOben = [], sperreUnten = [] } = {}) {
+  sperreOben = [], sperreUnten = [], rand = null } = {}) {
+  const innen = (z, bd) => rand === null || (z - bd / 2 >= z0 + rand && z + bd / 2 <= z1 - rand);
   for (let z = z0; z < z1; z += (1.5 + rnd() * 3.5) * skala / dichte) {
     const m = masse(ab, z); if (!m) continue;
     const c = Math.min(m.w, m.h) * fase;
@@ -100,15 +103,15 @@ export function aufbauten(rnd, ab, z0, z1, eimer, { oben = true, unten = true, s
     const ziel = rnd() < 0.55 ? eimer.dunkel : eimer.rumpf;
     if (wohin < 0.4 && oben) {
       const x = m.x + (rnd() * 2 - 1) * Math.max(0, m.w - c - bw / 2);
-      const frei = !gesperrt(sperreOben, x, z, bw, bd);
+      const frei = innen(z, bd) && !gesperrt(sperreOben, x, z, bw, bd);
       if (frei) ziel.push(kiste(bw, bh, bd, x, m.y + m.h + bh / 2 - 0.08, z));
       if (rnd() < 0.25 && frei) eimer.dunkel.push(kiste(bw * 0.6, bh * 0.6, bd * 0.5, x, m.y + m.h + bh + bh * 0.3 - 0.08, z));
     } else if (wohin < 0.8 && seiten) {
       const s = rnd() < 0.5 ? 1 : -1, y = m.y + (rnd() * 2 - 1) * Math.max(0, m.h - c - bw / 2);
-      ziel.push(kiste(bh, bw, bd, m.x + s * (m.w + bh / 2 - 0.08), y, z));
+      if (innen(z, bd)) ziel.push(kiste(bh, bw, bd, m.x + s * (m.w + bh / 2 - 0.08), y, z));
     } else if (unten) {
       const x = m.x + (rnd() * 2 - 1) * Math.max(0, m.w - c - bw / 2);
-      if (!gesperrt(sperreUnten, x, z, bw, bd)) ziel.push(kiste(bw, bh, bd, x, m.y - m.h - bh / 2 + 0.08, z));
+      if (innen(z, bd) && !gesperrt(sperreUnten, x, z, bw, bd)) ziel.push(kiste(bw, bh, bd, x, m.y - m.h - bh / 2 + 0.08, z));
     }
   }
 }
