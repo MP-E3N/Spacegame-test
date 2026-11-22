@@ -2,7 +2,7 @@
 //        und Umwandlung einer Form in ein Werft-Modul. Rein rechnend: ohne three, ohne DOM, ohne Zufall.
 // LIEFERT: PROFIL_N · profilPunkte(spant) · VORLAGEN · neuerKoerper(vorlage, id) · normalisiere(form) · pruefe(form)
 //          · koerperMatrix(k) · koerperListe(form) (mit Spiegelkopien) · huelle(k) · volumen(k) · formZuModul(form)
-//          · formId(name) · DICHTE · VERSION
+//          · formId(name) · koerperSchluessel(k) · DICHTE · VERSION
 // REGEL (Protokoll R16):
 //   Form   { name, version, art, koerper: [Körper], andock: [Punkt wie Werft E1/E2/E9] }
 //   Körper { id, typ, op: 'plus'|'minus', mat, pos: [x,y,z], dreh: [rx,ry,rz] (Grad, Reihenfolge X→Y→Z), spiegel,
@@ -23,9 +23,10 @@ export const DICHTE = 0.08;              // t je m³ umbauten Raums (Rumpf ist h
  * gemischt im Verhältnis rundung : fase. rundung 1 bei b = h → Kreis; fase 0,3 → Achteck wie NORM der Werft.
  */
 export function profilPunkte(s) {
-  const w = s.b / 2, h = s.h / 2, m = Math.min(w, h);
+  const w = zahl(s.b, 1) / 2, h = zahl(s.h, 1) / 2, m = Math.min(w, h);
   const r = klemme(s.rundung ?? 0), f = klemme(s.fase ?? 0);
-  const e = Math.max(MIN_EINZUG, Math.max(r, f) * m);
+  // WARUM ≤ m − MIN_EINZUG: sonst fallen Eck-Ende und nächster Eck-Anfang zusammen (Zylinder: Kanten der Länge 0, Prüfer R16)
+  const e = Math.min(m - MIN_EINZUG, Math.max(MIN_EINZUG, Math.max(r, f) * m));
   const mix = r + f > 0 ? r / (r + f) : 0; // 1 = Bogen, 0 = Fase
   const ox = s.x ?? 0, oy = s.y ?? 0, aus = [];
   const zeichen = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
@@ -73,34 +74,56 @@ export function neuerKoerper(vorlage, id, { pos = [0, 0, 0], op = 'plus', mat = 
 // ---------------- Prüfen / Normalisieren ----------------
 const MATERIALIEN = ['rumpf', 'dunkel', 'metall', 'duese', 'schacht', 'warn'];
 const ARTEN = ['kommando', 'bug', 'rumpf', 'uebergang', 'heck', 'hangar', 'anbau', 'turm'];
-export const GRENZEN = { koerper: 64, spanten: 24, mass: 400 };
+export const GRENZEN = { koerper: 64, spanten: 24, mass: 400, weit: 1000 };
 
 /** Fehlende Felder ergänzen, Zahlen klemmen, Spanten nach z sortieren. Ändert die Eingabe nicht. */
 export function normalisiere(form) {
   const k = Array.isArray(form?.koerper) ? form.koerper : [];
   return {
-    name: String(form?.name ?? 'Form').slice(0, 40), version: VERSION,
+    name: String(form?.name ?? 'Form').normalize('NFC').slice(0, 40), version: Number.isInteger(form?.version) ? form.version : VERSION,
     art: ARTEN.includes(form?.art) ? form.art : 'anbau',
     koerper: k.slice(0, GRENZEN.koerper).map((x, i) => ({
       id: Number.isInteger(x?.id) ? x.id : i,
       typ: String(x?.typ ?? 'quader'), op: x?.op === 'minus' ? 'minus' : 'plus',
       mat: MATERIALIEN.includes(x?.mat) ? x.mat : 'rumpf',
-      pos: vec(x?.pos), dreh: vec(x?.dreh).map((g) => ((g % 360) + 360) % 360), spiegel: !!x?.spiegel,
+      pos: vec(x?.pos).map((v) => klemme(v, -GRENZEN.weit, GRENZEN.weit)), dreh: vec(x?.dreh).map((g) => ((g % 360) + 360) % 360), spiegel: !!x?.spiegel,
       spanten: (Array.isArray(x?.spanten) ? x.spanten : []).slice(0, GRENZEN.spanten).map((s) => ({
-        z: zahl(s?.z), b: klemme(zahl(s?.b, 1), 0.1, GRENZEN.mass), h: klemme(zahl(s?.h, 1), 0.1, GRENZEN.mass),
-        x: zahl(s?.x), y: zahl(s?.y), rundung: klemme(s?.rundung), fase: klemme(s?.fase),
+        z: klemme(zahl(s?.z), -GRENZEN.weit, GRENZEN.weit), b: klemme(zahl(s?.b, 1), 0.1, GRENZEN.mass), h: klemme(zahl(s?.h, 1), 0.1, GRENZEN.mass),
+        x: klemme(zahl(s?.x), -GRENZEN.mass, GRENZEN.mass), y: klemme(zahl(s?.y), -GRENZEN.mass, GRENZEN.mass), rundung: klemme(s?.rundung), fase: klemme(s?.fase),
       })).sort((a, b) => a.z - b.z),
     })),
-    andock: (Array.isArray(form?.andock) ? form.andock : []).map((p, i) => ({ ...p, id: String(p?.id ?? 'p' + i) })),
+    andock: (Array.isArray(form?.andock) ? form.andock : []).slice(0, 32).map((p, i) => andockPunkt(p, i)),
   };
 }
 const zahl = (x, d = 0) => (Number.isFinite(x) ? x : d);
+const raster = (v) => Math.round(v * 2) / 2;
+/** Achse mit dem größten Anteil (Vorzeichen bleibt); [0,0,0] → +Z. */
+function einrasten(v) {
+  const a = vec(v), i = [0, 1, 2].reduce((b, j) => (Math.abs(a[j]) > Math.abs(a[b]) ? j : b), 2), aus = [0, 0, 0];
+  aus[i] = a[i] < 0 ? -1 : 1;
+  return aus;
+}
+/**
+ * Andockpunkt säubern (Prüfer R16): p aufs 0,5-m-Raster, n und u auf Achsen eingerastet, u ⟂ n (sonst Standard),
+ * Größe/Art aus der Werft-Liste, Stecker nur bei art ≠ rumpf, dreh nur 0..3.
+ */
+function andockPunkt(p, i) {
+  const n = einrasten(p?.n);
+  let u = p?.u ? einrasten(p.u) : null;
+  if (!u || u.every((x, j) => Math.abs(x) === Math.abs(n[j]))) u = Math.abs(n[1]) === 1 ? [0, 0, 1] : [0, 1, 0];
+  const art = ['rumpf', 'anbau', 'turm'].includes(p?.art) ? p.art : 'anbau';
+  const dreh = (Array.isArray(p?.dreh) ? p.dreh : art === 'rumpf' ? [0, 2] : [0, 1, 2, 3]).filter((d) => [0, 1, 2, 3].includes(d));
+  return { id: String(p?.id ?? 'p' + i).slice(0, 20), p: vec(p?.p).map((x) => raster(klemme(x, -GRENZEN.weit, GRENZEN.weit))), n, u,
+    groesse: ['S', 'M', 'L'].includes(p?.groesse) ? p.groesse : 'S', art, ...(p?.stecker && art !== 'rumpf' && { stecker: true }),
+    dreh: dreh.length ? dreh : [0] };
+}
 const vec = (v) => [0, 1, 2].map((i) => zahl(v?.[i]));
 
 /** Meldungen wie die Werft: { code, stufe, text, id? }. */
 export function pruefe(form) {
   const m = [], f = (code, text, id) => m.push({ code, stufe: 'fehler', text, ...(id !== undefined && { id }) });
   const w = (code, text, id) => m.push({ code, stufe: 'warnung', text, ...(id !== undefined && { id }) });
+  if (form.version > VERSION) f('version', `Form-Version ${form.version} ist neuer als diese Werkstatt (${VERSION})`);
   if (!form.koerper.length) w('leer', 'Noch kein Körper — links eine Vorlage wählen');
   if (!form.koerper.some((k) => k.op === 'plus')) f('kein_plus', 'Mindestens ein Körper muss „Plus“ sein (Minus schneidet nur aus)');
   const ids = new Set();
@@ -110,16 +133,27 @@ export function pruefe(form) {
     if (k.spanten.length < 2) f('zu_wenig_spanten', 'Ein Körper braucht mindestens 2 Spanten', k.id);
     for (let i = 1; i < k.spanten.length; i++) if (k.spanten[i].z - k.spanten[i - 1].z < 0.05) f('spanten_gleich', 'Zwei Spanten liegen aufeinander', k.id);
   }
+  // WARUM: ein Minus-Körper, der keinen Plus-Körper berührt, schneidet nichts aus — meist ein Versehen (Schiffbauer R16)
+  const plus = koerperListe(form).filter((x) => x.k.op === 'plus').map(({ k, lage }) => huelle(k, lage));
+  for (const { k, lage } of koerperListe(form).filter((x) => x.k.op === 'minus')) {
+    const h = huelle(k, lage);
+    if (!plus.some((p) => [0, 1, 2].every((i) => h.min[i] < p.max[i] && p.min[i] < h.max[i]))) w('minus_trifft_nichts', 'Ein Minus-Körper berührt keinen Plus-Körper und schneidet nichts aus', k.id);
+  }
   if (!form.andock.length) w('kein_punkt', 'Keine Andockpunkte — in der Werft nur als Startteil nutzbar');
   return m;
 }
 
 // ---------------- Lage eines Körpers ----------------
 const RAD = Math.PI / 180;
+/** cos/sin in Grad; Vielfache von 90° exakt (WARUM: Fugen und Hüllquader der Werft brauchen exakte Lagen, Prüfer R16). */
+function cosSin(g) {
+  const q = ((g % 360) + 360) % 360;
+  if (q % 90 === 0) return [[1, 0], [0, 1], [-1, 0], [0, -1]][q / 90];
+  return [Math.cos(q * RAD), Math.sin(q * RAD)];
+}
 /** 3×3-Drehmatrix (zeilenweise) aus Euler-Winkeln in Grad, Reihenfolge X, dann Y, dann Z (wie three 'XYZ'). */
 export function drehMatrix([rx, ry, rz]) {
-  const [a, b, c] = [rx * RAD, ry * RAD, rz * RAD];
-  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cc = Math.cos(c), sc = Math.sin(c);
+  const [ca, sa] = cosSin(rx), [cb, sb] = cosSin(ry), [cc, sc] = cosSin(rz);
   // three Euler 'XYZ': M = Rx · Ry · Rz
   return [
     [cb * cc, -cb * sc, sb],
@@ -136,6 +170,9 @@ export function wendeK(lage, p) {
 }
 /** Alle Körper samt Spiegelkopien: [{ k, lage }]. */
 export const koerperListe = (form) => form.koerper.flatMap((k) => [{ k, lage: koerperMatrix(k) }, ...(k.spiegel ? [{ k, lage: koerperMatrix(k, true) }] : [])]);
+
+/** Schlüssel für Zwischenspeicher der Körper-Geometrie (nur was die Form des Lofts bestimmt). */
+export const koerperSchluessel = (k) => JSON.stringify(k.spanten);
 
 /** Achsparallele Hülle eines Körpers in Form-Koordinaten (alle Profilpunkte aller Spanten). */
 export function huelle(k, lage = koerperMatrix(k)) {
@@ -154,7 +191,7 @@ export function volumen(k) {
 }
 
 // ---------------- Form → Werft-Modul ----------------
-export const formId = (name) => 'form_' + String(name).trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_|_$/g, '');
+export const formId = (name) => 'form_' + (String(name).normalize('NFC').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_|_$/g, '') || 'unbenannt'); // NFC wie normalisiere(); leerer Name → form_unbenannt
 
 /**
  * Werft-Modul aus einer Form (Werft E1–E9). Geometrie liefert die Grafik (src/grafik/form/*) über die Modul-Id.
@@ -162,6 +199,7 @@ export const formId = (name) => 'form_' + String(name).trim().toLowerCase().repl
  */
 export function formZuModul(roh) {
   const form = normalisiere(roh);
+  form.koerper = form.koerper.filter((k) => k.spanten.length >= 2); // WARUM: sonst Infinity-Quader/NaN-Kugel in der Werft (Prüfer R16)
   const plus = koerperListe(form).filter((x) => x.k.op === 'plus');
   const quader = plus.map(({ k, lage }) => huelle(k, lage));
   const kugeln = quader.map((q) => {
@@ -169,11 +207,7 @@ export function formZuModul(roh) {
     return { x: c[0], y: c[1], z: c[2], r: Math.max(0.5, Math.hypot(...d) * 0.8) };
   });
   const vol = koerperListe(form).reduce((s, { k }) => s + (k.op === 'plus' ? 1 : -1) * volumen(k), 0);
-  const andock = form.andock.map((p) => {
-    const n = vec(p.n), u = p.u ? vec(p.u) : (Math.abs(n[1]) === 1 ? [0, 0, 1] : [0, 1, 0]);
-    return { id: p.id, p: vec(p.p), n, u, groesse: p.groesse ?? 'S', art: p.art ?? 'anbau', ...(p.stecker && { stecker: true }),
-      dreh: Array.isArray(p.dreh) ? p.dreh : (p.art ?? 'anbau') === 'rumpf' ? [0, 2] : [0, 1, 2, 3] };
-  });
+  const andock = form.andock;
   return { id: formId(form.name), name: form.name, art: form.art, eigen: true, teile: [], quader, kugeln, andock,
-    werte: { masse: Math.round(Math.max(0, vol) * DICHTE) } };
+    duesen: [], werte: { masse: Math.round(Math.max(0, vol) * DICHTE) } };
 }
