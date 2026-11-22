@@ -220,11 +220,23 @@ function setzeVorlage(name) {
   const k = neuerKoerper(name, id, { pos });
   aendere({ ...form, koerper: [...form.koerper, k] });
   waehle(id);
+  zielAuf(id);
+}
+/** Kamera-Ziel auf einen Körper legen, Blickrichtung und Abstand bleiben (Spieltest R16: neue Körper lagen außerhalb des Bildes). */
+function zielAuf(id) {
+  const k = form.koerper.find((x) => x.id === id); if (!k) return;
+  const h = huelle(k), m = new THREE.Vector3(...[0, 1, 2].map((i) => (h.min[i] + h.max[i]) / 2));
+  const versatz = camera.position.clone().sub(steuer.target);
+  const groesse = Math.max(...[0, 1, 2].map((i) => h.max[i] - h.min[i]));
+  if (versatz.length() > groesse * 6) versatz.setLength(Math.max(20, groesse * 3)); // nicht winzig in der Ferne
+  steuer.target.copy(m); camera.position.copy(m).add(versatz);
 }
 
 // ---------------- Tafeln ----------------
 function zeigeTafeln() {
   $('f-name').value = form.name; $('f-art').value = form.art;
+  $('k-ansicht').textContent = verschweisst ? 'Ansicht: verschweißt (V)' : 'Ansicht: Einzelteile (V)';
+  $('k-ansicht').classList.toggle('aktiv', verschweisst);
   // Körperliste
   const liste = $('koerperliste'); liste.innerHTML = '';
   for (const k of form.koerper) {
@@ -259,11 +271,17 @@ function zeigeSpant(k) {
   for (const [feld, name, min, max, schritt, einheit] of SPANT_REGLER) {
     const z = document.createElement('div'); z.className = 'regler';
     const wert = s[feld] ?? 0;
-    z.innerHTML = `<span>${name}</span><input type="range" min="${min}" max="${max}" step="${schritt}" value="${wert}"><b>${zahl(wert, schritt < 0.1 ? 2 : 1)}${einheit}</b>`;
-    const eingabe = z.querySelector('input'), anzeige = z.querySelector('b');
+    // WARUM Bereich um den aktuellen Wert (Spieltest R16, Muss): fester Bereich 0,2–80 m war zu grob (85 px = 60 m).
+    // Maße: 0 … max(20, 2,5 × Wert); Versatz/Lage: ± max(10, 2 × |Wert|). Nach jedem Zug neu gelegt → beliebig groß erreichbar.
+    const [lo, hi] = einheit && feld !== 'z' && !['x', 'y'].includes(feld) ? [min, Math.max(20, Math.ceil(wert * 2.5))]
+      : einheit ? [-Math.max(10, Math.ceil(Math.abs(wert) * 2)), Math.max(10, Math.ceil(Math.abs(wert) * 2))] : [min, max];
+    const genau = schritt < 0.1 ? 2 : 1;
+    z.innerHTML = `<span>${name}</span><input type="range" min="${lo}" max="${hi}" step="${einheit ? 0.5 : 0.05}" value="${wert}"><input type="number" step="${einheit ? 0.5 : 0.05}" value="${+wert.toFixed(genau)}">`;
+    const [regler, feldEin] = z.querySelectorAll('input');
     // Während des Ziehens nur Vorschau (rohe Körper), beim Loslassen in den Rückgängig-Stapel
-    eingabe.addEventListener('input', () => { anzeige.textContent = zahl(+eingabe.value, schritt < 0.1 ? 2 : 1) + einheit; setzeSpantFeld(k.id, feld, +eingabe.value, false); });
-    eingabe.addEventListener('change', () => setzeSpantFeld(k.id, feld, +eingabe.value, true));
+    regler.addEventListener('input', () => { feldEin.value = +(+regler.value).toFixed(genau); setzeSpantFeld(k.id, feld, +regler.value, false); });
+    regler.addEventListener('change', () => setzeSpantFeld(k.id, feld, +regler.value, true));
+    feldEin.addEventListener('change', () => { setzeSpantFeld(k.id, feld, +feldEin.value, true); feldEin.blur(); });
     box.append(z);
   }
 }
@@ -358,13 +376,15 @@ $('k-op').addEventListener('click', () => { const k = koerper(); if (k) aendereK
 $('k-mat').addEventListener('change', (e) => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, mat: e.target.value })); });
 $('k-spiegel').addEventListener('change', (e) => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, spiegel: e.target.checked })); });
 for (const [i, a] of ['x', 'y', 'z'].entries()) {
-  $('k-p' + a).addEventListener('change', (e) => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.pos[i] = +e.target.value; return x; }); });
-  $('k-r' + a).addEventListener('change', (e) => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.dreh[i] = +e.target.value; return x; }); });
+  $('k-p' + a).addEventListener('change', (e) => { e.target.blur(); const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.pos[i] = +e.target.value; return x; }); });
+  $('k-r' + a).addEventListener('change', (e) => { e.target.blur(); const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.dreh[i] = +e.target.value; return x; }); });
 }
-$('s-vor').addEventListener('click', () => { const k = koerper(); if (k) { spantNr = (spantNr - 1 + k.spanten.length) % k.spanten.length; zeigeHilfen(); zeigeSpant(k); } });
-$('s-nach').addEventListener('click', () => { const k = koerper(); if (k) { spantNr = (spantNr + 1) % k.spanten.length; zeigeHilfen(); zeigeSpant(k); } });
+// WARUM Haken aus beim Blättern: wer einen einzelnen Spant ansteuert, will genau diesen formen (Trapez, Übergang)
+const einzeln = () => { $('s-alle').checked = false; };
+$('s-vor').addEventListener('click', () => { einzeln(); const k = koerper(); if (k) { spantNr = (spantNr - 1 + k.spanten.length) % k.spanten.length; zeigeHilfen(); zeigeSpant(k); } });
+$('s-nach').addEventListener('click', () => { einzeln(); const k = koerper(); if (k) { spantNr = (spantNr + 1) % k.spanten.length; zeigeHilfen(); zeigeSpant(k); } });
 $('s-neu').addEventListener('click', () => {
-  const k = koerper(); if (!k) return;
+  einzeln(); const k = koerper(); if (!k) return;
   // WARUM Mittelwert: neuer Spant liegt zwischen dem aktuellen und dem nächsten → Form bleibt gleich, man kann ihn dann formen
   const a = k.spanten[spantNr], b = k.spanten[spantNr + 1] ?? null;
   const neu = b ? Object.fromEntries(Object.keys(a).map((f) => [f, (a[f] + b[f]) / 2])) : { ...a, z: a.z + 5 };
@@ -377,6 +397,13 @@ $('s-weg').addEventListener('click', () => {
   aendereKoerper(k.id, (x) => { x.spanten.splice(spantNr, 1); return x; });
 });
 $('k-kopie').addEventListener('click', dupliziere);
+function schalteSchweissen() {
+  verschweisst = !verschweisst;
+  zeigeMeldungKurz(verschweisst ? 'Verschweißt — alle Körper sind ein Teil' : 'Einzelteile — jeder Körper für sich');
+  neuZeichnen();
+}
+$('k-ansicht').addEventListener('click', schalteSchweissen);
+$('hilfe-knopf').addEventListener('click', () => $('hilfe').classList.toggle('versteckt'));
 $('k-loeschen').addEventListener('click', loescheKoerper);
 $('a-neu').addEventListener('click', neuerAndockpunkt);
 $('k-neu').addEventListener('click', () => { aendere({ name: 'Neue Form', art: 'anbau', koerper: [], andock: [] }); gewaehlt = null; zeigeMeldungKurz('Leere Werkstatt — links eine Vorlage wählen'); });
@@ -438,7 +465,7 @@ addEventListener('keydown', (e) => {
   if (t === 'w') griff.setMode('translate');
   else if (t === 'e') griff.setMode('rotate');
   else if (t === 's') griff.setMode('scale');
-  else if (t === 'v') { verschweisst = !verschweisst; zeigeMeldungKurz(verschweisst ? 'Verschweißt (ein Teil)' : 'Einzelteile'); neuZeichnen(); }
+  else if (t === 'v') schalteSchweissen();
   else if (t === 'm') { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, spiegel: !x.spiegel })); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); loescheKoerper(); }
   else if (t === 'f') fokus();

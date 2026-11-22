@@ -28,7 +28,7 @@
 .knopfreihe button { padding: 0 6px !important; }
 #k-tafel.aus { display: none; }
 
-#spant .regler { display: grid; grid-template-columns: 64px 1fr 48px; gap: 6px; align-items: center; font-size: 11px; color: var(--bern-matt); margin-bottom: 3px; }
+#spant .regler { display: grid; grid-template-columns: 64px 1fr 56px; gap: 6px; align-items: center; font-size: 11px; color: var(--bern-matt); margin-bottom: 3px; }
 #spant .regler input[type='range'] { width: 100%; accent-color: #e0a040; }
 #spant .regler b { color: #f2c070; font-weight: normal; text-align: right; }
 
@@ -37,3 +37,10 @@
 #andock .punkt input[type='number'] { width: 52px !important; }
 
 #hilfe.werkstatt-hilfe { top: auto; bottom: 16px; left: 250px; right: 330px; text-align: center; font-size: 11px; line-height: 1.8; }
+
+#k-ansicht.breit { width: 100%; margin-top: 6px; }
+#k-ansicht.aktiv { border-color: rgba(154, 210, 122, 0.6); color: #9ad27a; }
+/* WARUM Knopf statt dauerhafter Leiste (Spieltest R16): die Leiste verdeckte Bühne und Griffe; der Knopf bleibt immer sichtbar (Lehre R8) */
+#hilfe-knopf { position: absolute; bottom: 16px; left: 250px; pointer-events: auto; font: inherit; font-size: 12px; color: #f2c070;
+  background: var(--grund); border: 1px solid var(--linie); padding: 4px 10px; cursor: pointer; }
+#hilfe.werkstatt-hilfe { bottom: 50px; }

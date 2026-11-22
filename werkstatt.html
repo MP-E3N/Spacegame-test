@@ -32,6 +32,7 @@
         <button id="k-werft" title="Speichern und in der Werft ansetzen">In die Werft</button>
       </div>
       <div id="f-datei" class="klein"></div>
+      <button id="k-ansicht" class="breit" title="Taste V">Ansicht: verschweißt (V)</button>
 
       <div id="k-tafel">
         <div class="kopf zwischen">KÖRPER <span id="k-titel"></span></div>
@@ -42,11 +43,11 @@
         </div>
         <div class="gitter3"><span>Lage</span><input id="k-px" type="number" step="0.5" /><input id="k-py" type="number" step="0.5" /><input id="k-pz" type="number" step="0.5" /></div>
         <div class="gitter3"><span>Drehung °</span><input id="k-rx" type="number" step="15" /><input id="k-ry" type="number" step="15" /><input id="k-rz" type="number" step="15" /></div>
-        <div class="kopf zwischen">SPANT <span id="s-titel"></span>
+        <div class="kopf zwischen" title="Spant = Querschnitt an einer Stelle der Länge. Zwischen zwei Spanten geht die Form gleichmäßig über — so entstehen Trapeze, Spitzen und Übergänge eckig → rund.">SPANT (Querschnitt) <span id="s-titel"></span>
           <span class="knopfreihe"><button id="s-vor" title="Spant davor">◀</button><button id="s-nach" title="Spant danach">▶</button>
           <button id="s-neu" title="Spant einfügen (Mitte zum nächsten)">+</button><button id="s-weg" title="Spant löschen">−</button></span></div>
         <div id="spant"></div>
-        <label class="haken"><input type="checkbox" id="s-alle" /> Änderung auf alle Spanten des Körpers</label>
+        <label class="haken" title="Aus: nur dieser Querschnitt ändert sich (Trapez, Übergang). An: der ganze Körper (Quader, Zylinder)."><input type="checkbox" id="s-alle" checked /> auf alle Spanten (ganzer Körper)</label>
         <div class="knoepfe">
           <button id="k-kopie" title="Strg+D">Duplizieren</button>
           <button id="k-loeschen" title="Entf">Löschen</button>
@@ -60,7 +61,8 @@
       <div id="werte"></div>
       <div id="meldungen"></div>
     </div>
-    <div id="hilfe" class="werkstatt-hilfe">
+    <button id="hilfe-knopf" title="Taste H">? Hilfe</button>
+    <div id="hilfe" class="werkstatt-hilfe versteckt">
       <b>Klick</b> Vorlage links = Körper ansetzen &nbsp; <b>Klick</b> auf Körper = wählen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp;
       <b>S</b> Größe ziehen &nbsp; <b>Strg</b> halten = ohne Raster<br>
       <b>V</b> verschweißt / Einzelteile &nbsp; <b>M</b> gespiegelt &nbsp; <b>Strg+D</b> duplizieren &nbsp; <b>Entf</b> löschen &nbsp;
