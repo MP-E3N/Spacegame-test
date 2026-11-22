@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schwarmfront · Form-Werkstatt</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="/src/menue/menue.css" />
+  <link rel="stylesheet" href="/src/werkstatt/werkstatt.css" />
+</head>
+<body>
+  <!-- Form-Werkstatt (Runde 16, Nutzer: „wirklich eigene Formen machen — Rechtecke ziehen, Trapeze ansetzen, verschweißen,
+       Übergänge eckig → rund, quasi selbst modellieren“). Körper aus Spanten, Plus/Minus, Spiegel, Verschweißen (CSG).
+       Gespeicherte Formen erscheinen in der Werft als Module. Code: src/werkstatt/werkstatt.js -->
+  <canvas id="leinwand"></canvas>
+  <div id="hud">
+    <div id="links" class="tafel">
+      <div class="kopf">WERKSTATT · KÖRPER ANSETZEN</div>
+      <div id="vorlagen"></div>
+      <div class="kopf zwischen">KÖRPER DER FORM</div>
+      <div id="koerperliste"></div>
+    </div>
+    <div id="rechts" class="tafel">
+      <div class="kopf">FORM</div>
+      <label>Name <input id="f-name" maxlength="40" spellcheck="false" /></label>
+      <label>Art in der Werft <select id="f-art"></select></label>
+      <div class="knoepfe">
+        <button id="k-speichern" title="Strg+S">Speichern</button>
+        <select id="k-laden"><option value="">Laden …</option></select>
+        <button id="k-neu">Neu</button>
+        <select id="k-beispiel"><option value="">Beispiele …</option></select>
+        <button id="k-werft" title="Speichern und in der Werft ansetzen">In die Werft</button>
+      </div>
+      <div id="f-datei" class="klein"></div>
+
+      <div id="k-tafel">
+        <div class="kopf zwischen">KÖRPER <span id="k-titel"></span></div>
+        <div class="reihe2">
+          <button id="k-op" title="Plus = Material, Minus = ausschneiden">Plus</button>
+          <select id="k-mat"></select>
+          <label class="haken"><input type="checkbox" id="k-spiegel" /> gespiegelt</label>
+        </div>
+        <div class="gitter3"><span>Lage</span><input id="k-px" type="number" step="0.5" /><input id="k-py" type="number" step="0.5" /><input id="k-pz" type="number" step="0.5" /></div>
+        <div class="gitter3"><span>Drehung °</span><input id="k-rx" type="number" step="15" /><input id="k-ry" type="number" step="15" /><input id="k-rz" type="number" step="15" /></div>
+        <div class="kopf zwischen">SPANT <span id="s-titel"></span>
+          <span class="knopfreihe"><button id="s-vor" title="Spant davor">◀</button><button id="s-nach" title="Spant danach">▶</button>
+          <button id="s-neu" title="Spant einfügen (Mitte zum nächsten)">+</button><button id="s-weg" title="Spant löschen">−</button></span></div>
+        <div id="spant"></div>
+        <label class="haken"><input type="checkbox" id="s-alle" /> Änderung auf alle Spanten des Körpers</label>
+        <div class="knoepfe">
+          <button id="k-kopie" title="Strg+D">Duplizieren</button>
+          <button id="k-loeschen" title="Entf">Löschen</button>
+        </div>
+      </div>
+
+      <div class="kopf zwischen">ANDOCKPUNKTE <span class="knopfreihe"><button id="a-neu" title="Am gewählten Körper ansetzen">+</button></span></div>
+      <div id="andock"></div>
+
+      <div class="kopf zwischen">WERTE</div>
+      <div id="werte"></div>
+      <div id="meldungen"></div>
+    </div>
+    <div id="hilfe" class="werkstatt-hilfe">
+      <b>Klick</b> Vorlage links = Körper ansetzen &nbsp; <b>Klick</b> auf Körper = wählen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp;
+      <b>S</b> Größe ziehen &nbsp; <b>Strg</b> halten = ohne Raster<br>
+      <b>V</b> verschweißt / Einzelteile &nbsp; <b>M</b> gespiegelt &nbsp; <b>Strg+D</b> duplizieren &nbsp; <b>Entf</b> löschen &nbsp;
+      <b>Strg+Z</b>/<b>Strg+Y</b> rückgängig/wieder &nbsp; <b>F</b> Kamera &nbsp; <b>H</b> Hilfe<br>
+      <b>Linke Maus ziehen</b> Kamera drehen &nbsp; <b>Rad</b> zoomen &nbsp; <b>Mittlere Maus ziehen</b> schieben
+    </div>
+    <div id="meldung"></div>
+  </div>
+  <div id="laden">Werkstatt wird hergerichtet …</div>
+  <script type="module" src="/src/werkstatt/werkstatt.js"></script>
+  <script type="module" src="/src/menue/zurueck.js"></script>
+</body>
+</html>

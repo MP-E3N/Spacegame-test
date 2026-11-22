@@ -11,13 +11,16 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { erstelleRenderer } from '../grafik/renderer.js';
 import { materialien } from '../grafik/schiff/bauteile.js';
 import { schiffNetz, modulGeometrie, lageMatrix } from '../grafik/schiff/module.js';
-import { MODULE, KATALOG } from '../sim/werft/module.js';
+import { MODULE, KATALOG as GRUND_KATALOG } from '../sim/werft/module.js';
+import { formZuModul } from '../sim/form/form.js';
+import { formGeometrie } from '../grafik/form/schweissen.js';
+import { registriereForm } from '../grafik/schiff/module.js';
 import { BEISPIEL } from '../sim/werft/beispiel.js';
 import { baue, andockLage, kandidaten, loesche, naechsteNr, wende, migriere, erlaubteDreh } from '../sim/werft/zusammenbau.js';
 
 const $ = (id) => document.getElementById(id);
 const ZWISCHEN = 'schwarmfront-werft-entwurf';
-const GRUPPEN = [['kommando', 'Kommando'], ['bug', 'Bug'], ['rumpf', 'Rumpf'], ['uebergang', 'Übergang'], ['heck', 'Heck'],
+const GRUPPEN = [['eigen', 'Eigene Formen'], ['kommando', 'Kommando'], ['bug', 'Bug'], ['rumpf', 'Rumpf'], ['uebergang', 'Übergang'], ['heck', 'Heck'],
   ['hangar', 'Hangar'], ['anbau', 'Anbauten'], ['turm', 'Türme & Masten']];
 const FARBE = { rumpf: 0x4aa8ff, anbau: 0x6ad27a, turm: 0xf2c070 };
 const MARKE_R = { S: 1.4, M: 2.6, L: 3.6 };
@@ -42,6 +45,9 @@ const markenRing = new THREE.RingGeometry(1.15, 1.35, 24);
 
 // ---------------- Zustand ----------------
 let entwurf = ladeZwischenstand() ?? kopie(BEISPIEL);
+// Runde 16: Katalog = feste Module + eigene Formen aus der Form-Werkstatt (konfig/formen/*.json, beim Start geladen)
+const KATALOG = { ...GRUND_KATALOG };
+const EIGENE = [];
 let bau = baue(entwurf, KATALOG);
 const zurueck = [], vor = [];
 let gewaehlt = null;      // Modul-Id aus der Palette (Platzier-Modus)
@@ -271,10 +277,11 @@ function zeigeAuswahl() {
 }
 
 function zeigePalette() {
-  const passend = bau.teile.length ? new Set(MODULE.filter((m) => kandidaten(bau, KATALOG, m.id).length).map((m) => m.id)) : null;
+  const alle = [...MODULE, ...EIGENE];
+  const passend = bau.teile.length ? new Set(alle.filter((m) => kandidaten(bau, KATALOG, m.id).length).map((m) => m.id)) : null;
   const liste = $('modulliste'); liste.innerHTML = '';
   for (const [art, titel] of GRUPPEN) {
-    const module = MODULE.filter((m) => m.art === art);
+    const module = art === 'eigen' ? EIGENE : MODULE.filter((m) => m.art === art);
     if (!module.length) continue;
     const kopf = document.createElement('div'); kopf.className = 'gruppe'; kopf.textContent = titel.toUpperCase(); liste.append(kopf);
     for (const m of module) {
@@ -367,9 +374,29 @@ async function speichern() {
 }
 
 // ---------------- Schleife + Debug ----------------
-neuBauen();
-fokus();
-$('laden').remove();
+/** Eigene Formen laden, in Modul + Geometrie umwandeln und registrieren (vor dem ersten Bau: Entwürfe nutzen sie evtl.). */
+async function ladeEigeneFormen() {
+  try {
+    const namen = await (await fetch('/api/formen')).json();
+    for (const name of namen) {
+      try {
+        const form = await (await fetch('/api/formen/' + encodeURIComponent(name))).json();
+        const modul = formZuModul(form);
+        if (GRUND_KATALOG[modul.id]) continue; // WARUM: feste Module nie überschreiben
+        registriereForm(modul, formGeometrie(form, { schweissen: true }));
+        KATALOG[modul.id] = modul;
+        EIGENE.push(modul);
+      } catch (f) { console.warn('Form nicht geladen:', name, f); }
+    }
+  } catch { /* ohne Dev-Server keine eigenen Formen */ }
+}
+// WARUM Promise statt top-level await: der Produktions-Build soll ohne TLA-Ziel auskommen
+ladeEigeneFormen().then(() => {
+  neuBauen();
+  fokus();
+  $('laden').remove();
+  if (EIGENE.length) zeigeMeldungKurz(`${EIGENE.length} eigene Form${EIGENE.length > 1 ? 'en' : ''} aus der Werkstatt geladen — links ganz oben`);
+});
 let bildzeitSumme = 0, bilder = 0;
 function schleife() {
   const t0 = performance.now();
