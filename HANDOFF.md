@@ -3,13 +3,43 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 11–14 nur lokal committet).
-> Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 · Tests: `npm test`.
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`, Stand gepusht 2026-11-22).
+> Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
 ## Worum es geht
 Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spieler bedienen gemeinsam ein Kriegsschiff
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
+
+## Stand jetzt (2026-11-22, nach Runde 14) — hier einsteigen
+**Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–3 / Pfeile + Enter / Klick; aus jeder
+Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
+1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
+   (Steuerung wie Freiflug) und gegen Wellen von Kanonenbooten bestehen (4 → 6 → 8, Rotten zu zweit, Autokanone mit
+   grüner Spur, Schaden am Rumpf). **14 Flak-Türme** (4 alte + 10 neue PDC, oben/unten; `rumpfSperre()` verhindert
+   Schüsse in den eigenen Rumpf). Flak am fliegenden Schiff über `flak.setzeRahmen()`, Turm-KI im Schiffsrahmen
+   (Momentaufnahme `inSchiffsrahmen`, Killzone 900/1000 m). Tasten: Leertaste Flak frei/halt · 1 Sperrfeuer · 2 Zielfeuer
+   · L Leuchtspur dauerhaft · N Neustart · C Kamera · H Hilfe. Balance: ~12 Abschüsse/min, Schiff −6 … −9 % Rumpf/min.
+2. **Flak-Labor** (`flak.html`, `src/labor/*`, Sim `src/sim/flaklabor.js`) — Prüfstand ohne Schiff: Bedienfeld rechts,
+   **Reglerfeld** links (Taste R; Streuung, Waffen-Grenzen, Optik inkl. Füll-Flak, Explosion-Helligkeit), **Konfig unter
+   Namen speichern/laden** → Datei `konfig/flak/<name>.json` (Dev-Server, `vite.config.js`). **Konfig T1 = Standard.**
+3. **Freiflug** (`freiflug.html`, `src/main.js`) — Bollwerk oder Ambos (V) frei durch das Asteroidenfeld.
+
+**Wichtige Sim-Module:** `src/sim/waffen/flak.js` (Granaten, Streu-Ellipsoid, Flächenschaden, Montage-Rahmen, Sperren),
+`src/sim/waffen/lafetten.js` (Prüfstand + `schiffsLafetten()`), `src/sim/ki/turmziel.js` (Sperrfeuer = Sättigungsräume mit
+3 Tiefenlagen, Zielfeuer, Nahbereich), `src/sim/ki/angreifer.js`, `src/sim/ki/zieldrohnen.js` (Labor),
+`src/sim/schiffe/*` (Schiffsdaten, Türme, `sperre.js`). Grafik: `src/grafik/waffen/flakgrafik.js`,
+`angreifergeschosse.js`. Regler-Tabellen (je Besitzer, eine Quelle): `STREU_REGLER`, `WAFFEN_REGLER`, `GRAFIK_REGLER`.
+
+**Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
+- Nutzer-Urteil zum Gefechtstest einholen (Spieltester R14: „Zahlen erzählen ein Gefecht, aber man sieht noch kaum, wer
+  wen beschießt“) → **Kanonenboot-Modell** (Schiffbauer) statt Drohnen-Platzhalter, ggf. Zielmarkierungen im HUD.
+- Schwierigkeit/Spielziel im Gefecht (Wellen-Ende, Sieg/Niederlage, Punktestand), Angreifer als Wrack-Verhalten.
+- Flak-Labor: Feuerrate als Hebel für dichtere Sättigung; Zielfeuer-Balance (getrennte Splitter fern/nah wäre Code);
+  Schadensskala ordnen (1,5–5,5 HP je Granate). Station unten links verdeckt im Labor die linken Türme.
+- Später: Stationen (Waffen/Maschine/Taktik), Koop übers Netz (Netz-Architekt).
+- Aufräumen: alte Ordner `../Schwarmfront-wt/r14-schiffbauer` und `r14-schatten` waren von Vite-Servern (Ports
+  5191–5193) eines Agenten gesperrt — nach Beenden dieser Prozesse löschen.
 
 ## Neu in Runde 6 (2026-11-15): Flak-Labor — Demo ohne Schiff
 Nutzerwunsch: „Flak-System wie bei Battlestar Galactica, kleine Demo ohne Schiff, nur die Kanonen und ein paar Objekte am
@@ -58,7 +88,7 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   gedämpft + `KERN_BUDGET` (kein weißer Ballen). Sperrfeuer: Median 163 m, **73 % der Detonationen vor der Drohne**
   (vorher 9 %); Zielfeuer Median 110 m. Balance 1100, 3 Startwerte: Sperr 46–54 Abschüsse / 36–50 % Vorstöße überlebt,
   Ziel 31–32 / 33–43 %. Protokoll `…/2026-11-16-runde10.md`.
-- Nutzer zu R10: „nach dem Test viel besser“ → **Runde 11 (2026-11-16, lokal committet, nicht gepusht): Reglerfeld**
+- Nutzer zu R10: „nach dem Test viel besser“ → **Runde 11 (2026-11-16, gepusht 2026-11-22): Reglerfeld**
   links oben (Taste R) mit 15 Schiebereglern zum Abstimmen + Konfig: **Streuung (Sim)** `befehl.streu` (sperrQuer,
   sperrTiefe, raumZuschlag, lagenAnteil, ziel, nahMax — Tabelle `STREU_REGLER` in turmziel.js), **Grenzen der Waffe
   (Sim)** `befehl.waffe` (deckelQuer, deckelTiefe — `WAFFEN_REGLER` in flak.js; KI-Toleranz liest dieselben Werte),
@@ -66,7 +96,7 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   rauchGroesse, zusatzAnzahl, zusatzWeite — `GRAFIK_REGLER` in flakgrafik.js; Vorrat 3072, 1024 Reserve für echte Wolken).
   Knöpfe Standard / Konfig kopieren (JSON), Werte im Browser gemerkt (`localStorage` „schwarmfront.flaklabor.konfig“).
   Ohne Regler bitgleich zu R10. Seite: `src/labor/regler.js`. Protokoll `…/2026-11-16-runde11.md`.
-- Nutzer zu R11 („auf einem guten Weg“) → **Runde 12 (2026-11-19, lokal committet, nicht gepusht):**
+- Nutzer zu R11 („auf einem guten Weg“) → **Runde 12 (2026-11-19, gepusht 2026-11-22):**
   (1) **Konfig speichern unter Namen** oben im Reglerfeld → Datei **`konfig/flak/<name>.json`** über den Dev-Server
   (`vite.config.js`, `/api/flak-konfig`), Liste + Laden (inkl. v0). **Die KI liest Nutzer-Konfigs direkt aus diesem Ordner.**
   (2) **Viel weitere Streuung:** Gesamtregler **„Streuung gesamt ×“** (`faktor` 0,5–3) skaliert alle Sim-Streuungen und
@@ -80,7 +110,7 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
   1 → 1,6, neuer Regler **„Explosion: Helligkeit“** (explosionHell 0,5–3, Standard 1,8; Kern-Budget 16 → 28 × hell);
   **Taste T / Knopf „Leuchtspur dauerhaft“** (grafik.regler.spurImmer, nur Optik, wird in der Konfig mitgespeichert).
   Browser: weiße Pixel 0,15 ‰, Bildzeit 0,4 ms, 68 Spuren mit T. Keine Sim-Änderung.
-- **Runde 14 (2026-11-21, mit Team, lokal committet): Startmenü + Gefechtstest.** `index.html` = Startmenü
+- **Runde 14 (2026-11-21, mit Team, gepusht 2026-11-22): Startmenü + Gefechtstest.** `index.html` = Startmenü
   (Gefechtstest · Flak-Labor · Freiflug; Freiflug jetzt `freiflug.html`; Esc = zurück). **Gefechtstest** `gefecht.html`:
   Bollwerk fliegen (Steuerung wie Freiflug), 14 Flak-Türme (10 neue PDC, ids 7–16, oben/unten; `rumpfSperre()`), Turm-KI
   im Schiffsrahmen (Killzone 900/1000), Angreifer-KI `src/sim/ki/angreifer.js` (Kanonenboote in Rotten, Wellen 4/6/8,
@@ -97,7 +127,7 @@ Himmel“. **http://localhost:5180/flak.html** (Spiel bleibt unter `/`).
 - **Weg ins Spiel (nicht beauftragt):** Lafetten aus `SCHIFFSDATEN.<typ>.tuerme` ableiten (Turm-Rahmen ≠ Welt-Rahmen
   am fahrenden Schiff), Flak + Turm-KI in `welt.schritt`, Drohnen-Modell (Schiffbauer) statt Platzhalter, Schwarm-KI v1.
 
-## Stand (2026-11-15, nach Runde 5)
+## Stand (2026-11-15, nach Runde 5) — historisch, Freiflug-Grundlage
 - **Spielbar:** Einzelspieler-Steuer-Station. Bollwerk (Hauptschiff, ~255 m) und Ambos (~150 m, Taste V) fliegen durch
   ein Asteroidenfeld vor einem Gasriesen. Schubhebel, Nachbrenner, Trägheitsdämpfer, 3 Kameras.
 - **Simulation** (`src/sim/`, grafikfrei, fester 60-Hz-Schritt, Gleichlauf getestet): Welt (Schiff → Kollision),
@@ -122,7 +152,7 @@ Türme v1 schießen **automatisch** (KI) · **Flak + schwere Geschütze** · Geg
 unbemannt, mechanisch, rotes Sensorauge) · Schaden erst nur **Gesamt-HP** · weniger Drift + Tempolimit (✅ R5) ·
 Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigieren (✅ R5).
 
-## Nächste Runde (Vorschlag, noch nicht beauftragt): Runde 6 — Waffen v1
+## Plan aus Runde 5 (historisch — Waffen v1 ist mit Runde 6–14 umgesetzt)
 - **Waffentechniker:** `src/sim/waffen/` (Turmwerte Flak/schwer, Drehen mit Grenzen, Geschoss-Pool, Treffertest Strecke
   gegen Kugel, Schaden, Feuersperre gegen eigenen Rumpf, **Zieldrohne** zum Messen), `src/grafik/waffen/` (Rohre drehen,
   Leuchtspur, Mündungsblitz, Flak-Wolke).
@@ -145,7 +175,11 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
 - Bollwerk-Kopf wirkt in der Draufsicht etwas kurz (Feinschliff nach Nutzer-Urteil).
 
 ## Hinweise für die Arbeit
-- Testhilfen: `spiel.ansicht(name)` (heck, seite, oben, unten, bug, weit — friert ein), `spiel.standbildWeg()`,
+- Testhilfen Gefecht/Labor (verdecktes Pane: requestAnimationFrame läuft nicht): `spiel.bilder(n, befehl)` rechnet ganze
+  Bilder, `spiel.taste(code)`, `spiel.gefecht.zaehler`, `spiel.angreifer.welle`, `spiel.flak.tuerme[i]` (Modell dazu:
+  `spiel.gefecht.lafetten[i].id`), `spiel.regler.setze/konfig/standard()` (Labor), `spiel.bildzeit(n)`.
+- Bauaufträge: Skripte nur ins Scratchpad, **keine Dev-Server starten bzw. eigene Prozesse am Ende beenden**.
+- Testhilfen Freiflug: `spiel.ansicht(name)` (heck, seite, oben, unten, bug, weit — friert ein), `spiel.standbildWeg()`,
   `spiel.takt(n, befehl)` (rechnet die ganze Sim-Welt), `spiel.kamera.setzeFrei(gier, nick, abstand)`,
   `spiel.waehleSchiff(i)`, `spiel.welt`, `spiel.bildzeit(n)`, `spiel.befehlErsatz = {hebel: 1, …}`.
 - Verdecktes Fenster: Screenshots zweimal versuchen, Bild kann veraltet/gekachelt sein → lieber mit Zahlen prüfen.
@@ -154,10 +188,13 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 14** (2026-11-21, mit Team): Startmenü, Gefechtstest (Bollwerk + 14 Flak-Türme gegen Angreifer-KI, Flak am
+  Schiff), Konfig T1 als Standard, kein Rauch bei Feuer halt. Protokoll `…/2026-11-21-runde14.md`.
+- **Runde 13** (2026-11-21, Schnellrunde ohne Team auf Nutzerwunsch): mehr Glut, weniger Rauch, Taste T Leuchtspur dauerhaft.
 - **Runde 12** (2026-11-19, mit Team): Konfig speichern unter Namen (konfig/flak/), Gesamtregler Streuung ×, große
-  Standards, Sperr-Schutz, Zenit-Bremse, Balance. Lokal committet.
+  Standards, Sperr-Schutz, Zenit-Bremse, Balance.
 - **Runde 11** (2026-11-16, mit Team): Reglerfeld mit 15 Schiebereglern (Streuung, Waffen-Grenzen, Optik inkl. Füll-Flak),
-  Konfig kopieren/merken. Lokal committet.
+  Konfig kopieren/merken. — Runde 11–14 gepusht 2026-11-22.
 - **Runde 10** (2026-11-16, mit Team): Sättigungsfeuer — Räume mit 3 Tiefenlagen, Streu-Ellipsoid, 4 Zusatz-Explosionen,
   Glut-Budget, Balance mit 3 Startwerten. Gepusht e22a475 (mit R8+R9).
 - **Runde 9** (Nutzer-Rückmeldung zu R8, mit Team): Streukugel 60 m, Zusatz-Explosionen, Standard 1100 m/s, Sperrkästen
