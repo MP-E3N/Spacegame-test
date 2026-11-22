@@ -85,6 +85,8 @@ function findeModul(katalog, id) {
   return null;
 }
 /** Passt Punkt b (Kind) an Punkt a (Eltern)? Gleiche Größe + Art; außer bei Rumpfflächen nur Buchse an Stecker (E9). */
+// WARUM Infinity: ungültige Nummern (keine Ganzzahl) sortieren ans Ende statt NaN-Vergleich (Prüfer R15)
+const nrSchluessel = (t) => (Number.isInteger(t?.nr) ? t.nr : Infinity);
 const passt = (a, b) => a.groesse === b.groesse && a.art === b.art && (a.art === 'rumpf' || (!a.stecker && !!b.stecker));
 /** Ring-Schluss: Reihenfolge der beiden Punkte egal. */
 const passtBeide = (a, b) => passt(a, b) || passt(b, a);
@@ -116,7 +118,7 @@ export function baue(entwurf, katalog) {
   const nachNr = new Map();
   // WARUM sortiert: Ergebnis darf nicht von der Listenreihenfolge abhängen (Prüfer R15) — Startteil = kleinste nr,
   // bei doppelter nr gewinnt das Teil mit dem kleineren JSON-Text
-  const sortiert = [...roh].map((t) => [t, JSON.stringify(t) ?? '']).sort((a, b) => (a[0]?.nr ?? 0) - (b[0]?.nr ?? 0) || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0)).map((x) => x[0]);
+  const sortiert = [...roh].map((t) => [t, JSON.stringify(t) ?? '']).sort((a, b) => nrSchluessel(a[0]) - nrSchluessel(b[0]) || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0)).map((x) => x[0]);
   for (const t of sortiert) {
     if (!Number.isInteger(t?.nr)) { fehler('nr_doppelt', 'Teil ohne gültige Nummer'); continue; }
     if (nachNr.has(t.nr)) { fehler('nr_doppelt', `Nummer ${t.nr} kommt doppelt vor`, t.nr); continue; }
