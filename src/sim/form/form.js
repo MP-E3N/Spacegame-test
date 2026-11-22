@@ -192,12 +192,20 @@ export function huelle(k, lage = koerperMatrix(k)) {
   }
   return { min, max };
 }
-/** Volumen eines Körpers (Querschnittsflächen trapezförmig über z gemittelt — genau genug für die Masse). */
+/**
+ * Volumen eines Körpers — exakt für den linearen Loft (Prismatoid: h/6 · (A₁ + 4·A_mitte + A₂), A_mitte aus den
+ * gemittelten Profilpunkten). WARUM nicht Trapezregel: überschätzte Kegel/Trapeze um bis zu 7 % (Prüfer R16).
+ */
 export function volumen(k) {
   let v = 0;
-  for (let i = 1; i < k.spanten.length; i++) v += (profilFlaeche(k.spanten[i - 1]) + profilFlaeche(k.spanten[i])) / 2 * (k.spanten[i].z - k.spanten[i - 1].z);
+  for (let i = 1; i < k.spanten.length; i++) {
+    const a = profilPunkte(k.spanten[i - 1]), b = profilPunkte(k.spanten[i]);
+    const m = a.map((p, j) => [(p[0] + b[j][0]) / 2, (p[1] + b[j][1]) / 2]);
+    v += (k.spanten[i].z - k.spanten[i - 1].z) / 6 * (flaeche(a) + 4 * flaeche(m) + flaeche(b));
+  }
   return v;
 }
+function flaeche(p) { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return Math.abs(a) / 2; }
 
 // ---------------- Form → Werft-Modul ----------------
 export const formId = (name) => 'form_' + (String(name).normalize('NFC').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_|_$/g, '') || 'unbenannt'); // NFC wie normalisiere(); leerer Name → form_unbenannt

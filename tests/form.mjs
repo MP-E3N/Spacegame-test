@@ -194,7 +194,7 @@ const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] *
   const vk = (vorlage) => volumen(normalisiere({ koerper: [neuerKoerper(vorlage, 0)] }).koerper[0]);
   const vq = vk('quader'), vz = vk('zylinder'), vg = vk('kegel'), kegelSoll = Math.PI * 8 / 3 * (16 + 4 + 8);
   zeile('volumen: Quader 10×6×10 | Zylinder r 3 L 10', `≈ 600 | ≈ ${(Math.PI * 90).toFixed(0)} ±1 %`, `${vq.toFixed(2)} | ${vz.toFixed(1)}`, Math.abs(vq - 600) < 0.05 && Math.abs(vz / (Math.PI * 90) - 1) < 0.01);
-  zeile('volumen: Kegelstumpf r 4→2, L 8 gegen Formel', '0 … +10 %', `${vg.toFixed(1)} / ${kegelSoll.toFixed(1)} (${(100 * (vg / kegelSoll - 1)).toFixed(1)} %)`, vg / kegelSoll >= 1 && vg / kegelSoll <= 1.1);
+  zeile('volumen: Kegelstumpf r 4→2, L 8 gegen Formel', '±1 % (Prismatoid, R16)', `${vg.toFixed(1)} / ${kegelSoll.toFixed(1)} (${(100 * (vg / kegelSoll - 1)).toFixed(1)} %)`, Math.abs(vg / kegelSoll - 1) <= 0.01);
   const masse = formZuModul({ name: 'q', koerper: [neuerKoerper('quader', 0), neuerKoerper('zylinder', 1, { op: 'minus' })] }).werte.masse;
   zeile('Masse Quader − Zylinder (Plus − Minus)·DICHTE', String(Math.round((vq - vz) * DICHTE)), masse, masse === Math.round((vq - vz) * DICHTE));
   const nurMinus = formZuModul({ name: 'm', koerper: [neuerKoerper('zylinder', 0), neuerKoerper('quader', 1, { op: 'minus' })] }).werte.masse;
