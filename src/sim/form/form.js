@@ -7,7 +7,10 @@
 //          (Punkte an Kanten) · umrissAusPunkten · spiegelKoerper (eigene Spiegelkopie) · eulerAusMatrix · ACHSEN · NAMEN
 //          Runde 17b: verschiebePunkte · fuegeSpantEin · loescheSpant · klappeKoerper (Umklappen) · Körper-Feld fest (fixiert)
 // REGEL (Protokoll R16):
-//   Form   { name, version, art, koerper: [Körper], andock: [Punkt wie Werft E1/E2/E9] }
+//   Form   { name, version, art, koerper: [Körper], andock: [Punkt wie Werft E1/E2/E9], bauteile: [Bauteil] }
+//   Bauteil (Runde 19) { id, typ (Schlüssel im Katalog src/sim/form/bauteile.js), p: [x,y,z] Fußpunkt AUF der Fläche,
+//            n: Flächennormale nach außen (auf eine Achse gerastet), spiegel (wie Körper), fest? } — normalisiere kennt
+//            den Katalog NICHT (keine Zirkel-Imports); ob typ gültig ist, prüfen flug.js/geschuetze.js.
 //   Körper { id, typ, op: 'plus'|'minus', mat, pos: [x,y,z], dreh: [rx,ry,rz] (Grad, Reihenfolge X→Y→Z), spiegel,
 //            spanten: [Spant] (z aufsteigend, mind. 2) }
 //   Spant  { z, b, h, x?, y?, rundung (0..1), fase (0..1), p? } — b/h = VOLLE Breite/Höhe (anders als TEILE der Werft!)
@@ -82,7 +85,7 @@ export function neuerKoerper(vorlage, id, { pos = [0, 0, 0], op = 'plus', mat = 
 // ---------------- Prüfen / Normalisieren ----------------
 const MATERIALIEN = ['rumpf', 'dunkel', 'metall', 'duese', 'schacht', 'warn'];
 const ARTEN = ['kommando', 'bug', 'rumpf', 'uebergang', 'heck', 'hangar', 'anbau', 'turm'];
-export const GRENZEN = { koerper: 64, spanten: 24, mass: 400, weit: 1000 };
+export const GRENZEN = { koerper: 64, spanten: 24, mass: 400, weit: 1000, bauteile: 96 };
 
 /** Fehlende Felder ergänzen, Zahlen klemmen, Spanten nach z sortieren. Ändert die Eingabe nicht. */
 export function normalisiere(form) {
@@ -101,6 +104,13 @@ export function normalisiere(form) {
       })).sort((a, b) => a.z - b.z)),
     })),
     andock: (Array.isArray(form?.andock) ? form.andock : []).slice(0, 32).map((p, i) => andockPunkt(p, i)),
+    bauteile: (Array.isArray(form?.bauteile) ? form.bauteile : []).slice(0, GRENZEN.bauteile).map((b, i) => ({
+      id: Number.isInteger(b?.id) ? b.id : i, typ: String(b?.typ ?? '').slice(0, 24),
+      p: vec(b?.p).map((v) => rp(klemme(v, -GRENZEN.weit, GRENZEN.weit))),
+      // WARUM Standard +Y: ein Bauteil ohne Normale sitzt am ehesten oben auf (einrasten() nähme sonst +Z)
+      n: vec(b?.n).some((v) => v !== 0) ? einrasten(b.n) : [0, 1, 0],
+      spiegel: spiegelAchsen(b?.spiegel), ...(b?.fest === true && { fest: true }),
+    })),
   };
 }
 const zahl = (x, d = 0) => (Number.isFinite(x) ? x : d);
