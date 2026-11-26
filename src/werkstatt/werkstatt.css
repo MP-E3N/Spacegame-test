@@ -78,7 +78,7 @@
 #rechts input:disabled, #rechts button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ---- Runde 18: Leiste am Teil, Zugmaß, Symmetrie, Details ---- */
-#am-teil { position: absolute; transform: translate(-50%, -100%); display: flex; gap: 2px; pointer-events: auto; z-index: 5;
+#am-teil { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: auto; z-index: 5;
   background: var(--grund); border: 1px solid var(--linie); padding: 3px; white-space: nowrap; }
 #am-teil button { font: inherit; font-size: 11px; color: #f2c070; background: rgba(0, 0, 0, 0.45); border: 1px solid transparent; padding: 3px 6px; cursor: pointer; }
 #am-teil button:hover { border-color: var(--bern); }

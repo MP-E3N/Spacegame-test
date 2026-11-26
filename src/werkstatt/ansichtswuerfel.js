@@ -105,6 +105,9 @@ export function erstelleAnsichtswuerfel({ renderer, camera, steuer, leinwand, re
     return Math.max(Math.abs(d.x), Math.abs(d.y), Math.abs(d.z)) > 0.9995;
   }
   function fernglas() {
+    // Nahebene mit dem Abstand (Prüfer R18): bei Tele steht die Kamera Hunderte Meter weg — near = 1 verschenkt Tiefenauflösung
+    const nah = Math.max(1, camera.position.distanceTo(steuer.target) * 0.02);
+    if (Math.abs(camera.near - nah) > 0.05 * nah) { camera.near = nah; camera.updateProjectionMatrix(); }
     const ziel = teleAn && !fahrt && gerade() ? TELE_FOV : NORMAL_FOV;
     if (Math.abs(camera.fov - ziel) < 0.01) return;
     const alt = camera.fov, neu = Math.abs(ziel - alt) < 0.3 ? ziel : alt + (ziel - alt) * 0.25; // weich in ~10 Bildern

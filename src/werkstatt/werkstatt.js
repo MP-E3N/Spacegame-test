@@ -78,6 +78,9 @@ let punkteModus = false;  // Taste P: Punkte des aktuellen Spants ziehen, + an K
 let punktZug = null;      // { j, merk (Form vor dem Zug), basis (Körper zu Zugbeginn) }
 // R18: Werkzeug des gewählten Körpers — 'ziehen' (Flächen anfassen, Standard) | 'schieben' | 'drehen' | 'groesse' (Griffe)
 let modus = 'ziehen';
+// WARUM let oben statt const unten (Prüfer R18): ?. schützt nicht vor der „temporal dead zone“ — so sind die drei vor
+// ihrer Erzeugung (Ende der Datei) einfach null
+let wuerfel = null, skizze = null, bedienung = null;
 let mehrOffen = false;    // rechte Tafel: Körper-Details (Spanten, Punkte, Lage …) nur auf Wunsch
 const SYM = 'schwarmfront-werkstatt-symmetrie';
 let symmetrie = localStorage.getItem(SYM) !== 'aus'; // Standard an (KSP/Space Engineers: Symmetrie ist EIN Schalter)
@@ -92,6 +95,7 @@ const naechsteId = () => form.koerper.reduce((m, k) => Math.max(m, k.id), -1) + 
 
 // ---------------- Ändern ----------------
 function aendere(neu, { merken = true } = {}) {
+  bedienung?.fremd(); // Prüfer R18: sonst überschriebe „Zahl + Enter“ später eine Zwischenänderung aus altem Stand
   if (merken) { zurueck.push(kopie(form)); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; }
   form = normalisiere(neu);
   if (!form.koerper.some((k) => k.id === gewaehlt)) gewaehlt = form.koerper.at(-1)?.id ?? null;
@@ -409,15 +413,18 @@ function waehle(id) {
  * Mitte (dann sind sie selbst die Mitte des Schiffs, eine Kopie läge in ihnen).
  */
 function mitSymmetrie(k) {
-  if (!symmetrie || k.spiegel?.includes('x')) return k;
+  const sp = Array.isArray(k.spiegel) ? k.spiegel : k.spiegel === true ? ['x'] : []; // neuerKoerper liefert spiegel: false
+  if (!symmetrie || sp.includes('x')) return k;
   const h = huelle(normalisiere({ koerper: [k] }).koerper[0]);
-  return h.min[0] < -0.01 && h.max[0] > 0.01 ? k : { ...k, spiegel: [...(k.spiegel ?? []), 'x'] };
+  return h.min[0] < -0.01 && h.max[0] > 0.01 ? k : { ...k, spiegel: [...sp, 'x'] };
 }
 function platziere(k) {
   const id = naechsteId(), neu = mitSymmetrie({ ...k, id });
   aendere({ ...form, koerper: [...form.koerper, neu] });
   waehle(id);
-  zeigeMeldungKurz(`${NAMEN[neu.typ] ?? 'Körper'} ${id} gesetzt${neu.spiegel.includes('x') ? ' (mit Spiegelkopie — Symmetrie an)' : ''} — jetzt Flächen ziehen`);
+  // WARUM den Grund nennen (Spieltest R18): „Symmetrie an“ ohne Kopie wirkte wie ein Fehler
+  const sym = !symmetrie ? '' : neu.spiegel.includes('x') ? ' (mit Spiegelkopie — Symmetrie an)' : ' (ohne Spiegelkopie: liegt über der Mitte)';
+  zeigeMeldungKurz(`${NAMEN[neu.typ] ?? 'Körper'} ${id} gesetzt${sym} — jetzt Flächen ziehen`);
 }
 function setzeVorlage(name) {
   const alt = koerper(), id = naechsteId();
@@ -432,6 +439,7 @@ function setzeVorlage(name) {
 /** Kamera-Ziel auf einen Körper legen, Blickrichtung und Abstand bleiben (Spieltest R16: neue Körper lagen außerhalb des Bildes). */
 function zielAuf(id) {
   const k = form.koerper.find((x) => x.id === id); if (!k) return;
+  wuerfel?.normal(); // Abstand unten gilt für den normalen Bildwinkel (Prüfer R18)
   const h = huelle(k), m = new THREE.Vector3(...[0, 1, 2].map((i) => (h.min[i] + h.max[i]) / 2));
   const versatz = camera.position.clone().sub(steuer.target);
   const groesse = Math.max(...[0, 1, 2].map((i) => h.max[i] - h.min[i]));
@@ -680,15 +688,8 @@ function zeigeLeiste() {
   l.querySelector('[data-t="fest"]').textContent = k.fest ? '🔒 Gelöst?' : '🔓 Fixieren';
   l.querySelector('[data-t="minus"]').textContent = k.op === 'minus' ? '◐ Material' : '◐ Ausschneiden';
 }
-/** Leiste über der Hülle des gewählten Körpers (Mitte oben, im Bild), bleibt im Bild. */
-function legeLeiste() {
-  const k = koerper(), l = $('am-teil'); if (!k || l.classList.contains('versteckt')) return;
-  const h = huelle(k), v = new THREE.Vector3((h.min[0] + h.max[0]) / 2, h.max[1], (h.min[2] + h.max[2]) / 2).project(camera);
-  const r = $('leinwand').getBoundingClientRect();
-  const x = Math.min(r.width - 340 - l.offsetWidth / 2, Math.max(240 + l.offsetWidth / 2, (v.x + 1) / 2 * r.width));
-  const y = Math.min(r.height - 60, Math.max(l.offsetHeight + 70, (1 - v.y) / 2 * r.height - 14));
-  l.style.left = x + 'px'; l.style.top = y + 'px';
-}
+// Leiste am Teil liegt fest unten in der Mitte (CSS #am-teil). WARUM nicht schwebend über dem Körper (Spieltest R18, Muss):
+// sie rutschte über den Ansichtswürfel — ein Klick auf VORNE traf „Löschen“ — und verdeckte die Oberseite.
 $('w-home').addEventListener('click', () => fokus());
 for (const [i, a] of ['x', 'y', 'z'].entries()) {
   $('k-p' + a).addEventListener('change', (e) => { e.target.blur(); const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.pos[i] = +e.target.value; return x; }); });
@@ -765,7 +766,8 @@ function fokus() {
   const box = new THREE.Box3(); rohGruppe.traverse((o) => { if (o.isMesh) box.expandByObject(o); });
   const m = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
   const r = box.isEmpty() ? 30 : Math.max(12, box.getSize(new THREE.Vector3()).length());
-  steuer.target.copy(m); camera.position.copy(m).add(new THREE.Vector3(0.7, 0.45, 0.8).normalize().multiplyScalar(r * 1.1));
+  // WARUM 1,7 statt 1,1 (Spieltest R18, Soll): zu nah — Flächen und Griffe am Rand schwer zu treffen
+  steuer.target.copy(m); camera.position.copy(m).add(new THREE.Vector3(0.7, 0.45, 0.8).normalize().multiplyScalar(r * 1.7));
 }
 
 addEventListener('keydown', (e) => {
@@ -802,8 +804,8 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') { griff.setTranslationSnap(0.5); griff.setRotationSnap(15 * RAD); } });
 
 // ---------------- Ansichtswürfel und Skizze (Runde 17) ----------------
-const wuerfel = erstelleAnsichtswuerfel({ renderer: bild.renderer, camera, steuer, leinwand: $('leinwand'), rechtsFrei: 330 });
-const skizze = erstelleSkizze({ scene, camera, leinwand: $('leinwand'), steuer, wuerfel, meldung: zeigeMeldungKurz,
+wuerfel = erstelleAnsichtswuerfel({ renderer: bild.renderer, camera, steuer, leinwand: $('leinwand'), rechtsFrei: 330 });
+skizze = erstelleSkizze({ scene, camera, leinwand: $('leinwand'), steuer, wuerfel, meldung: zeigeMeldungKurz,
   fertig(daten) {
     const id = naechsteId();
     aendere({ ...form, koerper: [...form.koerper, mitSymmetrie({ ...daten, id })] });
@@ -815,9 +817,10 @@ function starteSkizze() {
   bedienung.abbrechen(); griff.detach(); punktGruppe.clear();
   skizze.start(); zeigeLeiste();
 }
-const bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, rohGruppe, wuerfel, griff,
+bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, rohGruppe, wuerfel, griff,
   holeForm: () => form, koerper, waehle, meldung: zeigeMeldungKurz, platziere,
   darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen',
+  klickVerbraucht() { gedrueckt = null; },
   vorschau(id, k) { ziehen = true; form = normalisiere({ ...form, koerper: form.koerper.map((x) => (x.id === id ? k : x)) }); schnellZeichnen(id); },
   uebernehme(merk) { ziehen = false; zurueck.push(merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; aendere(form, { merken: false }); },
   setzeForm(f, merk) { ziehen = false; if (merk) { zurueck.push(merk); vor.length = 0; } aendere(f, { merken: false }); },
@@ -834,7 +837,6 @@ function schleife() {
     const kam = camera.matrixWorld.elements.map((v) => v.toFixed(3)).join();
     if (kam !== letzteKamera && performance.now() - punkteUhr > 100) { letzteKamera = kam; punkteUhr = performance.now(); zeigePunkte(); }
   }
-  legeLeiste();
   bild.zeichnen(); wuerfel.zeichne(); requestAnimationFrame(schleife);
 }
 requestAnimationFrame(schleife);

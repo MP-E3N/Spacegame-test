@@ -7,7 +7,8 @@
 //           Boden-Raster) → Klick setzt, Esc/Rechtsklick bricht ab.
 // LIEFERT: erstelleBedienung(ctx) → { setzen(vorlage), abbrechen(), aktiv(), taste(e) → bool, setztGerade(), zieht() }
 //          ctx = { scene, camera, leinwand, steuer, rohGruppe, wuerfel, griff, holeForm(), koerper(), waehle(id),
-//                  vorschau(id, k), uebernehme(merk), setzeForm(form, merk), platziere(k), meldung(t), darf() }
+//                  vorschau(id, k), uebernehme(merk), setzeForm(form, merk), platziere(k), meldung(t), darf(), klickVerbraucht() }
+//          + fremd() (Werkstatt ruft es bei JEDER Änderung; eigene Änderungen der Bedienung zählen nicht)
 // REGEL: Rechnung NUR über src/sim/form/ziehen.js (flaecheVon, ziehe, flaechenMass, ablegen) — hier nur Maus, Strahl und
 //        Anzeige. Ereignisse werden auf window in der Einfang-Phase abgefangen, BEVOR OrbitControls/TransformControls sie
 //        sehen; was wir nicht brauchen, läuft unverändert weiter (Kamera drehen, Griffe, Auswahl).
@@ -41,6 +42,8 @@ export function erstelleBedienung(ctx) {
   let zug = null;     // laufender Push/Pull: { id, netz, f, basis, merk, o (Welt), r (Welt), d, buendig }
   let letzter = null; // letzter fertiger Zug (für Zahl + Enter danach): { id, f, basis, merk }
   let eingabe = '';   // getippte Zahl
+  let eigen = false;  // true, während die Bedienung selbst ändert (dann ist es keine „fremde“ Änderung)
+  const selbst = (fn) => { eigen = true; try { fn(); } finally { eigen = false; } };
   let setzen = null;  // { vorlage, k (pos 0), h, pos }
 
   // ---------- Hilfen ----------
@@ -148,8 +151,8 @@ export function erstelleBedienung(ctx) {
   }
   function endeZug(abbrechen = false) {
     const z = zug; zug = null; pfeil.visible = false; ctx.steuer.enabled = true; leinwand.style.cursor = '';
-    if (abbrechen || !z.d) { ctx.setzeForm(z.merk, null); versteckeMass(); return; }
-    ctx.uebernehme(z.merk);
+    if (abbrechen || !z.d) { selbst(() => ctx.setzeForm(z.merk, null)); versteckeMass(); return; }
+    selbst(() => ctx.uebernehme(z.merk));
     letzter = { id: z.id, f: z.f, basis: z.basis, merk: z.merk };
     zeigeMass(null, null, z);
   }
@@ -161,7 +164,7 @@ export function erstelleBedienung(ctx) {
     if (!letzter) return;
     const { koerper: neu, d: echt } = ziehe(letzter.basis, letzter.f, d);
     const form = ctx.holeForm();
-    ctx.setzeForm({ ...form, koerper: form.koerper.map((k) => (k.id === letzter.id ? neu : k)) }, null);
+    selbst(() => ctx.setzeForm({ ...form, koerper: form.koerper.map((k) => (k.id === letzter.id ? neu : k)) }, null));
     ctx.meldung(echt === d ? `Zugweite auf ${zahl(d)} m gesetzt` : `Zugweite ${zahl(echt)} m (begrenzt — Mindestmaß 0,1 m)`);
     zeigeMass(null, null, { ...letzter, d: echt, neu });
   }
@@ -219,8 +222,12 @@ export function erstelleBedienung(ctx) {
       if (e.button === 0) unten = { x: e.clientX, y: e.clientY, art: 'setzen' }; // Ziehen dreht weiter die Kamera
       return;
     }
+    // WARUM Fläche beim Drücken neu bestimmen (Spieltest R18, Muss): ohne Mausbewegung davor galt noch die zuletzt
+    // beleuchtete Fläche — Ziehen an der Seite zog dann die Oberseite, ein Klick woanders wählte den alten Körper
+    if (e.button === 0 && !ctx.griff.axis) hoverAn(e.clientX, e.clientY);
     if (e.button !== 0 || !hover || ctx.griff.axis) return;
     unten = { x: e.clientX, y: e.clientY, art: 'flaeche', id: hover.id };
+    ctx.klickVerbraucht();
     e.stopPropagation(); // WARUM: Kamera und Griffe sollen diesen Druck nicht bekommen — er gehört der Fläche
   }, { capture: true });
   addEventListener('pointermove', (e) => {
@@ -235,9 +242,15 @@ export function erstelleBedienung(ctx) {
     if (zug) { endeZug(); e.stopPropagation(); return; }
     if (!u) return;
     const klick = Math.hypot(e.clientX - u.x, e.clientY - u.y) <= KLICK_PX;
-    if (u.art === 'setzen' && klick) { bewegeSetzen(e.clientX, e.clientY); setzeAb(); e.stopPropagation(); return; }
+    // WARUM hier KEIN stopPropagation (Prüfer R18, Muss): der Druck lief beim Setzen zu OrbitControls durch; ohne dessen
+    // Pointerup bliebe der Zeiger dort registriert (Kamera dreht ohne Taste weiter). Die Auswahl der Werkstatt schlucken wir.
+    if (u.art === 'setzen' && klick) { bewegeSetzen(e.clientX, e.clientY); setzeAb(); ctx.klickVerbraucht(); return; }
     if (u.art === 'flaeche' && klick) { ctx.waehle(u.id); e.stopPropagation(); } // Klick auf die Fläche = Körper wählen (bleibt gewählt)
   }, { capture: true });
+
+  // Prüfer R18: bricht der Browser den Zeiger ab (Fokuswechsel, Touch), Zug sauber beenden statt Kamera gesperrt zu lassen
+  addEventListener('pointercancel', () => { unten = null; if (zug) endeZug(true); }, { capture: true });
+  leinwand.addEventListener('lostpointercapture', () => { if (zug && !unten) endeZug(true); });
 
   function taste(e) {
     if (setzen && e.key === 'Escape') { abbrechen(); ctx.meldung('Setzen abgebrochen'); return true; }
@@ -258,7 +271,7 @@ export function erstelleBedienung(ctx) {
     setzen = null; geist.visible = false; unten = null; vergiss();
   }
 
-  return { setzen: startSetzen, abbrechen, vergiss, taste, aktiv: () => !!(zug || setzen), setztGerade: () => !!setzen, zieht: () => !!zug,
+  return { setzen: startSetzen, abbrechen, vergiss, fremd: () => { if (!eigen && !zug) vergiss(); }, taste, aktiv: () => !!(zug || setzen), setztGerade: () => !!setzen, zieht: () => !!zug,
     // Debug/Prüfung: Fläche unter einem Bildpunkt und Zug ohne Maus
     flaecheBei(cx, cy) { hoverAn(cx, cy); return hover && { id: hover.id, ...hover.f }; },
     get hover() { return hover; } };

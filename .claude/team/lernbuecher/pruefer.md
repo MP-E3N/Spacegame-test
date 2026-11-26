@@ -37,3 +37,6 @@
 - 2026-11-22 Runde 16 (Form-Werkstatt) — Nahtpunkte zwischen Profil-Ecken auf doppelte Punkte prüfen; Spiegelung (det −1)
   dreht die Wicklung. Sollwerte aus der exakten Formel (Prismatoid), nicht aus dem aktuellen Verhalten (Kegel-Zeile hielt
   +7 % Trapezfehler fest und wurde beim Beheben rot). 63 Zeilen, 1,2 s.
+- 2026-11-26 Runde 18 (tests/ziehen.mjs) — Test gegen eine eigene Ersatz-Umsetzung im Scratchpad vorab laufen lassen →
+  zeigt, dass die Prüfungen anschlagen. Bei Klemmung immer gegen das ZURÜCKGEGEBENE d prüfen, nicht gegen das gewünschte
+  (eine Zeile war deshalb rot). Durchsicht: Einfang-Phase + stopPropagation gegen OrbitControls' document-Pointerup prüfen.

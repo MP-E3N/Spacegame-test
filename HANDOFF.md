@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15 + 16 nur lokal committet, Runde 17 noch nicht committet**).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15–18 nur lokal committet, nicht gepusht**).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
 ## Worum es geht
@@ -11,7 +11,7 @@ Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spiele
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
 
-## Stand jetzt (2026-11-22, nach Runde 17) — hier einsteigen
+## Stand jetzt (2026-11-26, nach Runde 18) — hier einsteigen
 **Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–5 / Pfeile + Enter / Klick; aus jeder
 Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
@@ -65,6 +65,16 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
      Rechtsklick löscht Punkt bzw. (quer) Spant. **Umklappen** (an der eigenen Mitte spiegeln), **Fixieren** (Taste L,
      Körper-Feld `fest`: Griffe, Punkte, Spanten, Lage, Löschen gesperrt). **Maße oben im Bild** (Werkstatt: Form +
      gewählter Körper; Werft: Schiff). `form.js`: verschiebePunkte, fuegeSpantEin, loescheSpant, klappeKoerper.
+   - **Runde 18 „Anfassen statt Einstellen“** (mit Team, nach Recherche Tinkercad/SketchUp/Shapr3D/KSP/Starfield; Protokoll
+     `.claude/team/protokolle/2026-11-26-runde18.md`): Körper anklicken → **Fläche leuchtet blau → linke Maus ziehen =
+     Push/Pull** (Kappe/Seite/Umriss-Kante; Maß am Mauszeiger; Raster 0,5 m, Strg frei; rastet bündig an Flächen anderer
+     Körper; **Zahl tippen + Enter = genaue Zugweite**, auch direkt nach dem Loslassen). **Vorlage links → Geist liegt bündig
+     auf der Fläche unter der Maus → Klick setzt** (ohne Fläche auf dem Boden). **Symmetrie-Schalter** links (Standard an:
+     neue Körper bekommen die Spiegelkopie, außer sie liegen über der Mitte). **Leiste fest unten**: Ziehen (Q), Schieben (W),
+     Drehen (E), Kopie, Ausschneiden, Spiegeln, Fixieren, Löschen, Mehr (Details rechts: Spanten, Punkte, Lage).
+     **Rechte Maus = Kamera drehen** (links im Leeren auch). **Würfel-Fläche → Tele-Ansicht** (3° Bildwinkel, wirkt wie
+     ohne Perspektive; beim Wegdrehen zurück). Rechnung `src/sim/form/ziehen.js` (Schiffbauer; Tests `tests/ziehen.mjs`,
+     Prüfer), Maus/Anzeige `src/werkstatt/bedienung.js`. Debug: `spiel.bedienung`, `spiel.modus(m)`, `spiel.kamera`.
    - Debug: `spiel.skizze` (start, zeichneDirekt(punkte, tiefe), erstellen, zustand), `spiel.wuerfel.drehNach(r)`,
      `spiel.punkte(an)`, `spiel.spantNr`, `spiel.punktBild(art, j)`, `spiel.spiegeln(achse)`, `spiel.spiegelKopie(achse)`.
 
@@ -75,7 +85,12 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 `angreifergeschosse.js`. Regler-Tabellen (je Besitzer, eine Quelle): `STREU_REGLER`, `WAFFEN_REGLER`, `GRAFIK_REGLER`.
 
 **Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
-- **Form-Werkstatt:** Nutzer-Urteil zu Runde 17 einholen (Skizze, Punkte, Würfel, Spiegeln). Per Maus geprüft: Skizze
+- **Plan nach Recherche (Nutzer 2026-11-26):** R18 Bedienung (fertig) → **R19 Bauteile (Geschütze, Antriebe) +
+  Schwerpunkt/Schubpunkt-Marker + Prüfliste flugtauglich + Probeflug** (gebautes Schiff im Freiflug/Gefecht laden) →
+  **R20 Schiffsgenerator** (Seed + wenige Regler, Ergebnis voll editierbar, a1studmuffin-Ablauf im Stil Schwarmfront).
+  Offen aus R18: Geist zeigt die künftige Spiegelkopie nicht; bündig an die eigene Spiegelkopie rasten geht nicht;
+  Setzen am Trefferpunkt (nicht Flächenmitte); Kamera nach dem Setzen nicht nachgeführt; Kanten-Zug im Grenzfall 0,56 ms.
+- **Form-Werkstatt:** Nutzer-Urteil zu Runde 18 einholen (Push/Pull-Gefühl). Per Maus geprüft: Skizze
   zeichnen + schließen + erstellen, Punkt ziehen, + herausziehen, Rechtsklick löschen, Würfel OBEN. Ideen R17: Skizze auf
   einer Körperfläche starten (Inventor), Bögen/Kreisbogen im Linienzug, Punkte im Spant-Feld als Zahlen. Nicht per Maus
   geprüft: W schieben, S Größe ziehen.

@@ -49,3 +49,9 @@
   Entscheidungen (Modellier-Art, Bibliothek, Ziel) geklärt, Bibliothek erst nach Zustimmung + E-006. Schnittstelle form.js
   vorab selbst → paralleles Bauen ohne Warten. Regler-Bereiche nicht schätzen, selbst mit der Maus ziehen (Spieltest-Muss).
   Ganze Runde mit SendMessage an die R15-Agenten (0 neue Aufrufe). Lange Doku-Skripte als Datei, nicht als Shell-Heredoc.
+- 2026-11-26 Runde 18 (Bedienung „Anfassen statt Einstellen“) — Nutzer: „nicht intuitiv, fummelig“ → erst Recherche
+  (Tinkercad, SketchUp/Shapr3D, KSP, Starfield), drei Runden vorgeschlagen, Nutzer wählte „Bedienung zuerst“. Schnittstelle
+  ziehen.js vorab im Kickoff → Frühwarnung lieferte 10 Entscheidungen → paralleles Bauen ohne Rückfragen. Eigene UI in
+  bedienung.js statt werkstatt.js weiter aufzublähen. Hover-Zustand beim Drücken neu bestimmen (Automatisierung klickt ohne
+  Mausbewegung — echte Schnell-Klicker auch). Schwebende Leisten nie über anderen Bedienelementen (Würfel → 🗑-Fehlklick).
+  Ereignisse in der Einfang-Phase: Pointerup nur stoppen, wenn auch der Pointerdown gestoppt wurde (OrbitControls hängt sonst).

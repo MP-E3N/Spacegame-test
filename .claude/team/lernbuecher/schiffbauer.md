@@ -29,3 +29,6 @@
   getrennt, Lage geschlossen). CSG in Sätzen nicht berührender Körper (30 Körper: 3 statt 39 Schritte, ~5× schneller).
   Schweißzugabe 1–3 mm nach Listenplatz (id % 3 versagte bei regelmäßiger Nummerierung). Offene Kanten nur mit T-Stoß-Teilung
   zählen. Lehre: Annahmen der Frühwarnung erst messen (Zugabe half bei deckungsgleichen Flächen, nicht bei bündigen).
+- 2026-11-26 Runde 18 (ziehen.js) — Kappe nur am End-Spant erkennen (Flanken von Keil/Bug hätten sonst als Kappe gegolten);
+  Dreieck-Index des rohen Netzes gibt Kante/Abschnitt sicher. Kanten gleiten entlang der Nachbarkanten, Klemmung gegen
+  Länge < 6 cm, Selbstschnitt UND Kippen (Halbierungssuche). Strahl-Treffer runden (0,1 mm), sonst 5,9999999 in den Daten.
