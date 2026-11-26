@@ -3,8 +3,26 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15–19 nur lokal committet, nicht gepusht**).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 19 gepusht**, 2026-11-26).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
+
+## Kurzfassung für einen frischen Chat (2026-11-26)
+- **Letzter Stand:** Runde 19 fertig und gepusht. Der Nutzer will als Nächstes selbst testen (Form-Werkstatt: Bauteile,
+  Probeflug). Sein Urteil zu R18 (Push/Pull) war „passt, mach weiter“; zu R19 steht es noch aus.
+- **Nächster geplanter Schritt: Runde 20 Schiffsgenerator** (nach Recherche, vom Nutzer gewünscht): Seed-Feld + wenige Regler
+  (Klasse Korvette/Fregatte/Träger, Länge, Breite, Kantigkeit, Aufbauten, Geschütze, Triebwerke), Knopf „Würfeln“, Favoriten.
+  Ablauf wie a1studmuffin-SpaceshipGenerator (Quader → Vorder-/Rückfläche mehrfach zufällig ziehen/skalieren → Seitenflächen
+  kleiner herausziehen → Details je Flächenrichtung: Triebwerke hinten, Türme oben/unten, Antennen), aber im Stil Schwarmfront
+  (industriell, kantig, keine Fenster) und als **ganz normale Werkstatt-Form** (Körper + Bauteile, voll editierbar, sofort
+  flugtauglich: Triebwerke auf der Schwerpunkt-Achse, Manöverdüsen vorn/hinten). Reiner Generator gehört nach `src/sim/form/`
+  (kein Math.random — eigener Seed-Zufall wie `src/grafik/zufall.js`).
+- **Arbeitsweise mit dem Nutzer:** Jede Runde mit Team-Routine (`schwarmfront-team`), AUSSER er sagt „ohne Team“/„Schnellfix“.
+  Testrunden ≤ 3 Min., ≤ 3 je Runde, ihm vorher/nachher einen Satz sagen. Nach jeder Runde fragt er meist „erst selbst testen“.
+  Commit lokal ok, **Push nur auf ausdrücklichen Wunsch**. `konfig/formen/` und `konfig/schiffe/` sind ungetrackt und
+  enthalten SEINE Entwürfe (z. B. Triebwerksgondel.json, Beispiel1.json) — nicht löschen, nicht committen; eigene Testdateien
+  dort nach dem Test wieder entfernen.
+- **Verdeckter Browser:** Ist der Browser-Bereich ausgeblendet, läuft requestAnimationFrame nicht → `resize_window` 1280×720,
+  Kamerafahrten mit `spiel.wuerfel.schritt(performance.now() + 5000)` abschließen; Screenshots 800×450 (Faktor 0,625).
 
 ## Worum es geht
 Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spieler bedienen gemeinsam ein Kriegsschiff
