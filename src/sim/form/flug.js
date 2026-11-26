@@ -10,20 +10,20 @@
 //        +Z Bug, +X Backbord, +Y oben. Haupttriebwerk sitzt am Heck, Düse nach −Z (n = [0, 0, −1]), Schub nach +Z.
 //        Masse = Form (Plus − Minus, ≥ 0) · DICHTE + Masse ALLER Bauteile samt Spiegelkopien (Protokoll R19, E4).
 //        Grenzen (E5): jeder Wert zwischen „halbes Bollwerk“ und Ambos, vMax ≤ 85 (Nutzer-Urteil R1: „viel zu schnell“).
-// EICHUNG (E6): Quader 255 × 21 × 15 m mit 4 × triebwerk_l + 4 × steuer ≈ WERTE.bollwerk,
+// EICHUNG (E6): Quader 255 × 21 × 15 m mit 3 × triebwerk_l + 4 × steuer ≈ WERTE.bollwerk,
 //               Quader 150 × 14 × 10 m mit 2 × triebwerk_m + 4 × steuer ≈ WERTE.ambos.
 import { DICHTE, normalisiere, koerperListe, koerperMatrix, profilPunkte, huelle, bauteilListe } from './form.js';
 import { WERTE, KOLLISION } from '../werte.js';
 
 /**
- * Antriebe. WARUM triebwerk_l kaum stärker als _m: die beiden Bezugsschiffe (E6) verlangen es — das Bollwerk (≈ 3,7-fache
- * Masse) hat 4 L, der Ambos 2 M und soll trotzdem 1,6-mal so stark beschleunigen. L ist dafür ein großer Block mit mehr
- * Schub je Einbauplatz, M hat mehr Schub je Tonne. Steuer = Manöverdüsen-Block mit Düsen in alle Richtungen.
+ * Antriebe, gestuft S 3,5 · M 8 · L 12,7 MN. WARUM M je Tonne am stärksten: der Ambos (2 M) soll 1,6-mal so stark
+ * beschleunigen wie das 3,6-mal schwerere Bollwerk (3 L) — Bezugsformen E6, Nachtrag R19 (Nutzer: L muss spürbar größer
+ * sein als M). Steuer = Manöverdüsen-Block mit Düsen in alle Richtungen.
  */
 export const ANTRIEBE = {
   triebwerk_s: { art: 'antrieb', name: 'Haupttriebwerk S', masse: 40, schub: 3500, r: 2.2, flaeche: ['hinten'] },
   triebwerk_m: { art: 'antrieb', name: 'Haupttriebwerk M', masse: 100, schub: 8000, r: 3.4, flaeche: ['hinten'] },
-  triebwerk_l: { art: 'antrieb', name: 'Haupttriebwerk L', masse: 220, schub: 9500, r: 4.6, flaeche: ['hinten'] },
+  triebwerk_l: { art: 'antrieb', name: 'Haupttriebwerk L', masse: 220, schub: 12700, r: 4.6, flaeche: ['hinten'] },
   steuer: { art: 'antrieb', name: 'Manöverdüsen-Block', masse: 25, schub: 5000, r: 1.2, flaeche: ['alle'] },
 };
 
@@ -42,7 +42,7 @@ export const EICHUNG = {
                            // leichter, als es giert; das Bollwerk soll nur ~3,7-mal so schnell rollen
   drehK: { nicken: 0, gieren: 0, rollen: 0 }, // unten aus der Bollwerk-Bezugsform berechnet
   drehMaxFaktor: { nicken: 1.08, gieren: 1.09, rollen: 0.68 }, // drehMax / drehBeschl wie bei Bollwerk/Ambos
-  hpBezug: { masse: 7406, hp: B.hpMax, exp: 0.53 }, // hpMax = 5000 · (m / 7406 t)^0,53 → Ambos (1980 t) ≈ 2500
+  hpBezug: { masse: 7186, hp: B.hpMax, exp: 0.53 }, // hpMax = 5000 · (m / 7186 t)^0,53 → Ambos (1980 t) ≈ 2500
   versatzHebel: 0.25,      // m: Schubpunkt so weit neben dem Schwerpunkt → Warnung schub_versatz
   versatzFehler: 0.5,      // ab 50 % des Steuer-Drehmoments (je Achse) → Fehler (E3)
   zuSchwach: 1.5,          // m/s²: darunter „zu schwach“ (Fehler)
@@ -243,7 +243,7 @@ export function bezugsform(art) {
     T(3, 'steuer', [0, 5, 65], [0, 1, 0]), T(4, 'steuer', [0, -5, 65], [0, -1, 0]),
     T(5, 'steuer', [0, 5, -65], [0, 1, 0]), T(6, 'steuer', [0, -5, -65], [0, -1, 0])] };
   return { name: 'Bollwerk-artig', koerper: [Q(255, 21, 15)], andock: [], bauteile: [
-    ...[[5, 4], [-5, 4], [5, -4], [-5, -4]].map(([x, y], i) => T(i + 1, 'triebwerk_l', [x, y, -127.5], [0, 0, -1])),
+    ...[-6, 0, 6].map((x, i) => T(i + 1, 'triebwerk_l', [x, 0, -127.5], [0, 0, -1])),
     T(5, 'steuer', [0, 7.5, 110], [0, 1, 0]), T(6, 'steuer', [0, -7.5, 110], [0, -1, 0]),
     T(7, 'steuer', [0, 7.5, -110], [0, 1, 0]), T(8, 'steuer', [0, -7.5, -110], [0, -1, 0])] };
 }
