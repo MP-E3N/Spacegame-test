@@ -165,10 +165,12 @@ const STUFE = { seitenmontage: 'fehler', im_rumpf: 'fehler', zu_dicht: 'fehler',
   const pg = (f) => pruefeGeschuetze(f), fw = (f) => flugwerte(f, KAT).meldungen;
   const FAELLE = [
     ['seitenmontage', mitTeil(B0, T(20, GESCH, [10.5, 0, 60], [1, 0, 0])), 20, pg],
-    ['im_rumpf', mitTeil(B0, T(20, GESCH, [0, 3, 60], [0, 1, 0])), 20, pg],
+    // WARUM Überhang statt Fuß im Rumpf (Projektleitung R19): ein Klickpunkt im Rumpf wird bewusst auf die nächste Fläche
+    // gelegt (Waffentechniker); ein Fehler ist Rumpf ÜBER dem Fuß bis zur Zapfenhöhe
+    ['im_rumpf', ab(B0, (x) => { x.koerper.push(quader(1, 6, 6, 2, { pos: [0, 9.6, 60] })); x.bauteile.push(oben(20, GESCH, 0, 60)); }), 20, pg],
     ['zu_dicht', mitTeil(B0, oben(20, GESCH, 0, 60), oben(21, GESCH, 0, 61)), undefined, pg],
     ['auf_spiegelebene', mitTeil(B0, oben(20, GESCH, 1, 60, { spiegel: ['x'] })), 20, pg],
-    ['schraeg', ab(B0, (x) => { x.koerper.push(quader(1, 30, 21, 4, { pos: [0, 9, 60], dreh: [0, 0, 12] })); x.bauteile.push(T(20, GESCH, [0, 11, 60], [0, 1, 0])); }), 20, pg],
+    ['schraeg', ab(B0, (x) => { x.koerper.push(quader(1, 30, 21, 4, { pos: [0, 9, 60], dreh: [0, 0, 20] })); /* 20°: über der Schwelle 0,5 · Fußradius */ x.bauteile.push(T(20, GESCH, [0, 11, 60], [0, 1, 0])); }), 20, pg],
     ['ueber_kante', mitTeil(B0, oben(20, GESCH, 10, 60)), 20, pg],
     ['rohre_kreuzen', mitTeil(B0, oben(20, SCHWER, -4.5, 60), oben(21, SCHWER, 4.5, 60)), undefined, pg], // 9 m Abstand: Füße frei, Rohre (7·s) reichen hinüber
     ['kein_schussfeld', ab(B0, (x) => { x.koerper.push(quader(1, 3, 21, 40, { pos: [0, 27.5, 66] }), quader(2, 3, 21, 40, { pos: [0, 27.5, 54] }),
