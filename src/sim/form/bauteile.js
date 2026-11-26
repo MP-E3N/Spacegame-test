@@ -2,7 +2,7 @@
 //        Modell machen kann; diese soll man dann auch im Flugtest laden können“) — Katalog an einer Stelle und die
 //        Umwandlung einer Form in einen Schiffsdatensatz für Sim und Freiflug.
 // LIEFERT: BAUTEILE = { ...GESCHUETZE, ...ANTRIEBE } · FLAECHEN (welche Fläche passt) · passtAuf(typ, n) ·
-//          pruefeSchiff(form) → { flug, meldungen, flugtauglich } · formZuSchiff(form) → { name, kennung, laenge, kugeln,
+//          pruefeSchiff(form, schonNormal?) → { flug, meldungen, flugtauglich } · formZuSchiff(form) → { name, kennung, laenge, kugeln,
 //          tuerme, duesen, werte, form, versatz, schwerpunkt, masse, schub, meldungen, flugtauglich }
 // REGEL: rein (kein three, kein DOM). Katalogdaten NUR in geschuetze.js (Waffentechniker) und flug.js (Flugsystem);
 //        Kollisionskugeln aus kugeln.js (Schiffbauer). Schiffs-Koordinaten mit Ursprung im SCHWERPUNKT (Protokoll R19,
@@ -27,8 +27,10 @@ export const FLAECHEN = { oben: 'Oberseite', unten: 'Unterseite', hinten: 'Heckf
  * Prüfliste „flugtauglich“ (Starfield-Lehre: jede Meldung zeigt auf ihr Teil): Flugwerte + Geschütz-Prüfung zusammen.
  * flugtauglich = keine Meldung der Stufe 'fehler'.
  */
-export function pruefeSchiff(roh) {
-  const form = normalisiere(roh);
+export function pruefeSchiff(roh, schonNormal = false) {
+  // WARUM schonNormal (Prüfer R19): ein zweites normalisiere erzeugt ein neues Objekt — der Zwischenspeicher der
+  // Geschütz-Prüfung (WeakMap je Form-Objekt) träfe dann nie
+  const form = schonNormal ? roh : normalisiere(roh);
   const flug = flugwerte(form, BAUTEILE);
   const meldungen = [...flug.meldungen, ...pruefeGeschuetze(form)];
   return { flug, meldungen, flugtauglich: !meldungen.some((m) => m.stufe === 'fehler') };
@@ -41,7 +43,7 @@ export function pruefeSchiff(roh) {
  */
 export function formZuSchiff(roh) {
   const form = normalisiere(roh);
-  const { flug, meldungen, flugtauglich } = pruefeSchiff(form);
+  const { flug, meldungen, flugtauglich } = pruefeSchiff(form, true);
   const sp = flug.schwerpunkt ?? [0, 0, 0], versatz = sp.map((v) => -v + 0);
   const schieb = (p) => p.map((v, i) => v + versatz[i]);
   const liste = bauteilListe(form);

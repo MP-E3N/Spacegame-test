@@ -27,12 +27,12 @@ const asteroiden = erstelleAsteroiden(bild.scene);
 // anderen Schiffen und vor dem ersten Bild (await): jedes Schiff bringt ein Heck-Licht mit — kommt eins später dazu,
 // kompilieren alle Shader neu (Ruckler, CLAUDE.md Regel 5).
 const formName = new URLSearchParams(location.search).get('form');
-let eigenes = null, eigenesFehler = '';
+let eigenes = null, eigenesFehler = '', SCHIFFSINFO = null;
 if (formName) {
   try {
     const r = await fetch('/api/formen/' + encodeURIComponent(formName)); const d = await r.json();
     if (!r.ok) throw new Error(d.fehler ?? r.status);
-    const schiff = formZuSchiff(d);
+    const schiff = formZuSchiff(d); SCHIFFSINFO = schiff;
     registriereSchiff('eigen', schiff, schiff.werte);
     eigenes = erstelleFormSchiff(bild.scene, schiff); eigenes.typ = 'eigen';
   } catch (f) { console.error(f); eigenesFehler = 'Probeflug: Form „' + formName + '“ ließ sich nicht laden — ' + (f.message ?? f); }
@@ -52,7 +52,9 @@ function waehleSchiff(i) {
   zeigeSchiff(modell.kennung + ' ' + modell.name);
 }
 waehleSchiff(0);
-if (eigenes) setTimeout(() => zeigeMeldung('Probeflug: ' + eigenes.kennung + ' ' + eigenes.name + ' — V wechselt das Schiff, Esc = Menü'), 300);
+// Prüfer R19: über die URL kommt auch eine nicht flugtaugliche Form — dann sagen, was fehlt (die Sperre gilt nur am Knopf)
+if (eigenes) setTimeout(() => zeigeMeldung(SCHIFFSINFO.flugtauglich ? 'Probeflug: ' + eigenes.kennung + ' ' + eigenes.name + ' — V wechselt das Schiff, Esc = Menü'
+  : 'Probeflug: nicht flugtauglich — ' + (SCHIFFSINFO.meldungen.find((m) => m.stufe === 'fehler')?.text ?? '')), 300);
 if (eigenesFehler) setTimeout(() => zeigeMeldung(eigenesFehler), 300);
 
 const lagePos = new THREE.Vector3(), lageRot = new THREE.Quaternion(), vl = new THREE.Vector3();

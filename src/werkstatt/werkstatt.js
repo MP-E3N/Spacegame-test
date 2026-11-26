@@ -391,8 +391,10 @@ $('leinwand').addEventListener('pointerup', (e) => {
 $('leinwand').addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ---------------- Bauteile, Schwerpunkt, Schubpunkt (Runde 19) ----------------
+/** Geometrien einer Gruppe freigeben (Materialien sind geteilt: mats). WARUM (Prüfer R19): sonst wachsen die GPU-Puffer mit jeder Änderung. */
+function gibFrei(o) { o.traverse((x) => { if (x.geometry) x.geometry.dispose(); }); }
 function zeigeBauteile() {
-  bauteilGruppe.clear();
+  gibFrei(bauteilGruppe); bauteilGruppe.clear();
   for (const e of bauteilListe(form)) {
     let g = null;
     try { g = bauteilGrafik(e, mats, form); } catch (f) { console.warn('Bauteil', e.b.typ, f); }
@@ -424,9 +426,30 @@ function zeigeMarker() {
     markerGruppe.add(pf);
   }
 }
+/** Halbe Breite eines Bauteils quer zur Fläche (m) — für Einrasten und „braucht eine Spiegelkopie?“. */
+function halbBreite(typ) {
+  const k = BAUTEILE[typ]; if (!k) return 1;
+  return k.art === 'geschuetz' ? 2.7 * (k.turm?.s ?? 1) : (k.r ?? 1) * 1.25;
+}
+/**
+ * Einrasten beim Setzen (Spieltest R19, Muss): ein Haupttriebwerk am Klickpunkt saß meist neben dem Schwerpunkt → Schub-
+ * versatz, nicht flugtauglich. Darum: Haupttriebwerke rasten quer auf die Schwerpunkt-Achse, wenn sie näher als ihre
+ * Breite daran sind; jedes Bauteil rastet auf x = 0, wenn es die Mittelebene berühren würde (dann ohne Spiegelkopie).
+ */
+function rasteBauteil(typ, p, n) {
+  const q = [...p], hb = halbBreite(typ), sp = schiffPruefung?.flug?.schwerpunkt;
+  const haupt = BAUTEILE[typ]?.art === 'antrieb' && (BAUTEILE[typ].flaeche ?? []).includes('hinten');
+  for (let i = 0; i < 3; i++) {
+    if (n[i] !== 0) continue; // längs der Normalen bleibt der Punkt auf der Fläche
+    if (haupt && sp && Math.abs(q[i] - sp[i]) < hb) q[i] = Math.round(sp[i] * 100) / 100 + 0;
+    else if (i === 0 && Math.abs(q[0]) < hb) q[0] = 0;
+  }
+  return q;
+}
 function platziereBauteil(b) {
   const id = form.bauteile.reduce((m, x) => Math.max(m, x.id), -1) + 1;
-  const neu = { id, ...b, spiegel: symmetrie && Math.abs(b.p[0]) > 0.01 ? ['x'] : [] };
+  // WARUM erst ab halber Breite spiegeln (Spieltest R19, Muss): bei x = ±0,5 lagen Original und Kopie übereinander
+  const neu = { id, ...b, spiegel: symmetrie && Math.abs(b.p[0]) >= halbBreite(b.typ) ? ['x'] : [] };
   aendere({ ...form, bauteile: [...form.bauteile, neu] });
   zeigeMeldungKurz(`${BAUTEILE[b.typ]?.name ?? b.typ} gesetzt${neu.spiegel.length ? ' (mit Spiegelkopie)' : ''} — weiter klicken setzt mehr, Esc beendet`);
 }
@@ -447,7 +470,7 @@ function spiegleBauteil() {
   aendere({ ...form, bauteile: form.bauteile.map((b) => (b.id === bauteilWahl ? { ...b, spiegel: b.spiegel.includes('x') ? [] : ['x'] } : b)) }); return true;
 }
 async function probeflug() {
-  const pr = pruefeSchiff(form);
+  const pr = pruefeSchiff(form, true);
   if (!pr.flugtauglich) {
     const f1 = pr.meldungen.find((m) => m.stufe === 'fehler');
     zeigeMeldungKurz('Nicht flugtauglich: ' + (f1?.text ?? '') + ' — rechts unter WERTE steht, was fehlt'); return;
@@ -656,7 +679,7 @@ function zeigeWerte() {
   const modul = formZuModul(form);
   const h = modul.quader.reduce((a, q) => ({ min: a.min.map((v, i) => Math.min(v, q.min[i])), max: a.max.map((v, i) => Math.max(v, q.max[i])) }), { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
   const mass = modul.quader.length ? [0, 1, 2].map((i) => h.max[i] - h.min[i]) : [0, 0, 0];
-  try { schiffPruefung = pruefeSchiff(form); } catch (f) { console.warn('Prüfung', f); schiffPruefung = null; }
+  try { schiffPruefung = pruefeSchiff(form, true); } catch (f) { console.warn('Prüfung', f); schiffPruefung = null; }
   const fl = schiffPruefung?.flug, w = fl?.werte;
   zeigeMarker();
   const st = $('flugstatus');
@@ -665,8 +688,10 @@ function zeigeWerte() {
   const reihen = [
     ['Körper · Bauteile', `${form.koerper.length} · ${bauteilListe(form).length}`], ['Länge · Breite · Höhe', `${zahl(mass[2])} · ${zahl(mass[0])} · ${zahl(mass[1])} m`],
     ['Masse', zahl(fl?.masse ?? modul.werte.masse, 0) + ' t'], ['Schub', fl ? zahl(fl.schub, 0) + ' kN' : '–'],
-    ['Beschleunigung · Höchstfahrt', w ? `${zahl(w.aVor)} m/s² · ${zahl(w.vMax, 0)} m/s` : '–'],
-    ['Wendigkeit (gieren · rollen)', w ? `${zahl(w.drehMax.gieren * 180 / Math.PI)} · ${zahl(w.drehMax.rollen * 180 / Math.PI)} °/s` : '–'],
+    // WARUM Striche ohne Schub (Spieltest R19, Muss): die Flugwerte haben Untergrenzen (fliegbar) — ohne Triebwerk wirkten 2,5 m/s² kaputt
+    ['Beschleunigung', w && fl.schub > 0 ? `${zahl(w.aVor)} m/s²` : '–'],
+    ['Höchstfahrt', w && fl.schub > 0 ? `${zahl(w.vMax, 0)} m/s` : '–'],
+    ['Wendigkeit gieren · rollen', w && fl.schub > 0 ? `${zahl(w.drehMax.gieren * 180 / Math.PI)} · ${zahl(w.drehMax.rollen * 180 / Math.PI)} °/s` : '–'],
     ['Andockpunkte', form.andock.length],
     ['Verschweißen', !verschweisst ? 'aus (Einzelteile)' : schweissInfo ? `${zahl(schweissInfo.ms, 0)} ms${schweissInfo.dreiecke ? ' · ' + zahl(schweissInfo.dreiecke, 0) + ' Dreiecke' : ''}${dichtText(schweissInfo)}` : '…'],
   ];
@@ -922,7 +947,9 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen',
   klickVerbraucht() { gedrueckt = null; },
   // R19: Bauteile setzen
-  passtAuf, flaechenText, bauteilName: (typ) => BAUTEILE[typ]?.name ?? typ, platziereBauteil,
+  passtAuf, flaechenText, bauteilName: (typ) => BAUTEILE[typ]?.name ?? typ, platziereBauteil, rasteBauteil,
+  // Triebwerke gehören ans Heck: Kamera schräg von hinten, sonst sieht man die Fläche nicht (Spieltest R19, Soll)
+  zeigeFlaecheFuer(typ) { if ((BAUTEILE[typ]?.flaeche ?? []).includes('hinten') && camera.position.z > steuer.target.z) wuerfel.drehNach([0.55, 0.45, -1]); },
   bauteilGeist(typ, p, n) { try { return bauteilGrafik({ b: { id: -1, typ, p, n, spiegel: [] }, p, n, spiegel: null, kopie: 0 }, mats, form); } catch { return null; } },
   vorschau(id, k) { ziehen = true; form = normalisiere({ ...form, koerper: form.koerper.map((x) => (x.id === id ? k : x)) }); schnellZeichnen(id); },
   uebernehme(merk) { ziehen = false; zurueck.push(merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; aendere(form, { merken: false }); },

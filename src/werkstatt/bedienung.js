@@ -189,11 +189,12 @@ export function erstelleBedienung(ctx) {
   // ---------- Bauteil setzen (Runde 19) ----------
   const ringGut = new THREE.MeshBasicMaterial({ color: 0x9ad27a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthTest: false, toneMapped: false });
   const ringSchlecht = new THREE.MeshBasicMaterial({ color: 0xe06040, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthTest: false, toneMapped: false });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.8, 32), ringGut); ring.renderOrder = 35; ring.visible = false; scene.add(ring);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.0, 3.4, 40), ringGut); // breiter (Spieltest R19, Kann: im kleinen Bild kaum zu sehen) ring.renderOrder = 35; ring.visible = false; scene.add(ring);
   let bauteilGeist = null;
   function startBauteil(typ) {
     abbrechen();
     setzen = { art: 'bauteil', typ, p: null, n: null, gut: false };
+    ctx.zeigeFlaecheFuer?.(typ); // WARUM: Triebwerke gehören ans Heck — das sah man in der Startansicht nicht (Spieltest R19)
     ctx.meldung(`${ctx.bauteilName(typ)}: auf die ${ctx.flaechenText(typ)} zeigen und klicken (Esc = abbrechen)`);
   }
   function bewegeBauteil(cx, cy) {
@@ -205,11 +206,15 @@ export function erstelleBedienung(ctx) {
     const nw = t.face.normal.clone().transformDirection(t.object.matrixWorld).toArray();
     const i = [0, 1, 2].reduce((b, a) => (Math.abs(nw[a]) > Math.abs(nw[b]) ? a : b), 0), n = [0, 0, 0]; n[i] = Math.sign(nw[i]) || 1;
     // quer zur Normalen auf 0,5 m rasten (Strg-frei kommt später), längs n genau auf der Fläche (0,1 mm)
-    const p = t.point.toArray().map((v, j) => (j === i ? Math.round(v * 1e4) / 1e4 : Math.round(v * 2) / 2) + 0);
+    let p = t.point.toArray().map((v, j) => (j === i ? Math.round(v * 1e4) / 1e4 : Math.round(v * 2) / 2) + 0);
+    // Einrasten (Spieltest R19, Muss): Haupttriebwerke auf die Schwerpunkt-Achse, alles nahe der Mitte auf x = 0
+    p = ctx.rasteBauteil?.(setzen.typ, p, n) ?? p;
     const schl = p.join() + '|' + n.join();
     if (setzen.schl !== schl) {
+      const warGut = setzen.gut;
       setzen.schl = schl; setzen.p = p; setzen.n = n; setzen.gut = ctx.passtAuf(setzen.typ, n);
-      if (bauteilGeist) scene.remove(bauteilGeist);
+      if (warGut !== false && !setzen.gut) ctx.meldung(`Hier nicht — ${ctx.bauteilName(setzen.typ)} nur auf die ${ctx.flaechenText(setzen.typ)}`);
+      if (bauteilGeist) { scene.remove(bauteilGeist); bauteilGeist.traverse((x) => x.geometry?.dispose()); } // Prüfer R19: sonst Leck je Mausschritt
       bauteilGeist = ctx.bauteilGeist(setzen.typ, p, n); if (bauteilGeist) scene.add(bauteilGeist);
       ring.material = setzen.gut ? ringGut : ringSchlecht;
       ring.position.set(...p).addScaledVector(new THREE.Vector3(...n), 0.05);
@@ -312,7 +317,7 @@ export function erstelleBedienung(ctx) {
   function abbrechen() {
     if (zug) endeZug(true);
     setzen = null; geist.visible = false; unten = null; vergiss();
-    ring.visible = false; if (bauteilGeist) { scene.remove(bauteilGeist); bauteilGeist = null; }
+    ring.visible = false; if (bauteilGeist) { scene.remove(bauteilGeist); bauteilGeist.traverse((x) => x.geometry?.dispose()); bauteilGeist = null; }
   }
 
   return { setzen: startSetzen, setzeBauteil: startBauteil, abbrechen, vergiss, fremd: () => { if (!eigen && !zug) vergiss(); }, taste, aktiv: () => !!(zug || setzen), setztGerade: () => !!setzen, zieht: () => !!zug,
