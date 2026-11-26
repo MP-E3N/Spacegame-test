@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15 + 16 nur lokal committet**).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15 + 16 nur lokal committet, Runde 17 noch nicht committet**).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
 ## Worum es geht
@@ -11,7 +11,7 @@ Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spiele
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
 
-## Stand jetzt (2026-11-22, nach Runde 16) — hier einsteigen
+## Stand jetzt (2026-11-22, nach Runde 17) — hier einsteigen
 **Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–5 / Pfeile + Enter / Klick; aus jeder
 Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
@@ -44,6 +44,29 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
    Daten `src/sim/form/form.js` (rein; Regeln F1–F9 im Protokoll `…/2026-11-22-runde16.md`), Grafik `src/grafik/form/*`
    (Loft, CSG mit **three-bvh-csg**, E-006), Beispiele `src/sim/form/beispiele.js`.
    Debug: `spiel.form`, `spiel.info` (ms, offeneKanten), `spiel.setze(vorlage)`, `spiel.spant(feld, wert)`, `spiel.waehle(id)`.
+   **Runde 17** (2026-11-22, Schnellrunde OHNE Team auf Nutzerwunsch „keine volle Sitzung mit dem Team“):
+   - **Skizze** (Taste K, `src/werkstatt/skizze.js`): Fläche auf der Ebene der aktuellen Ansicht zeichnen (Linienzug /
+     Rechteck / Kreis, Raster 0,5 m, Strg frei, schließen per Klick auf Punkt 1 / Doppelklick / Enter), dann **nach hinten
+     ziehen** (Maus am grünen Pfeil oder Zahl, ⇄ Richtung, Plus/Minus) → Körper `typ: skizze` mit eigenem Umriss.
+   - **Punkte an Kanten** (Taste P): gelbe Punkte des aktuellen Spants ziehen (Raster 0,25 m), grünes + an jeder Kante =
+     neuer Punkt (gleich weiterziehen), Rechtsklick = Punkt löschen; Quader/Trapez/Zylinder werden dabei in 4/8/32 Punkte
+     umgewandelt; „Umriss zurücksetzen“. Haken „auf alle Spanten“ an = ganze Form, aus = nur dieser Querschnitt.
+   - **Spiegeln** an drei Ebenen: „Spiegeln“ (verbunden, formt sich mit; x/y/z kombinierbar, M = Seite) und „Kopie“
+     (eigenständiger gespiegelter Körper, `spiegelKoerper`).
+   - **Ansichtswürfel** oben rechts (`src/werkstatt/ansichtswuerfel.js`, wie Inventor): Fläche/Kante/Ecke anklicken →
+     Kamera fährt hin; VORNE = Bug (+Z), LINKS = Backbord (+X), OBEN mit Bug unten. ⌂ = Startansicht.
+   - Daten (`form.js`): Spant `p` = Umriss relativ zu b × h, `spiegel` = Achsenliste (altes `true` = `["x"]`), neue
+     Warnung `umriss_kreuzt`. Tests `tests/form.mjs` Abschnitt 8. Werte-Feld zeigt „dicht“ nach Flächenschluss (T-Stöße
+     an Fläche-an-Fläche-Fugen zählt die Kantenprüfung als „offen“, die Hülle ist trotzdem dicht).
+   - **Runde 17b** (Schnellfix ohne Team, Nutzer-Spieltest): Punkte **aller Spanten** an Original **und Spiegelkopien**;
+     ziehen nur in **gerader Ansicht** (Würfel-Fläche; schräg = stumpfe, gesperrte Punkte). Punkte, die entlang der
+     Blickachse hintereinander liegen, ziehen zusammen (3D-Prüfung, nicht Bildabstand — Perspektive). Blick längs des
+     Körpers: grünes + = neuer Punkt; Blick quer: blaues + = **neuer Spant**, Ziehen längs verschiebt den ganzen Spant;
+     Rechtsklick löscht Punkt bzw. (quer) Spant. **Umklappen** (an der eigenen Mitte spiegeln), **Fixieren** (Taste L,
+     Körper-Feld `fest`: Griffe, Punkte, Spanten, Lage, Löschen gesperrt). **Maße oben im Bild** (Werkstatt: Form +
+     gewählter Körper; Werft: Schiff). `form.js`: verschiebePunkte, fuegeSpantEin, loescheSpant, klappeKoerper.
+   - Debug: `spiel.skizze` (start, zeichneDirekt(punkte, tiefe), erstellen, zustand), `spiel.wuerfel.drehNach(r)`,
+     `spiel.punkte(an)`, `spiel.spantNr`, `spiel.punktBild(art, j)`, `spiel.spiegeln(achse)`, `spiel.spiegelKopie(achse)`.
 
 **Wichtige Sim-Module:** `src/sim/waffen/flak.js` (Granaten, Streu-Ellipsoid, Flächenschaden, Montage-Rahmen, Sperren),
 `src/sim/waffen/lafetten.js` (Prüfstand + `schiffsLafetten()`), `src/sim/ki/turmziel.js` (Sperrfeuer = Sättigungsräume mit
@@ -52,7 +75,10 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 `angreifergeschosse.js`. Regler-Tabellen (je Besitzer, eine Quelle): `STREU_REGLER`, `WAFFEN_REGLER`, `GRAFIK_REGLER`.
 
 **Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
-- **Form-Werkstatt:** Nutzer-Urteil einholen (Modellier-Gefühl). Nicht per Maus geprüft: W schieben, S Größe ziehen.
+- **Form-Werkstatt:** Nutzer-Urteil zu Runde 17 einholen (Skizze, Punkte, Würfel, Spiegeln). Per Maus geprüft: Skizze
+  zeichnen + schließen + erstellen, Punkt ziehen, + herausziehen, Rechtsklick löschen, Würfel OBEN. Ideen R17: Skizze auf
+  einer Körperfläche starten (Inventor), Bögen/Kreisbogen im Linienzug, Punkte im Spant-Feld als Zahlen. Nicht per Maus
+  geprüft: W schieben, S Größe ziehen.
   Ideen: Spant direkt im Bild ziehen (Griffe an den Ecken), Kantenrundung zwischen Körpern, Web Worker bei > 100 ms,
   **Funktionen** der Formen (Turm, Triebwerk, Hangar) — vom Nutzer für „später“ genannt. Konsole: three-bvh-csg meldet
   `BVH: "maxLeafSize" deprecated` je Schritt (harmlos). Gondel (28,5 m) passt an WS-01 nur anstelle der Panzerplatten.

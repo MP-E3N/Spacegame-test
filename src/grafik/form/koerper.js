@@ -39,13 +39,25 @@ export function koerperGeometrie(k, { zugabe = 0 } = {}) {
       tri(A[j], A[j2], B[j2]); tri(A[j], B[j2], B[j]);
     }
   }
-  // Kappen als Fächer um die Profilmitte (Profil ist konvex: Mischung aus Fase und Viertelkreis)
-  const mitte = (R, s) => [s.x ?? 0, s.y ?? 0, R[0][2]];
-  const c0 = mitte(ringe[0], sp[0]), c1 = mitte(ringe[last], sp[last]);
-  for (let j = 0; j < P; j++) {
-    const j2 = (j + 1) % P;
-    tri(c0, ringe[0][j2], ringe[0][j]);       // Normale −Z
-    tri(c1, ringe[last][j], ringe[last][j2]); // Normale +Z
+  if (sp[0].p) {
+    // Eigener Umriss (Runde 17) darf hohl sein (L, U, Pfeil) → Kappen per Ohrenschneiden (three ShapeUtils, earcut).
+    // WARUM je Dreieck den Umlauf prüfen: earcut garantiert keine Richtung; Kappe vorn muss nach −Z, hinten nach +Z zeigen
+    for (const [R, vorn] of [[ringe[0], true], [ringe[last], false]]) {
+      const flach = R.map(([x, y]) => new THREE.Vector2(x, y));
+      for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(flach, [])) {
+        const A = R[a], B = R[b], C = R[c], ccw = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]) > 0;
+        if (ccw !== vorn) tri(A, B, C); else tri(A, C, B);
+      }
+    }
+  } else {
+    // Kappen als Fächer um die Profilmitte (Profil ist konvex: Mischung aus Fase und Viertelkreis)
+    const mitte = (R, s) => [s.x ?? 0, s.y ?? 0, R[0][2]];
+    const c0 = mitte(ringe[0], sp[0]), c1 = mitte(ringe[last], sp[last]);
+    for (let j = 0; j < P; j++) {
+      const j2 = (j + 1) % P;
+      tri(c0, ringe[0][j2], ringe[0][j]);       // Normale −Z
+      tri(c1, ringe[last][j], ringe[last][j2]); // Normale +Z
+    }
   }
   const suppe = new THREE.BufferGeometry();
   suppe.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -54,10 +66,11 @@ export function koerperGeometrie(k, { zugabe = 0 } = {}) {
   return g;
 }
 
-/** Lage { m (3×3 zeilenweise), t, spiegel } → Matrix4 (Form-Punkt = Sx · (m · p + t)). */
+/** Lage { m (3×3 zeilenweise), t, spiegel (null | [sx, sy, sz]) } → Matrix4 (Form-Punkt = S · (m · p + t)). */
 export function lageMatrix4(lage, ziel = new THREE.Matrix4()) {
-  const { m, t } = lage, s = lage.spiegel ? -1 : 1;
-  return ziel.set(s * m[0][0], s * m[0][1], s * m[0][2], s * t[0], m[1][0], m[1][1], m[1][2], t[1], m[2][0], m[2][1], m[2][2], t[2], 0, 0, 0, 1);
+  const { m, t } = lage, [a, b, c] = lage.spiegel ?? [1, 1, 1];
+  return ziel.set(a * m[0][0], a * m[0][1], a * m[0][2], a * t[0], b * m[1][0], b * m[1][1], b * m[1][2], b * t[1],
+    c * m[2][0], c * m[2][1], c * m[2][2], c * t[2], 0, 0, 0, 1);
 }
 
 /**

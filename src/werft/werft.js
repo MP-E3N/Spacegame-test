@@ -308,6 +308,8 @@ function zeigeTafel() {
     ['Türme', zahl(bau.tuerme.length)], ['Freie Punkte', zahl(bau.freiePunkte.length)],
   ];
   $('werte').innerHTML = reihen.map(([a, b]) => `<div class="reihe"><span>${a}</span><b>${b}</b></div>`).join('');
+  // Maße oben im Bild (Nutzer R17b: Länge und Höhe des Schiffs immer sehen)
+  $('masse').innerHTML = `<b>SCHIFF</b> Länge <b>${zahl(bau.laenge, 1)} m</b> · Breite <b>${zahl(bau.breite, 1)} m</b> · Höhe <b>${zahl(bau.hoehe, 1)} m</b>`;
   const st = $('status');
   st.className = bau.flugfaehig ? 'gut' : 'schlecht';
   st.textContent = !bau.teile.length ? 'LEER — MODUL WÄHLEN' : bau.flugfaehig ? 'FLUGFÄHIG' : 'NICHT FLUGFÄHIG';

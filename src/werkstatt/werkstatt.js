@@ -2,6 +2,8 @@
 //        (Griffe), Spanten einzeln formen (Breite, Höhe, Rundung, Fase, Versatz → Übergänge eckig ↔ rund), Plus/Minus,
 //        Spiegeln an der Mittelebene, verschweißen (CSG), Andockpunkte setzen, speichern → konfig/formen/<name>.json.
 //        Gespeicherte Formen erscheinen in der Werft als Module („Eigene Formen“).
+//        Runde 17 (Schnellrunde ohne Team, Nutzerwunsch): Skizze zeichnen + ziehen (skizze.js), Punkte an Kanten setzen und
+//        ziehen (Taste P), Spiegeln an drei Ebenen (verbunden oder als eigene Kopie), Ansichtswürfel (ansichtswuerfel.js).
 // ABLAUF: Form (Daten, src/sim/form/form.js) → rohe Körper (koerperGeometrie, je Körper ein Netz, sofort) und — 250 ms
 //         nach der letzten Änderung — verschweißtes Netz (formGeometrie, CSG). Beim Ziehen sieht man die rohen Körper.
 // REGEL: Daten nur über form.js (normalisiere/pruefe/formZuModul). Rückgängig = ganze Schnappschüsse. Zwischenstand im
@@ -13,7 +15,10 @@ import { erstelleRenderer } from '../grafik/renderer.js';
 import { materialien } from '../grafik/schiff/bauteile.js';
 import { koerperGeometrie } from '../grafik/form/koerper.js';
 import { formGeometrie } from '../grafik/form/schweissen.js';
-import { VORLAGEN, neuerKoerper, normalisiere, pruefe, formZuModul, huelle, koerperMatrix, profilPunkte } from '../sim/form/form.js';
+import { VORLAGEN, neuerKoerper, normalisiere, pruefe, formZuModul, huelle, koerperMatrix, profilPunkte, koerperListe, NAMEN, ACHSEN,
+  alsPunkte, fuegePunktEin, loeschePunkt, spiegelKoerper, verschiebePunkte, fuegeSpantEin, loescheSpant, klappeKoerper } from '../sim/form/form.js';
+import { erstelleAnsichtswuerfel } from './ansichtswuerfel.js';
+import { erstelleSkizze } from './skizze.js';
 import { BEISPIEL_FORMEN } from '../sim/form/beispiele.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,8 +44,13 @@ bild.setzeSchattenRadius(60); bild.folgeSchatten(new THREE.Vector3());
 // Raster (1 m fein, 5 m grob) auf y = 0 und Mittelebene x = 0 (Spiegel) als Bezug
 const raster = new THREE.GridHelper(120, 120, 0x3a3020, 0x1c1810); raster.material.transparent = true; raster.material.opacity = 0.5; scene.add(raster);
 const grob = new THREE.GridHelper(120, 24, 0x6a5530, 0x3a2e1a); grob.material.transparent = true; grob.material.opacity = 0.6; scene.add(grob);
-const mittelebene = new THREE.Mesh(new THREE.PlaneGeometry(120, 60), new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }));
-mittelebene.rotation.y = Math.PI / 2; mittelebene.position.y = 30; scene.add(mittelebene);
+// Spiegelebenen x = 0 / y = 0 / z = 0 — sichtbar, sobald ein Körper an ihnen gespiegelt wird
+const ebenenMat = new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false });
+const mittelebenen = ACHSEN.map((a) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(120, 60), ebenenMat);
+  if (a === 'x') { m.rotation.y = Math.PI / 2; m.position.y = 30; } else if (a === 'y') { m.rotation.x = -Math.PI / 2; m.scale.y = 2; } else m.position.y = 30;
+  scene.add(m); return m;
+});
 const bugPfeil = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0.05, 62), 8, 0xe0a040, 2.5, 1.6); scene.add(bugPfeil);
 
 const rohGruppe = new THREE.Group(); scene.add(rohGruppe);           // je Körper ein Netz (+ Spiegelkopie)
@@ -59,6 +69,9 @@ let verschweisst = true;
 let ziehen = false;
 let schweissUhr = 0, schweissInfo = null;
 const netze = new Map(); // Körper-id → Mesh (Original, Griff hängt daran)
+let punkteModus = false;  // Taste P: Punkte des aktuellen Spants ziehen, + an Kanten, Rechtsklick löscht
+let punktZug = null;      // { j, merk (Form vor dem Zug), basis (Körper zu Zugbeginn) }
+const punktGruppe = new THREE.Group(); scene.add(punktGruppe);
 
 function kopie(x) { return JSON.parse(JSON.stringify(x)); }
 function ladeZwischenstand() {
@@ -90,27 +103,24 @@ function setzeLage(obj, k) {
 function neuZeichnen() {
   griff.detach();
   rohGruppe.clear(); netze.clear();
-  for (const k of form.koerper) {
+  for (const { k, lage } of koerperListe(form)) {
     const geo = koerperGeometrie(k); // zwischengespeichert (Schiffbauer, Schlüssel = Spanten)
     const mat = k.op === 'minus' ? minusMat : mats[k.mat] ?? mats.rumpf;
     const netz = new THREE.Mesh(geo, mat); setzeLage(netz, k);
     netz.castShadow = netz.receiveShadow = k.op === 'plus';
-    netz.userData.id = k.id; rohGruppe.add(netz); netze.set(k.id, netz);
-    if (k.spiegel) {
-      // WARUM Gruppe mit scale.x = −1: three dreht bei negativer Skalierung die Vorderseiten selbst um
-      const sp = new THREE.Group(); sp.scale.x = -1;
-      const n2 = new THREE.Mesh(geo, mat); setzeLage(n2, k); n2.userData.id = k.id; n2.userData.spiegel = true;
-      n2.castShadow = n2.receiveShadow = k.op === 'plus';
-      sp.add(n2); rohGruppe.add(sp);
-    }
+    netz.userData.id = k.id;
+    if (!lage.spiegel) { rohGruppe.add(netz); netze.set(k.id, netz); continue; }
+    // WARUM Gruppe mit negativer Skalierung: three dreht bei negativer Determinante die Vorderseiten selbst um
+    const sp = new THREE.Group(); sp.scale.set(...lage.spiegel);
+    netz.userData.spiegel = true; sp.add(netz); rohGruppe.add(sp);
   }
   const k = koerper();
-  if (k && netze.has(k.id)) griff.attach(netze.get(k.id));
+  if (k && netze.has(k.id) && !punkteModus && !k.fest && !skizze?.aktiv()) griff.attach(netze.get(k.id));
   zeigeHilfen();
   zeigeTafeln();
-  sichtbarkeit();
   clearTimeout(schweissUhr);
   schweissGruppe.clear(); schweissInfo = null;
+  sichtbarkeit(); // WARUM nach dem Leeren: sonst blieben die rohen Körper bis zum Verschweißen (250 ms) unsichtbar (Bild leer)
   if (verschweisst) schweissUhr = setTimeout(schweisse, 250);
 }
 
@@ -136,7 +146,7 @@ function sichtbarkeit() {
   schweissGruppe.visible = fertig;
   // WARUM Minus-Körper immer sichtbar als roter Geist: sonst findet man Ausschnitte nicht wieder
   rohGruppe.traverse((o) => { if (o.isMesh) o.visible = !fertig || form.koerper.find((k) => k.id === o.userData.id)?.op === 'minus'; });
-  mittelebene.visible = form.koerper.some((k) => k.spiegel);
+  ACHSEN.forEach((a, i) => { mittelebenen[i].visible = form.koerper.some((k) => k.spiegel.includes(a)); });
 }
 
 function zeigeHilfen() {
@@ -152,6 +162,7 @@ function zeigeHilfen() {
       ring.renderOrder = 20; setzeLage(ring, k); hilfsGruppe.add(ring);
     }
   }
+  zeigePunkte();
   for (const p of form.andock) {
     const n = new THREE.Vector3(...p.n), r = { S: 1.2, M: 2.4, L: 3.4 }[p.groesse] ?? 1.5;
     const m = new THREE.Mesh(new THREE.CircleGeometry(r, 20), new THREE.MeshBasicMaterial({ color: FARBE[p.art] ?? 0xffffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
@@ -159,6 +170,89 @@ function zeigeHilfen() {
     const pfeil = new THREE.ArrowHelper(n, m.position, r * 1.6, FARBE[p.art] ?? 0xffffff, r * 0.6, r * 0.4);
     hilfsGruppe.add(m, pfeil);
   }
+}
+
+// ---------------- Punkte an Kanten (Runde 17) ----------------
+// WARUM Sprites ohne Größenabnahme: die Griffe bleiben bei jedem Zoom gleich groß und liegen über dem Rumpf (depthTest aus)
+const punktMat = new THREE.SpriteMaterial({ color: 0xffd080, sizeAttenuation: false, depthTest: false, toneMapped: false });
+const punktZugMat = new THREE.SpriteMaterial({ color: 0x9ad27a, sizeAttenuation: false, depthTest: false, toneMapped: false });
+const plusMat = new THREE.SpriteMaterial({ map: plusTextur(), sizeAttenuation: false, depthTest: false, toneMapped: false });
+function plusTextur(farbe = '#9ad27a') {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.fillStyle = 'rgba(20, 30, 20, 0.85)'; g.beginPath(); g.arc(32, 32, 28, 0, 7); g.fill();
+  g.strokeStyle = farbe; g.lineWidth = 5; g.stroke(); g.lineWidth = 7; g.beginPath(); g.moveTo(32, 16); g.lineTo(32, 48); g.moveTo(16, 32); g.lineTo(48, 32); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const punktGesperrtMat = new THREE.SpriteMaterial({ color: 0x8a7a5a, transparent: true, opacity: 0.7, sizeAttenuation: false, depthTest: false, toneMapped: false });
+const spantPlusMat = new THREE.SpriteMaterial({ map: plusTextur('#6ab4ff'), sizeAttenuation: false, depthTest: false, toneMapped: false });
+// Punkte, die entlang der Blickachse hintereinander liegen (quer dazu < 1 cm), gehören zusammen — z. B. oben/unten in der
+// Draufsicht, vorderer/hinterer Spant in der Vorderansicht. WARUM in 3D statt im Bild: in der Perspektive liegen sie im Bild nicht aufeinander
+const STAPEL_M = 0.01;
+const deckt = (a, b, achse) => [0, 1, 2].every((c) => achse.getComponent(c) !== 0 || Math.abs(a.getComponent(c) - b.getComponent(c)) < STAPEL_M);
+
+/** Gerade Ansicht (über den Würfel gewählt)? Liefert die Blickachse als Einheitsvektor (Welt) oder null. */
+function geradeAnsicht() {
+  const d = camera.position.clone().sub(steuer.target).normalize().toArray(), i = d.reduce((b, v, j) => (Math.abs(v) > Math.abs(d[b]) ? j : b), 0);
+  if (Math.abs(d[i]) < 0.9995) return null; // ≈ 1,8° Spiel — WARUM: die Würfel-Fahrt nach oben steht bewusst 0,1 % neben dem Pol
+  const a = [0, 0, 0]; a[i] = Math.sign(d[i]); return new THREE.Vector3(...a);
+}
+const alleNetze = (id) => { const l = []; rohGruppe.traverse((o) => { if (o.isMesh && o.userData.id === id) l.push(o); }); return l; };
+/** Weltlage von Punkt j des Spants i eines Körpers in einem seiner Netze (Original oder Spiegelkopie). */
+function weltPunkt(netz, k, i, j) { const s = k.spanten[i], q = profilPunkte(s)[j]; return new THREE.Vector3(q[0], q[1], s.z).applyMatrix4(netz.matrixWorld); }
+
+/**
+ * Punkte aller Spanten an Original UND Spiegelkopien (Nutzer R17b). Ziehen nur in gerader Ansicht; sonst stumpf gezeigt.
+ * Plus-Marken: Blick längs des Körpers → auf den Querschnitt-Kanten (neuer Punkt in allen Spanten); Blick quer → auf den
+ * Längskanten (neuer Spant). Marken an derselben Bildstelle werden nur einmal gezeigt.
+ */
+let punkteAnsicht = '';
+function zeigePunkte() {
+  punktGruppe.clear(); punkteAnsicht = '';
+  const k = koerper();
+  if (!punkteModus || !k || !k.spanten[0]?.p) return;
+  const netzListe = alleNetze(k.id); if (!netzListe.length) return;
+  netzListe.forEach((n) => n.updateWorldMatrix(true, false));
+  const achse = geradeAnsicht(), frei = !!achse && !k.fest;
+  const langZ = new THREE.Vector3(0, 0, 1).transformDirection(netzListe[0].matrixWorld);
+  const laengs = achse && Math.abs(langZ.dot(achse)) > 0.999, quer = achse && Math.abs(langZ.dot(achse)) < 0.001;
+  punkteAnsicht = !achse ? 'schraeg' : laengs ? 'laengs' : quer ? 'quer' : 'gerade';
+  const belegt = [], frei2 = (w) => { if (belegt.some((c) => deckt(c, w, achse))) return false; belegt.push(w); return true; };
+  const N = k.spanten[0].p.length;
+  for (const netz of netzListe) for (let i = 0; i < k.spanten.length; i++) for (let j = 0; j < N; j++) {
+    const a = new THREE.Sprite(punktZug?.stapel.some((x) => x.i === i && x.j === j) ? punktZugMat : !frei ? punktGesperrtMat : punktMat);
+    a.scale.setScalar(frei ? 0.024 : 0.016); a.position.copy(weltPunkt(netz, k, i, j));
+    a.userData = { art: 'punkt', i, j, netz }; a.renderOrder = 40; punktGruppe.add(a);
+  }
+  if (!frei || punktZug) return; // WARUM beim Ziehen keine Marken: sie lägen unter dem Mauszeiger im Weg
+  for (const netz of netzListe) for (let i = 0; i < k.spanten.length; i++) for (let j = 0; j < N; j++) {
+    let pos, art;
+    if (laengs) { pos = weltPunkt(netz, k, i, j).add(weltPunkt(netz, k, i, (j + 1) % N)).multiplyScalar(0.5); art = 'plus'; }
+    else if (quer && i < k.spanten.length - 1) { pos = weltPunkt(netz, k, i, j).add(weltPunkt(netz, k, i + 1, j)).multiplyScalar(0.5); art = 'spant'; }
+    else continue;
+    if (!frei2(pos)) continue;
+    const b = new THREE.Sprite(art === 'plus' ? plusMat : spantPlusMat); b.scale.setScalar(0.024); b.position.copy(pos);
+    b.userData = { art, i, j, netz }; b.renderOrder = 41; punktGruppe.add(b);
+  }
+}
+function schaltePunkte(an = !punkteModus) {
+  const k = koerper();
+  if (an && !k) { zeigeMeldungKurz('Erst einen Körper wählen — dann P für seine Punkte'); return; }
+  punkteModus = an;
+  if (an) {
+    griff.detach();
+    if (!k.spanten[0].p) aendereKoerper(k.id, alsPunkte);
+    zeigeMeldungKurz(`${koerper().spanten[0].p.length} Punkte je Spant — ziehen geht nur in gerader Ansicht (Würfel-Fläche anklicken). + = neuer Punkt, blaues + = neuer Spant, Rechtsklick = löschen`);
+  } else zeigeMeldungKurz('Punkte fertig — W schieben, E drehen, S Größe');
+  neuZeichnen();
+}
+/** Alle Punkte (beliebiger Netze des Körpers), die entlang der Blickachse hinter/vor w liegen: [{ i, j, netz, welt }] — je (i, j) einmal. */
+function stapelBei(k, b, netzListe, achse) {
+  const aus = [], N = k.spanten[0].p.length;
+  for (const netz of netzListe) for (let i = 0; i < k.spanten.length; i++) for (let j = 0; j < N; j++) {
+    const w = weltPunkt(netz, k, i, j);
+    if (deckt(w, b, achse) && !aus.some((x) => x.i === i && x.j === j)) aus.push({ i, j, netz, welt: w });
+  }
+  return aus;
 }
 
 // ---------------- Griffe (schieben / drehen / Größe) ----------------
@@ -188,15 +282,82 @@ griff.addEventListener('objectChange', () => {
 
 // ---------------- Auswahl per Klick ----------------
 const strahl = new THREE.Raycaster(), zeiger = new THREE.Vector2();
-let gedrueckt = null;
-$('leinwand').addEventListener('pointerdown', (e) => { gedrueckt = { x: e.clientX, y: e.clientY }; });
-$('leinwand').addEventListener('pointerup', (e) => {
-  if (!gedrueckt || Math.hypot(e.clientX - gedrueckt.x, e.clientY - gedrueckt.y) > 5 || griff.dragging) return;
-  if (e.button === 2) { waehle(null); return; }
-  if (e.button !== 0 || griff.axis) return; // WARUM griff.axis: Klick auf einen Griff ist kein Auswahl-Klick
+function setzeZeiger(e) {
   const r = $('leinwand').getBoundingClientRect();
   zeiger.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   strahl.setFromCamera(zeiger, camera);
+}
+let gedrueckt = null;
+$('leinwand').addEventListener('pointerdown', (e) => {
+  gedrueckt = null;
+  if (wuerfel.ueber(e.clientX, e.clientY) || skizze.aktiv()) return; // Würfel und Skizze haben eigene Mausregeln
+  gedrueckt = { x: e.clientX, y: e.clientY };
+  const k = koerper();
+  if (!punkteModus || !k || e.button !== 0) return;
+  setzeZeiger(e);
+  const t = strahl.intersectObjects(punktGruppe.children)[0]; if (!t) return;
+  const achse = geradeAnsicht();
+  if (k.fest) { zeigeMeldungKurz('Körper ist fixiert — rechts „Lösen“, dann lassen sich Punkte ziehen'); gedrueckt = null; return; }
+  if (!achse) { zeigeMeldungKurz('Punkte ziehen geht nur in gerader Ansicht — oben am Würfel eine Fläche anklicken'); return; }
+  // Greifen: Punkt (samt allen, die im Bild genau darauf liegen) — oder an einer Kante einen neuen herausziehen
+  const merk = kopie(form), u = t.object.userData, b0 = t.object.position.clone();
+  let basis = k;
+  if (u.art === 'plus') basis = fuegePunktEin(k, u.j);
+  else if (u.art === 'spant') basis = fuegeSpantEin(k, u.i);
+  if (basis !== k) { form = normalisiere({ ...form, koerper: form.koerper.map((x) => (x.id === k.id ? basis : x)) }); neuZeichnen(); }
+  basis = koerper();
+  const netzListe = alleNetze(k.id); netzListe.forEach((n) => n.updateWorldMatrix(true, false));
+  const stapel = stapelBei(basis, b0, netzListe, achse); if (!stapel.length) return;
+  const greif = stapel[0].welt.clone();
+  punktZug = { merk, basis: kopie(basis), id: k.id, stapel, greif, achse, ebene: new THREE.Plane().setFromNormalAndCoplanarPoint(achse, greif), bewegt: basis !== k };
+  ziehen = true; steuer.enabled = false; gedrueckt = null;
+  $('leinwand').setPointerCapture(e.pointerId);
+  zeigePunkte();
+});
+$('leinwand').addEventListener('pointermove', (e) => {
+  if (!punktZug) { wuerfel.bewegt(e.clientX, e.clientY); return; }
+  const z = punktZug; setzeZeiger(e);
+  const p = new THREE.Vector3(); if (!strahl.ray.intersectPlane(z.ebene, p)) return;
+  // Raster 0,25 m in der Bildebene (Welt), Strg = frei; die Blickachse bleibt wie sie war
+  const r = (v) => (e.ctrlKey ? Math.round(v * 100) / 100 : Math.round(v * 4) / 4);
+  const ziel = new THREE.Vector3(...p.toArray().map((v, i) => (z.achse.getComponent(i) ? z.greif.getComponent(i) : r(v))));
+  const dW = ziel.sub(z.greif);
+  const liste = z.stapel.map(({ i, j, netz, welt }) => {
+    const inv = netz.matrixWorld.clone().invert(), a = welt.clone().applyMatrix4(inv), b = welt.clone().add(dW).applyMatrix4(inv);
+    return { i, j, d: [b.x - a.x, b.y - a.y, b.z - a.z] };
+  });
+  const neu = verschiebePunkte(z.basis, liste);
+  form = normalisiere({ ...form, koerper: form.koerper.map((x) => (x.id === z.id ? neu : x)) });
+  z.bewegt = true; schnellZeichnen(z.id);
+});
+addEventListener('pointerup', () => {
+  if (!punktZug) return;
+  const z = punktZug; punktZug = null; ziehen = false; steuer.enabled = true;
+  if (!z.bewegt) { neuZeichnen(); return; }
+  zurueck.push(z.merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0;
+  aendere(form, { merken: false });
+});
+$('leinwand').addEventListener('pointerup', (e) => {
+  if (wuerfel.klick(e.clientX, e.clientY)) return;
+  if (!gedrueckt || Math.hypot(e.clientX - gedrueckt.x, e.clientY - gedrueckt.y) > 5 || griff.dragging) return;
+  setzeZeiger(e);
+  if (e.button === 2) {
+    // Rechtsklick auf einen Punkt = Punkt löschen (mindestens 3 bleiben)
+    const t = punkteModus && geradeAnsicht() && strahl.intersectObjects(punktGruppe.children).find((x) => x.object.userData.art === 'punkt');
+    if (t) {
+      const k = koerper(), { i, j } = t.object.userData;
+      if (k.fest) { zeigeMeldungKurz('Körper ist fixiert'); return; }
+      // Blick quer zum Körper: der Punkt steht für seinen ganzen Spant → Spant löschen; sonst den Punkt (in allen Spanten)
+      if (punkteAnsicht === 'quer') {
+        if (k.spanten.length <= 2) zeigeMeldungKurz('Mindestens 2 Spanten bleiben');
+        else { aendereKoerper(k.id, (x) => loescheSpant(x, i)); zeigeMeldungKurz('Spant gelöscht — Strg+Z holt ihn zurück'); }
+      } else if (k.spanten[0].p.length <= 3) zeigeMeldungKurz('Mindestens 3 Punkte bleiben');
+      else { aendereKoerper(k.id, (x) => loeschePunkt(x, j)); zeigeMeldungKurz('Punkt gelöscht — Strg+Z holt ihn zurück'); }
+      return;
+    }
+    waehle(null); return;
+  }
+  if (e.button !== 0 || griff.axis) return; // WARUM griff.axis: Klick auf einen Griff ist kein Auswahl-Klick
   // WARUM rohe Netze auch wenn unsichtbar: Raycaster prüft keine Sichtbarkeit → Auswahl geht auch in der verschweißten Ansicht
   const t = strahl.intersectObjects(rohGruppe.children, true)[0];
   waehle(t ? t.object.userData.id : null);
@@ -204,11 +365,13 @@ $('leinwand').addEventListener('pointerup', (e) => {
 $('leinwand').addEventListener('contextmenu', (e) => e.preventDefault());
 
 function waehle(id) {
+  // WARUM Punkte-Modus aus bei neuer Auswahl: er würde den neuen Körper sonst ungefragt in Punkte umwandeln
+  if (id !== gewaehlt && punkteModus) punkteModus = false;
   gewaehlt = id; spantNr = 0;
   const k = koerper();
-  griff.detach(); if (k && netze.has(k.id)) griff.attach(netze.get(k.id));
+  griff.detach(); if (k && netze.has(k.id) && !punkteModus && !k.fest) griff.attach(netze.get(k.id));
   zeigeHilfen(); zeigeTafeln();
-  if (k) zeigeMeldungKurz(`${VORLAGEN[k.typ]?.name ?? 'Körper'} ${k.id} gewählt — W schieben, E drehen, S Größe ziehen, rechts Spanten formen`);
+  if (k) zeigeMeldungKurz(`${NAMEN[k.typ] ?? 'Körper'} ${k.id} gewählt — W schieben, E drehen, S Größe ziehen, P Punkte an Kanten, rechts Spanten formen`);
 }
 
 // ---------------- Körper ansetzen ----------------
@@ -241,7 +404,7 @@ function zeigeTafeln() {
   const liste = $('koerperliste'); liste.innerHTML = '';
   for (const k of form.koerper) {
     const z = document.createElement('div'); z.className = 'k' + (k.id === gewaehlt ? ' aktiv' : '');
-    z.innerHTML = `<span>${k.op === 'minus' ? '<span class="minus">−</span> ' : ''}${VORLAGEN[k.typ]?.name ?? k.typ} ${k.id}${k.spiegel ? ' ⇋' : ''}</span><small>${k.spanten.length} Sp.</small>`;
+    z.innerHTML = `<span>${k.op === 'minus' ? '<span class="minus">−</span> ' : ''}${k.fest ? '🔒 ' : ''}${NAMEN[k.typ] ?? k.typ} ${k.id}${k.spiegel.length ? ' ⇋' : ''}</span><small>${k.spanten[0]?.p ? k.spanten[0].p.length + ' Pkt · ' : ''}${k.spanten.length} Sp.</small>`;
     z.addEventListener('click', () => waehle(k.id));
     liste.append(z);
   }
@@ -249,10 +412,18 @@ function zeigeTafeln() {
   const k = koerper();
   $('k-tafel').classList.toggle('aus', !k);
   if (k) {
-    $('k-titel').textContent = `${VORLAGEN[k.typ]?.name ?? k.typ} ${k.id}`;
+    $('k-titel').textContent = `${NAMEN[k.typ] ?? k.typ} ${k.id}`;
     $('k-op').textContent = k.op === 'minus' ? 'Minus (schneidet aus)' : 'Plus (Material)';
     $('k-op').classList.toggle('minus', k.op === 'minus');
-    $('k-mat').value = k.mat; $('k-spiegel').checked = k.spiegel;
+    $('k-mat').value = k.mat;
+    for (const a of ACHSEN) $('sv-' + a).classList.toggle('an', k.spiegel.includes(a));
+    $('k-punkte').classList.toggle('an', punkteModus);
+    $('k-punkte').textContent = punkteModus ? '◆ Punkte fertig (P)' : '◆ Punkte an Kanten (P)';
+    $('k-punkte-weg').classList.toggle('versteckt', !k.spanten[0]?.p);
+    $('k-fest').textContent = k.fest ? '🔒 Fixiert — Lösen' : '🔓 Fixieren';
+    $('k-fest').classList.toggle('an', !!k.fest);
+    // Fixiert: nichts, was Lage oder Form ändert (Lage, Drehung, Spanten, Umklappen, Löschen) — Ansicht, Material, Spiegeln gehen
+    for (const el of document.querySelectorAll('#k-tafel .gitter3 input, #spant input, #s-neu, #s-weg, #k-loeschen, .klappen button, #k-punkte-weg')) el.disabled = !!k.fest;
     ['x', 'y', 'z'].forEach((a, i) => { $('k-p' + a).value = k.pos[i]; $('k-r' + a).value = k.dreh[i]; });
     zeigeSpant(k);
   }
@@ -269,6 +440,7 @@ function zeigeSpant(k) {
   $('s-titel').textContent = `${spantNr + 1} / ${k.spanten.length}`;
   const box = $('spant'); box.innerHTML = '';
   for (const [feld, name, min, max, schritt, einheit] of SPANT_REGLER) {
+    if (s.p && (feld === 'rundung' || feld === 'fase')) continue; // eigener Umriss: Ecken formt man mit Punkten
     const z = document.createElement('div'); z.className = 'regler';
     const wert = s[feld] ?? 0;
     // WARUM Bereich um den aktuellen Wert (Spieltest R16, Muss): fester Bereich 0,2–80 m war zu grob (85 px = 60 m).
@@ -287,6 +459,7 @@ function zeigeSpant(k) {
 }
 let vorschauMerken = null;
 function setzeSpantFeld(id, feld, wert, fertig) {
+  if (form.koerper.find((k) => k.id === id)?.fest) { zeigeMeldungKurz('Körper ist fixiert'); return; }
   // WARUM ein Merkpunkt je Zug: ein Regler-Zug soll ein Rückgängig-Schritt sein, nicht hundert
   if (!vorschauMerken) vorschauMerken = kopie(form);
   const alle = $('s-alle').checked && feld !== 'z';
@@ -300,7 +473,7 @@ function schnellZeichnen(id) {
   const k = form.koerper.find((x) => x.id === id); if (!k) return;
   const geo = koerperGeometrie(k);
   rohGruppe.traverse((o) => { if (o.isMesh && o.userData.id === id) o.geometry = geo; });
-  sichtbarkeit(); zeigeHilfen();
+  sichtbarkeit(); zeigeHilfen(); zeigeMasse();
 }
 
 function zeigeAndock() {
@@ -337,6 +510,12 @@ function neuerAndockpunkt() {
   zeigeMeldungKurz('Andockpunkt gesetzt — rechts Lage, Richtung, Größe und Art einstellen');
 }
 
+/**
+ * Dichtheit fürs Werte-Feld. WARUM der Flächenschluss entscheidet (R17): wo Körper Fläche an Fläche stoßen (Spiegelkopie an
+ * der Ebene, gleiche Deckhöhen), lässt die CSG T-Stöße, die die Kantenzählung nicht alle paart (bis ~100 „offene Kanten“
+ * bei dichter Hülle). Ein echtes Loch zeigt sich im Flächenschluss (|Σ n·A| / Σ A > 1e-6).
+ */
+const dichtText = (i) => (i.flaechenschluss === undefined ? '' : i.flaechenschluss > 1e-6 ? ' · undicht (' + i.offeneKanten + ' offene Kanten)' : ' · dicht');
 const zahl = (x, n = 1) => (+x).toLocaleString('de-DE', { maximumFractionDigits: n, minimumFractionDigits: n });
 function zeigeWerte() {
   const modul = formZuModul(form);
@@ -345,8 +524,9 @@ function zeigeWerte() {
   const reihen = [
     ['Körper', form.koerper.length], ['Länge · Breite · Höhe', `${zahl(mass[2])} · ${zahl(mass[0])} · ${zahl(mass[1])} m`],
     ['Masse (geschätzt)', zahl(modul.werte.masse, 0) + ' t'], ['Andockpunkte', form.andock.length],
-    ['Verschweißen', !verschweisst ? 'aus (Einzelteile)' : schweissInfo ? `${zahl(schweissInfo.ms, 0)} ms${schweissInfo.dreiecke ? ' · ' + zahl(schweissInfo.dreiecke, 0) + ' Dreiecke' : ''}${schweissInfo.offeneKanten ? ' · ' + schweissInfo.offeneKanten + ' offene Kanten' : ''}` : '…'],
+    ['Verschweißen', !verschweisst ? 'aus (Einzelteile)' : schweissInfo ? `${zahl(schweissInfo.ms, 0)} ms${schweissInfo.dreiecke ? ' · ' + zahl(schweissInfo.dreiecke, 0) + ' Dreiecke' : ''}${dichtText(schweissInfo)}` : '…'],
   ];
+  zeigeMasse();
   $('werte').innerHTML = reihen.map(([a, b]) => `<div class="reihe"><span>${a}</span><b>${b}</b></div>`).join('');
   const liste = $('meldungen'); liste.innerHTML = '';
   for (const m of pruefe(form)) {
@@ -354,6 +534,18 @@ function zeigeWerte() {
     if (m.id !== undefined) { z.dataset.nr = m.id; z.addEventListener('click', () => waehle(m.id)); }
     liste.append(z);
   }
+}
+
+/** Maße der ganzen Form (und des gewählten Körpers) oben im Bild — Nutzer R17b: „Länge und Höhe immer sehen“. */
+let masseText = '';
+function zeigeMasse() {
+  const box = (liste) => liste.reduce((a, q) => ({ min: a.min.map((v, i) => Math.min(v, q.min[i])), max: a.max.map((v, i) => Math.max(v, q.max[i])) }), { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
+  const mass = (h) => [2, 0, 1].map((i) => zahl(h.max[i] - h.min[i]));
+  const plus = koerperListe(form).filter((x) => x.k.op === 'plus');
+  let t = plus.length ? (() => { const [l, b, h] = mass(box(plus.map(({ k, lage }) => huelle(k, lage)))); return `<b>FORM</b> Länge <b>${l} m</b> · Breite <b>${b} m</b> · Höhe <b>${h} m</b>`; })() : '<b>FORM</b> leer';
+  const k = koerper();
+  if (k) { const [l, b, h] = mass(huelle(k)); t += `<br><span>${NAMEN[k.typ] ?? k.typ} ${k.id}${k.fest ? ' 🔒' : ''}: ${l} · ${b} · ${h} m</span>`; }
+  if (t !== masseText) { masseText = t; $('masse').innerHTML = t; }
 }
 
 let meldungsUhr = 0;
@@ -374,7 +566,43 @@ $('f-name').addEventListener('change', (e) => aendere({ ...form, name: e.target.
 $('f-art').addEventListener('change', (e) => aendere({ ...form, art: e.target.value }));
 $('k-op').addEventListener('click', () => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, op: x.op === 'minus' ? 'plus' : 'minus' })); });
 $('k-mat').addEventListener('change', (e) => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, mat: e.target.value })); });
-$('k-spiegel').addEventListener('change', (e) => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, spiegel: e.target.checked })); });
+function schalteSpiegel(a) {
+  const k = koerper(); if (!k) { zeigeMeldungKurz('Erst einen Körper wählen'); return; }
+  const an = !k.spiegel.includes(a);
+  aendereKoerper(k.id, (x) => ({ ...x, spiegel: an ? [...x.spiegel, a] : x.spiegel.filter((y) => y !== a) }));
+  zeigeMeldungKurz(an ? `Verbunden gespiegelt (${{ x: 'links ↔ rechts', y: 'oben ↔ unten', z: 'vorn ↔ hinten' }[a]}) — die Kopie formt sich mit` : 'Spiegelung aufgehoben');
+}
+function spiegelKopie(a) {
+  const k = koerper(); if (!k) { zeigeMeldungKurz('Erst einen Körper wählen'); return; }
+  const id = naechsteId(), neu = spiegelKoerper(k, a, id), h1 = huelle(k), h2 = huelle(normalisiere({ koerper: [neu] }).koerper[0]);
+  aendere({ ...form, koerper: [...form.koerper, neu] }); waehle(id);
+  const gleich = [0, 1, 2].every((i) => Math.abs(h1.min[i] - h2.min[i]) < 0.01 && Math.abs(h1.max[i] - h2.max[i]) < 0.01);
+  zeigeMeldungKurz(gleich ? 'Gespiegelte Kopie liegt genau auf dem Original (Körper steht auf der Ebene) — mit W wegschieben'
+    : 'Gespiegelte Kopie erstellt — ein eigener Körper, getrennt formbar');
+}
+function klappe(a) {
+  const k = koerper(); if (!k) { zeigeMeldungKurz('Erst einen Körper wählen'); return; }
+  if (k.fest) { zeigeMeldungKurz('Körper ist fixiert'); return; }
+  aendereKoerper(k.id, (x) => klappeKoerper(x, a));
+  zeigeMeldungKurz(`Körper umgeklappt (${{ x: 'links ↔ rechts', y: 'oben ↔ unten', z: 'vorn ↔ hinten' }[a]}) — gespiegelt an seiner eigenen Mitte`);
+}
+function schalteFest() {
+  const k = koerper(); if (!k) { zeigeMeldungKurz('Erst einen Körper wählen'); return; }
+  const an = !k.fest;
+  aendereKoerper(k.id, (x) => { const y = { ...x }; if (an) y.fest = true; else delete y.fest; return y; });
+  zeigeMeldungKurz(an ? 'Fixiert — Lage und Form sind gesperrt (Material, Spiegeln und Ansicht gehen weiter)' : 'Gelöst — wieder verschiebbar');
+}
+for (const a of ACHSEN) { $('sv-' + a).addEventListener('click', () => schalteSpiegel(a)); $('se-' + a).addEventListener('click', () => spiegelKopie(a)); $('su-' + a).addEventListener('click', () => klappe(a)); }
+$('k-fest').addEventListener('click', schalteFest);
+$('k-punkte').addEventListener('click', () => schaltePunkte());
+$('k-punkte-weg').addEventListener('click', () => {
+  const k = koerper(); if (!k) return;
+  punkteModus = false;
+  aendereKoerper(k.id, (x) => ({ ...x, spanten: x.spanten.map(({ p, ...t }) => t) }));
+  zeigeMeldungKurz('Umriss zurückgesetzt — wieder Rechteck mit Rundung und Fase');
+});
+$('k-skizze').addEventListener('click', starteSkizze);
+$('w-home').addEventListener('click', () => fokus());
 for (const [i, a] of ['x', 'y', 'z'].entries()) {
   $('k-p' + a).addEventListener('change', (e) => { e.target.blur(); const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.pos[i] = +e.target.value; return x; }); });
   $('k-r' + a).addEventListener('change', (e) => { e.target.blur(); const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.dreh[i] = +e.target.value; return x; }); });
@@ -387,7 +615,8 @@ $('s-neu').addEventListener('click', () => {
   einzeln(); const k = koerper(); if (!k) return;
   // WARUM Mittelwert: neuer Spant liegt zwischen dem aktuellen und dem nächsten → Form bleibt gleich, man kann ihn dann formen
   const a = k.spanten[spantNr], b = k.spanten[spantNr + 1] ?? null;
-  const neu = b ? Object.fromEntries(Object.keys(a).map((f) => [f, (a[f] + b[f]) / 2])) : { ...a, z: a.z + 5 };
+  const neu = b ? Object.fromEntries(Object.keys(a).map((f) => [f, f === 'p' ? a.p.map((q, j) => [(q[0] + b.p[j][0]) / 2, (q[1] + b.p[j][1]) / 2]) : (a[f] + b[f]) / 2]))
+    : { ...a, z: a.z + 5 };
   aendereKoerper(k.id, (x) => { x.spanten.splice(spantNr + 1, 0, neu); return x; });
   spantNr++; zeigeSpant(koerper()); zeigeHilfen();
 });
@@ -440,10 +669,12 @@ function dupliziere() {
 }
 function loescheKoerper() {
   const k = koerper(); if (!k) return;
+  if (k.fest) { zeigeMeldungKurz('Körper ist fixiert — erst lösen, dann löschen'); return; }
   aendere({ ...form, koerper: form.koerper.filter((x) => x.id !== k.id) }); waehle(null);
   zeigeMeldungKurz('Körper gelöscht — Strg+Z holt ihn zurück');
 }
 function fokus() {
+  wuerfel?.halt();
   const box = new THREE.Box3(); rohGruppe.traverse((o) => { if (o.isMesh) box.expandByObject(o); });
   const m = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
   const r = box.isEmpty() ? 30 : Math.max(12, box.getSize(new THREE.Vector3()).length());
@@ -455,28 +686,60 @@ addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.target.blur(); e.preventDefault(); }
     return;
   }
+  // Skizze hat Vorrang: Enter/Esc/Rücktaste gehören ihr, die übrigen Werkstatt-Tasten ruhen
+  if (skizze.aktiv()) { if (skizze.taste(e)) { e.preventDefault(); e.stopPropagation(); } return; }
   const strg = e.ctrlKey || e.metaKey, t = e.key.toLowerCase();
+  if (e.key === 'Escape' && punkteModus) { schaltePunkte(false); e.preventDefault(); return; }
   if (e.key === 'Escape' && gewaehlt !== null) { waehle(null); e.preventDefault(); return; }
   if (strg && t === 'z') { e.preventDefault(); e.shiftKey ? wiederholen() : rueckgaengig(); return; }
   if (strg && t === 'y') { e.preventDefault(); wiederholen(); return; }
   if (strg && t === 's') { e.preventDefault(); speichern(); return; }
   if (strg && t === 'd') { e.preventDefault(); dupliziere(); return; }
   if (strg) { griff.setTranslationSnap(null); griff.setRotationSnap(null); return; } // Strg halten = ohne Raster
+  if (['w', 'e', 's'].includes(t) && koerper()?.fest) zeigeMeldungKurz('Körper ist fixiert — L oder rechts „Lösen“');
+  if (['w', 'e', 's'].includes(t) && punkteModus) schaltePunkte(false); // Griffe statt Punkte
   if (t === 'w') griff.setMode('translate');
   else if (t === 'e') griff.setMode('rotate');
   else if (t === 's') griff.setMode('scale');
   else if (t === 'v') schalteSchweissen();
-  else if (t === 'm') { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, spiegel: !x.spiegel })); }
+  else if (t === 'm') schalteSpiegel('x');
+  else if (t === 'k') starteSkizze();
+  else if (t === 'p') schaltePunkte();
+  else if (t === 'l') schalteFest();
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); loescheKoerper(); }
   else if (t === 'f') fokus();
   else if (t === 'h') $('hilfe').classList.toggle('versteckt');
 }, { capture: true });
 addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') { griff.setTranslationSnap(0.5); griff.setRotationSnap(15 * RAD); } });
 
+// ---------------- Ansichtswürfel und Skizze (Runde 17) ----------------
+const wuerfel = erstelleAnsichtswuerfel({ renderer: bild.renderer, camera, steuer, leinwand: $('leinwand'), rechtsFrei: 330 });
+const skizze = erstelleSkizze({ scene, camera, leinwand: $('leinwand'), steuer, wuerfel, meldung: zeigeMeldungKurz,
+  fertig(daten) {
+    const id = naechsteId();
+    aendere({ ...form, koerper: [...form.koerper, { ...daten, id }] });
+    waehle(id);
+    zeigeMeldungKurz(`Körper aus der Skizze erstellt (${daten.spanten[0].p.length} Punkte) — W schieben, P Punkte ziehen, rechts Spanten formen`);
+  } });
+function starteSkizze() {
+  if (punkteModus) punkteModus = false;
+  griff.detach(); punktGruppe.clear();
+  skizze.start();
+}
+
 // ---------------- Start ----------------
 neuZeichnen(); fokus(); waehle(gewaehlt);
 $('laden').remove();
-function schleife() { steuer.update(); bild.zeichnen(); requestAnimationFrame(schleife); }
+let letzteKamera = '', punkteUhr = 0;
+function schleife() {
+  wuerfel.schritt(); steuer.update();
+  // WARUM: Freigabe (gerade Ansicht) und Plus-Marken hängen an der Blickrichtung → nach Kamerabewegung neu legen (≤ 10×/s)
+  if (punkteModus && !punktZug) {
+    const kam = camera.matrixWorld.elements.map((v) => v.toFixed(3)).join();
+    if (kam !== letzteKamera && performance.now() - punkteUhr > 100) { letzteKamera = kam; punkteUhr = performance.now(); zeigePunkte(); }
+  }
+  bild.zeichnen(); wuerfel.zeichne(); requestAnimationFrame(schleife);
+}
 requestAnimationFrame(schleife);
 
 // CLAUDE.md Regel 6: Debug-Zugang
@@ -486,6 +749,11 @@ window.spiel = {
   lade(f) { aendere(kopie(f)); fokus(); },
   setze: setzeVorlage, waehle, rueckgaengig, wiederholen, fokus, speichern,
   spant(feld, wert) { const k = koerper(); if (k) setzeSpantFeld(k.id, feld, wert, true); },
+  skizze, wuerfel, punkte: schaltePunkte, spiegeln: schalteSpiegel, spiegelKopie, klappe, fest: schalteFest, get punkteAnsicht() { return punkteAnsicht; },
+  get spantNr() { return spantNr; }, set spantNr(n) { spantNr = n; zeigeHilfen(); const k = koerper(); if (k) zeigeSpant(k); },
+  /** Bildpunkt (clientX/Y) eines Punktes oder einer Plus-Marke im Punkte-Modus — für Mausprüfungen */
+  punktBild(art, j, i) { const o = punktGruppe.children.find((x) => x.userData.art === art && x.userData.j === j && (i === undefined || x.userData.i === i)); if (!o) return null;
+    const v = o.position.clone().project(camera), r = $('leinwand').getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   ansicht(r = [0.7, 0.45, 0.8]) { const m = steuer.target.clone(), d = camera.position.distanceTo(m); camera.position.copy(m).add(new THREE.Vector3(...r).normalize().multiplyScalar(d)); steuer.update(); bild.zeichnen(); },
   messwerte: () => { bild.zeichnen(); return bild.messwerte(); },
 };

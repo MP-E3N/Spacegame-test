@@ -35,3 +35,6 @@
 
 /* WARUM begrenzt: zwischen den Tafeln bleiben, nicht unter den Menü-Knopf rechts unten laufen */
 #hilfe.werft-hilfe { top: auto; bottom: 16px; left: 260px; right: 300px; text-align: center; font-size: 11px; line-height: 1.8; }
+/* Runde 17b: Maße des Schiffs oben im Bild */
+#masse { position: absolute; top: 16px; left: 262px; pointer-events: none; font-size: 12px; color: var(--bern-matt); background: var(--grund); border: 1px solid var(--linie); padding: 5px 10px; }
+#masse b { color: #f2c070; font-weight: normal; }

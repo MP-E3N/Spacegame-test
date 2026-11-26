@@ -15,7 +15,9 @@
   <canvas id="leinwand"></canvas>
   <div id="hud">
     <div id="links" class="tafel">
-      <div class="kopf">WERKSTATT · KÖRPER ANSETZEN</div>
+      <div class="kopf">ZEICHNEN</div>
+      <button id="k-skizze" class="gross" title="Taste K — Fläche auf der Ebene der aktuellen Ansicht zeichnen und dann nach hinten ziehen">✎ Skizze zeichnen (K)</button>
+      <div class="kopf zwischen">KÖRPER ANSETZEN</div>
       <div id="vorlagen"></div>
       <div class="kopf zwischen">KÖRPER DER FORM</div>
       <div id="koerperliste"></div>
@@ -39,14 +41,22 @@
         <div class="reihe2">
           <button id="k-op" title="Plus = Material, Minus = ausschneiden">Plus</button>
           <select id="k-mat"></select>
-          <label class="haken"><input type="checkbox" id="k-spiegel" /> gespiegelt</label>
-        </div>
+          </div>
+        <div class="reihe2 spiegeln" title="Verbundene Spiegelkopie: ändert sich mit dem Körper mit (Ebene durch die Mitte der Form)"><span>Spiegeln</span>
+          <button id="sv-x" title="links ↔ rechts (Ebene x = 0) — Taste M">⇋ Seite</button><button id="sv-y" title="oben ↔ unten (Ebene y = 0)">⇅ Höhe</button><button id="sv-z" title="vorn ↔ hinten (Ebene z = 0)">⇆ Länge</button></div>
+        <div class="reihe2 spiegeln" title="Eigenständige gespiegelte Kopie: ein neuer Körper, den man danach getrennt formen kann"><span>Kopie</span>
+          <button id="se-x">⇋ Seite</button><button id="se-y">⇅ Höhe</button><button id="se-z">⇆ Länge</button></div>
+        <div class="reihe2 spiegeln klappen" title="Am Körper selbst spiegeln: an der eigenen Mitte umklappen (bleibt an seinem Platz)"><span>Umklappen</span>
+          <button id="su-x">⇋ Seite</button><button id="su-y">⇅ Höhe</button><button id="su-z">⇆ Länge</button></div>
+        <button id="k-fest" class="breit" title="Taste L — Lage und Form sperren, damit nichts aus Versehen verrutscht">🔓 Fixieren</button>
         <div class="gitter3"><span>Lage</span><input id="k-px" type="number" step="0.5" /><input id="k-py" type="number" step="0.5" /><input id="k-pz" type="number" step="0.5" /></div>
         <div class="gitter3"><span>Drehung °</span><input id="k-rx" type="number" step="15" /><input id="k-ry" type="number" step="15" /><input id="k-rz" type="number" step="15" /></div>
         <div class="kopf zwischen" title="Spant = Querschnitt an einer Stelle der Länge. Zwischen zwei Spanten geht die Form gleichmäßig über — so entstehen Trapeze, Spitzen und Übergänge eckig → rund.">SPANT (Querschnitt) <span id="s-titel"></span>
           <span class="knopfreihe"><button id="s-vor" title="Spant davor">◀</button><button id="s-nach" title="Spant danach">▶</button>
           <button id="s-neu" title="Spant einfügen (Mitte zum nächsten)">+</button><button id="s-weg" title="Spant löschen">−</button></span></div>
         <div id="spant"></div>
+        <div class="knoepfe"><button id="k-punkte" title="Taste P — Punkte an den Ecken ziehen, + an den Kanten = neuer Punkt, Rechtsklick = Punkt löschen">◆ Punkte an Kanten (P)</button>
+          <button id="k-punkte-weg" title="Eigenen Umriss verwerfen, wieder Rechteck mit Rundung/Fase">Umriss zurücksetzen</button></div>
         <label class="haken" title="Aus: nur dieser Querschnitt ändert sich (Trapez, Übergang). An: der ganze Körper (Quader, Zylinder)."><input type="checkbox" id="s-alle" checked /> auf alle Spanten (ganzer Körper)</label>
         <div class="knoepfe">
           <button id="k-kopie" title="Strg+D">Duplizieren</button>
@@ -61,14 +71,28 @@
       <div id="werte"></div>
       <div id="meldungen"></div>
     </div>
+    <button id="w-home" title="Startansicht (F)">⌂</button>
+    <div id="skizze-leiste" class="tafel versteckt">
+      <div id="sk-zeichnen"><span class="kopf">SKIZZE</span>
+        <button id="sk-linie">Linienzug</button><button id="sk-rechteck">Rechteck</button><button id="sk-kreis">Kreis</button>
+        <label title="Lage der Zeichenebene entlang der Blickrichtung">Ebene bei <input id="sk-d" type="number" step="0.5" /> m</label>
+        <button id="sk-schliessen">Fläche schließen (Enter)</button><button id="sk-abbrechen">Abbrechen (Esc)</button></div>
+      <div id="sk-ziehen" class="versteckt"><span class="kopf">ZIEHEN</span>
+        <label>Tiefe <input id="sk-tiefe" type="number" step="0.5" /> m</label>
+        <button id="sk-umdrehen" title="Andere Seite der Ebene">⇄ Richtung</button><button id="sk-op">Plus</button>
+        <button id="sk-zurueck">← Zeichnen</button><button id="sk-fertig" class="ok">✓ Körper erstellen (Enter)</button><button id="sk-abbrechen2">Abbrechen (Esc)</button></div>
+      <div id="sk-hinweis" class="klein"></div>
+    </div>
     <button id="hilfe-knopf" title="Taste H">? Hilfe</button>
     <div id="hilfe" class="werkstatt-hilfe versteckt">
       <b>Klick</b> Vorlage links = Körper ansetzen &nbsp; <b>Klick</b> auf Körper = wählen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp;
       <b>S</b> Größe ziehen &nbsp; <b>Strg</b> halten = ohne Raster<br>
-      <b>V</b> verschweißt / Einzelteile &nbsp; <b>M</b> gespiegelt &nbsp; <b>Strg+D</b> duplizieren &nbsp; <b>Entf</b> löschen &nbsp;
+      <b>K</b> Skizze zeichnen &nbsp; <b>P</b> Punkte (ziehen nur in gerader Ansicht) &nbsp; <b>L</b> fixieren &nbsp; <b>Würfel</b> oben = Ansicht wählen<br>
+      <b>V</b> verschweißt / Einzelteile &nbsp; <b>M</b> spiegeln (Seite) &nbsp; <b>Strg+D</b> duplizieren &nbsp; <b>Entf</b> löschen &nbsp;
       <b>Strg+Z</b>/<b>Strg+Y</b> rückgängig/wieder &nbsp; <b>F</b> Kamera &nbsp; <b>H</b> Hilfe<br>
       <b>Linke Maus ziehen</b> Kamera drehen &nbsp; <b>Rad</b> zoomen &nbsp; <b>Mittlere Maus ziehen</b> schieben
     </div>
+    <div id="masse"></div>
     <div id="meldung"></div>
   </div>
   <div id="laden">Werkstatt wird hergerichtet …</div>

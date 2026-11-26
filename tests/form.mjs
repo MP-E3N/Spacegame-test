@@ -12,7 +12,8 @@
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { PROFIL_N, profilPunkte, profilFlaeche, VORLAGEN, neuerKoerper, normalisiere, pruefe, drehMatrix, koerperListe,
-  koerperMatrix, wendeK, huelle, volumen, formZuModul, formId, koerperSchluessel, DICHTE, VERSION } from '../src/sim/form/form.js';
+  koerperMatrix, wendeK, huelle, volumen, formZuModul, formId, koerperSchluessel, DICHTE, VERSION,
+  skizzenKoerper, alsPunkte, setzePunkt, fuegePunktEin, loeschePunkt, spiegelKoerper, verschiebePunkte, fuegeSpantEin, loescheSpant, klappeKoerper } from '../src/sim/form/form.js';
 import { KATALOG, NORM } from '../src/sim/werft/module.js';
 import { baue, andockLage, LAGEN, EINHEIT, wende, dreheV } from '../src/sim/werft/zusammenbau.js';
 import { dateiname } from '../server/ablage.js';
@@ -481,6 +482,102 @@ const alsSuppe = (g) => ({ x: g.index ? g.toNonIndexed() : g });
   const gr = b ? schiffNetz(b.teile, mats) : null, mitForm = b ? schiffNetz(b.teile.filter((t) => !t.modul.startsWith('form_')), mats) : null;
   zeile('Werft: schiffNetz mit Formen — Draw-Calls | Dreiecke mehr als ohne Formen', '≤ 60 | > 0', gr ? `${gr.userData.drawCalls} | +${Math.round(gr.userData.dreiecke - mitForm.userData.dreiecke)}` : '–',
     !!gr && gr.userData.drawCalls <= 60 && gr.userData.dreiecke > mitForm.userData.dreiecke);
+}
+// ---------- 8) Runde 17: Skizze, Punkte an Kanten, Spiegeln an drei Ebenen ----------
+{
+  const netzVol = (g) => { const p = g.toNonIndexed().attributes.position.array; let v = 0;
+    for (let t = 0; t < p.length; t += 9) v += (p[t] * (p[t + 4] * p[t + 8] - p[t + 5] * p[t + 7]) - p[t + 1] * (p[t + 3] * p[t + 8] - p[t + 5] * p[t + 6]) + p[t + 2] * (p[t + 3] * p[t + 7] - p[t + 4] * p[t + 6])) / 6;
+    return v; };
+  const L = [[-7.5, 3.5], [3, 3.5], [3, -0.5], [-3, -0.5], [-3, -7.5], [-7.5, -7.5]], L_FL = 10.5 * 4 + 4.5 * 7;
+  // Drei Zeichenebenen wie der Ansichtswürfel: vorne (XY), oben (Bild-Oberkante −Z), links (+X, Bild-rechts = −Z)
+  const EBENEN = { vorne: { ex: [1, 0, 0], ey: [0, 1, 0], n: [0, 0, 1] }, oben: { ex: [1, 0, 0], ey: [0, 0, -1], n: [0, 1, 0] }, links: { ex: [0, 0, -1], ey: [0, 1, 0], n: [1, 0, 0] } };
+  const falsch = [];
+  for (const [name, e] of Object.entries(EBENEN)) for (const tiefe of [-10, 6]) {
+    const k = normalisiere({ koerper: [skizzenKoerper({ punkte: L, ...e, d: 2, tiefe, id: 0 })] }).koerper[0];
+    const g = koerperGeometrie(k), v = netzVol(g), ok = offeneKanten({ a: g.toNonIndexed() }).kanten;
+    // Gezeichnete Ecken müssen in Form-Koordinaten auf der Ebene liegen: P = s·ex + t·ey + d·n
+    const ecken = profilPunkte(k.spanten.find((s) => s.z === 0)).map(([x, y]) => wendeK(koerperMatrix(k), [x, y, 0]));
+    const soll = L.map(([s, t]) => [0, 1, 2].map((i) => s * e.ex[i] + t * e.ey[i] + 2 * e.n[i]));
+    const abw = Math.max(...soll.map((q) => Math.min(...ecken.map((c) => abst(c, q)))));
+    if (Math.abs(v - L_FL * Math.abs(tiefe)) > 1e-3 || ok || abw > 1e-4) falsch.push(`${name}/${tiefe}: V ${v.toFixed(2)} offen ${ok} Lage ${abw.toExponential(1)}`);
+  }
+  zeile('Skizze → Körper (L-Form, 3 Ebenen × 2 Richtungen): Volumen = Fläche × Tiefe, dicht, Ecken auf der Ebene (±0,1 mm)', '0 falsch', falsch.join(' | ') || 0, falsch.length === 0);
+  const kL = normalisiere({ koerper: [skizzenKoerper({ punkte: L, ...EBENEN.vorne, tiefe: -10, id: 0 })] }).koerper[0];
+  zeile('Skizze: volumen() (Masse) = Fläche × Tiefe', '±1e-3 m³', (volumen(kL) - L_FL * 10).toExponential(1), Math.abs(volumen(kL) - L_FL * 10) < 1e-3);
+  const gegenL = skizzenKoerper({ punkte: L.slice().reverse(), ...EBENEN.vorne, tiefe: -10, id: 0 });
+  zeile('Skizze im Uhrzeigersinn gezeichnet → normalisiere dreht um (Volumen positiv)', '> 0', netzVol(koerperGeometrie(normalisiere({ koerper: [gegenL] }).koerper[0])).toFixed(1),
+    netzVol(koerperGeometrie(normalisiere({ koerper: [gegenL] }).koerper[0])) > 0);
+
+  // Punkte an Kanten
+  const q = normalisiere({ koerper: [neuerKoerper('quader', 0)] }).koerper[0], qp = alsPunkte(q), tp = alsPunkte(normalisiere({ koerper: [neuerKoerper('trapez', 0)] }).koerper[0]);
+  const zp = alsPunkte(normalisiere({ koerper: [neuerKoerper('zylinder', 0)] }).koerper[0]);
+  zeile('alsPunkte: Quader 4 · Trapez (Fase) 8 · Zylinder 32 Punkte; Quader-Volumen gleich', '4 · 8 · 32 · 600', `${qp.spanten[0].p.length} · ${tp.spanten[0].p.length} · ${zp.spanten[0].p.length} · ${volumen(qp).toFixed(2)}`,
+    qp.spanten[0].p.length === 4 && tp.spanten[0].p.length === 8 && zp.spanten[0].p.length === 32 && Math.abs(volumen(qp) - 600) < 1e-9);
+  const tAbw = Math.max(...[0, 1].map((i) => Math.max(...profilPunkte(tp.spanten[i]).map((pt) => Math.min(...profilPunkte(normalisiere({ koerper: [neuerKoerper('trapez', 0)] }).koerper[0].spanten[i]).map((r) => abst(pt, r))))))); // Ecken liegen auf dem alten Profil
+  zeile('alsPunkte Trapez: Punkte liegen auf dem alten Profil', '< 1e-3 m', tAbw.toExponential(1), tAbw < 1e-3);
+  // Ecke des Quaders (10 × 6, Ecke [5, 3]) vorn um 2 m nach außen → Spant 0 = 12 × 6 mit schräger Kante, Spant 1 unverändert
+  const ziel = profilPunkte(qp.spanten[0]).findIndex(([x, y]) => x > 0 && y > 0);
+  const ein = normalisiere({ koerper: [setzePunkt(qp, 0, ziel, [7, 3], false)] }).koerper[0], alle = normalisiere({ koerper: [setzePunkt(qp, 0, ziel, [7, 3], true)] }).koerper[0];
+  // WARUM Netz ≠ Prismatoid bei „einzeln“: die schräge Seitenfläche ist verwunden (kein ebenes Viereck); das Netz teilt sie in zwei
+  // Dreiecke, volumen() rechnet die verwundene Fläche (Masse-Schätzung) — Unterschied 10 m³ = 1,6 %
+  const vEin = netzVol(koerperGeometrie(ein)), vAlle = netzVol(koerperGeometrie(alle)), vEinSoll = 10 / 6 * (60 + 4 * 63 + 66); // Prismatoid: Fläche 66 vorn, 60 hinten
+  zeile('setzePunkt einzeln | alle: volumen() · Netz — vorne 66 m², hinten 60 bzw. 66 m²', `${vEinSoll.toFixed(1)} · ±2 % | 660`, `${volumen(ein).toFixed(1)} · ${vEin.toFixed(1)} | ${vAlle.toFixed(1)}`,
+    Math.abs(volumen(ein) - vEinSoll) < 1e-3 && Math.abs(vEin / vEinSoll - 1) < 0.02 && Math.abs(vAlle - 660) < 1e-3 && ein.spanten[1].b === 10 && ein.spanten[0].b === 12);
+  const mehr = fuegePunktEin(qp, 0), weg = loeschePunkt(qp, 0), wenig = loeschePunkt(loeschePunkt(weg, 0), 0);
+  zeile('fuegePunktEin: 5 Punkte, Form gleich | loeschePunkt: Dreieck = halbes Volumen | ≥ 3 Punkte bleiben', '5 · 600 | 300 | 3',
+    `${mehr.spanten[0].p.length} · ${volumen(mehr).toFixed(1)} | ${volumen(weg).toFixed(1)} | ${wenig.spanten[0].p.length}`,
+    mehr.spanten[0].p.length === 5 && Math.abs(volumen(mehr) - 600) < 1e-6 && Math.abs(volumen(weg) - 300) < 1e-6 && wenig.spanten[0].p.length === 3);
+  const kreuz = normalisiere({ koerper: [setzePunkt(qp, 0, ziel, [-9, 0], true)] });
+  zeile('pruefe: Punkt quer durch den Umriss gezogen → umriss_kreuzt (Warnung)', 'umriss_kreuzt:0', schluessel(pruefe(kreuz).filter((x) => x.code === 'umriss_kreuzt')), pruefe(kreuz).some((x) => x.code === 'umriss_kreuzt'));
+  const idem = [kL, qp, ein, mehr].every((k) => { const a = normalisiere({ koerper: [k] }); return JSON.stringify(a) === JSON.stringify(normalisiere(a)); });
+  const kaputt = normalisiere({ koerper: [{ ...neuerKoerper('quader', 0), spanten: [{ ...qp.spanten[0] }, { ...qp.spanten[1], p: [[0, 0]] }] }] }).koerper[0];
+  zeile('normalisiere mit Umrissen idempotent; falsches p in Spant 2 → Kopie von Spant 1', 'ja · 4', `${idem ? 'ja' : 'nein'} · ${kaputt.spanten[1].p.length}`, idem && kaputt.spanten[1].p.length === 4);
+
+  // Spiegeln: altes true = ['x']; zwei Ebenen = 3 Kopien; eigene Kopie = verbundene Kopie (gleiche Punkte) für x, y, z
+  const alt = normalisiere({ koerper: [{ ...neuerKoerper('quader', 0), spiegel: true }] }).koerper[0];
+  const zwei = koerperListe(normalisiere({ koerper: [{ ...neuerKoerper('quader', 0, { pos: [5, 4, 3] }), spiegel: ['z', 'x'] }] }));
+  zeile('Spiegel: true → [x] | [z, x] → 4 Einträge (x, z, xz)', "['x'] | 4", `${JSON.stringify(alt.spiegel)} | ${zwei.length}: ${zwei.map((e) => wendeK(e.lage, [0, 0, 0]).join('/')).join(' ')}`,
+    JSON.stringify(alt.spiegel) === '["x"]' && zwei.length === 4 && abst(wendeK(zwei[3].lage, [0, 0, 0]), [-5, 4, -3]) === 0);
+  let spAbw = 0, spFaelle = 0;
+  for (const vorlage of ['keil', 'rumpf', 'trapez']) for (let i = 0; i < 4; i++) for (const a of ['x', 'y', 'z']) {
+    const k = normalisiere({ koerper: [{ ...(i % 2 ? alsPunkte(normalisiere({ koerper: [neuerKoerper(vorlage, 0)] }).koerper[0]) : neuerKoerper(vorlage, 0)),
+      pos: [zwischen(-9, 9), zwischen(-9, 9), zwischen(-9, 9)], dreh: i < 2 ? [90, 0, 180] : [zwischen(0, 360), zwischen(0, 360), zwischen(0, 360)] }] }).koerper[0];
+    const verbunden = koerperListe({ koerper: [{ ...k, spiegel: [a] }] })[1].lage, eigen = normalisiere({ koerper: [spiegelKoerper(k, a, 1)] }).koerper[0];
+    const pv = k.spanten.flatMap((s) => profilPunkte(s).map(([x, y]) => wendeK(verbunden, [x, y, s.z])));
+    const pe = eigen.spanten.flatMap((s) => profilPunkte(s).map(([x, y]) => wendeK(koerperMatrix(eigen), [x, y, s.z])));
+    spAbw = Math.max(spAbw, ...pv.map((p) => Math.min(...pe.map((r) => abst(p, r))))); spFaelle++;
+    const ve = netzVol(koerperGeometrie(eigen)); if (!(ve > 0)) spAbw = Infinity;
+  }
+  zeile(`spiegelKoerper (eigene Kopie) = verbundene Spiegelkopie, Volumen positiv (${spFaelle} Fälle, Punkte/Rundung)`, '< 2e-3 m', spAbw.toExponential(1), spAbw < 2e-3);
+  // Runde 17b: Punkte in jeder Ansicht verschieben, Spant an Längskante einfügen, Umklappen, Fixieren
+  const vp = verschiebePunkte(qp, [{ i: 0, j: ziel, d: [2, 0, 0] }, { i: 1, j: ziel, d: [2, 0, 0] }]);
+  const vz = verschiebePunkte(qp, [{ i: 0, j: 0, d: [0, 0, -3] }, { i: 0, j: 1, d: [0, 0, -3] }]);
+  const vklemm = verschiebePunkte(qp, [{ i: 0, j: 0, d: [0, 0, 50] }]);
+  zeile('verschiebePunkte: Ecke beider Spanten +2 m → 660 m³ | Spant längs −3 m → 780 m³ | über den Nachbarn → geklemmt', '660 | 780 | z 4,9',
+    `${volumen(vp).toFixed(1)} | ${volumen(vz).toFixed(1)} | z ${vklemm.spanten[0].z}`,
+    Math.abs(volumen(vp) - 660) < 1e-3 && Math.abs(volumen(vz) - 780) < 1e-3 && vklemm.spanten[0].z === 4.9);
+  const fs3 = fuegeSpantEin(ein, 0), mitte = fs3.spanten[1];
+  zeile('fuegeSpantEin: 3 Spanten, neuer in der Mitte (z 0, b 11), Volumen gleich | loescheSpant → 2 bleiben', '3 · 0 · 11 · gleich | 2',
+    `${fs3.spanten.length} · ${mitte.z} · ${mitte.b} · ${Math.abs(volumen(fs3) - volumen(ein)) < 0.05 ? 'gleich' : volumen(fs3).toFixed(2) + ' ≠ ' + volumen(ein).toFixed(2)} | ${loescheSpant(loescheSpant(fs3, 1), 0).spanten.length}`,
+    fs3.spanten.length === 3 && mitte.z === 0 && mitte.b === 11 && Math.abs(volumen(fs3) - volumen(ein)) < 0.05 && loescheSpant(loescheSpant(fs3, 1), 0).spanten.length === 2);
+  let klAbw = 0;
+  for (const a of ['x', 'y', 'z']) {
+    const k0 = normalisiere({ koerper: [{ ...normalisiere({ koerper: [neuerKoerper('keil', 0, { pos: [4, 2, -3] })] }).koerper[0], dreh: [0, 30, 0], fest: true, spiegel: ['x'] }] }).koerper[0];
+    const k1 = normalisiere({ koerper: [klappeKoerper(k0, a)] }).koerper[0], h0 = huelle(k0), h1 = huelle(k1), i = ['x', 'y', 'z'].indexOf(a);
+    klAbw = Math.max(klAbw, Math.abs((h0.min[i] + h0.max[i]) - (h1.min[i] + h1.max[i])) / 2, ...[0, 1, 2].map((m) => Math.abs((h0.max[m] - h0.min[m]) - (h1.max[m] - h1.min[m]))));
+    if (!k1.fest || k1.spiegel.join() !== 'x' || Math.abs(volumen(k1) - volumen(k0)) > 1e-3) klAbw = Infinity;
+  }
+  zeile('klappeKoerper: Mitte und Maße bleiben, fest + Spiegel bleiben (x, y, z)', '< 2e-3 m', klAbw.toExponential(1), klAbw < 2e-3);
+  const festN = normalisiere({ koerper: [{ ...neuerKoerper('quader', 0), fest: true }, { ...neuerKoerper('quader', 1), fest: 'ja' }] }).koerper;
+  zeile('normalisiere: fest nur bei true, sonst Feld weg', 'true | –', `${festN[0].fest} | ${'fest' in festN[1] ? festN[1].fest : '–'}`, festN[0].fest === true && !('fest' in festN[1]));
+  // Verschweißen mit Skizzen-Körper und Spiegelung an z: dicht
+  const sk = { name: 'Prüfskizze', koerper: [{ ...skizzenKoerper({ punkte: L, ...EBENEN.vorne, tiefe: -6, id: 0 }), spiegel: ['z'] }, { ...neuerKoerper('zylinder', 1, { pos: [-5, 0, 0] }), dreh: [0, 90, 0], op: 'minus' }] };
+  const gs = formGeometrie(sk);
+  // WARUM offene Kanten nur Info: L und Spiegelkopie stoßen bei z = 0 Fläche an Fläche; die CSG lässt dort T-Stöße, die die
+  // Kantenprüfung (0,2 mm) nicht alle paart (gemessen R17: 3–6 Kanten, auch bei zwei Quadern). Der Flächenschluss zeigt:
+  // die Hülle ist dicht (Spalt < 1e-7 m²) — hart geprüft wird darum nur er.
+  zeile('Verschweißen: Skizzen-L + Spiegel an z + Minus-Zylinder — Flächenschluss | offene Kanten (Info)', '< 1e-6 | Info', `${gs.info.flaechenschluss.toExponential(1)} | ${gs.info.offeneKanten} (${gs.info.offeneLaenge.toFixed(1)} m)`,
+    gs.info.flaechenschluss < 1e-6);
 }
 zeile('Laufzeit tests/form.mjs | unterdrückte BVH-Warnungen „maxLeafSize“ (Info)', 'Info', `${((performance.now() - T_START) / 1000).toFixed(1)} s | ${bvh.warnungen}`, true, false);
 
