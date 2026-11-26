@@ -48,8 +48,8 @@ const quader = (id, laenge, b, h, { pos = [0, 0, 0], op = 'plus', spiegel = [], 
   ({ ...neuerKoerper('quader', id, { pos, op }), dreh, spiegel, spanten: [{ z: -laenge / 2, b, h }, { z: laenge / 2, b, h }] });
 const T = (id, typ, p, n, mehr = {}) => ({ id, typ, p, n, spiegel: [], ...mehr });
 const BOLLWERK_ART = tiefFrieren(N({ name: 'Bezug Bollwerk', art: 'rumpf', koerper: [quader(0, 255, 21, 15)], bauteile: [
-  T(0, 'triebwerk_l', [5, 4, -127.5], [0, 0, -1]), T(1, 'triebwerk_l', [-5, 4, -127.5], [0, 0, -1]),
-  T(2, 'triebwerk_l', [5, -4, -127.5], [0, 0, -1]), T(3, 'triebwerk_l', [-5, -4, -127.5], [0, 0, -1]),
+  // Nachtrag R19: 3 × triebwerk_l (x −6 / 0 / +6, y 0) statt 4 — sonst wäre L kaum stärker als M
+  T(0, 'triebwerk_l', [-6, 0, -127.5], [0, 0, -1]), T(1, 'triebwerk_l', [0, 0, -127.5], [0, 0, -1]), T(2, 'triebwerk_l', [6, 0, -127.5], [0, 0, -1]),
   T(4, 'steuer', [0, 7.5, 110], [0, 1, 0]), T(5, 'steuer', [0, -7.5, 110], [0, -1, 0]),
   T(6, 'steuer', [0, 7.5, -110], [0, 1, 0]), T(7, 'steuer', [0, -7.5, -110], [0, -1, 0]),
 ] }));
@@ -91,10 +91,10 @@ const GESCH = Object.keys(GESCHUETZE)[0], SCHWER = GESCHUETZE.schwer ? 'schwer' 
   const c0 = l.find((e) => e.b.id === 0 && e.kopie), c2y = l.find((e) => e.b.id === 2 && e.spiegel && e.spiegel[1] === -1 && e.spiegel[0] === 1);
   const c3 = l.find((e) => e.b.id === 3 && e.spiegel?.[0] === -1 && e.spiegel?.[2] === 1);
   zeile('bauteilListe: Anzahl (x | x auf der Mitte | x+y)', '2 | 1 | 4', `${zaehl(0)} | ${zaehl(1)} | ${zaehl(2)}`, zaehl(0) === 2 && zaehl(1) === 1 && zaehl(2) === 4);
-  // Befund R19 (weich, an die Projektleitung): Steuerdüse auf z = 0 mit Spiegel x+z — die z-Kopie liegt auf dem Original
-  // (entfällt), die xz-Kopie aber genau auf der x-Kopie und bleibt → doppelte Masse/Schub an derselben Stelle
+  // Befund R19 (behoben in form.js): Steuerdüse auf z = 0 mit Spiegel x+z — die xz-Kopie lag auf der x-Kopie und blieb
+  // (doppelte Masse/Schub); Kopien werden jetzt gegen alle bisherigen geprüft
   const orte = l.filter((e) => e.b.id === 3).map((e) => JSON.stringify([...e.p, ...e.n]));
-  zeile('bauteilListe: x+z auf z = 0 — keine zwei Einträge an derselben Stelle', `${new Set(orte).size} Einträge`, `${orte.length} Einträge`, orte.length === new Set(orte).size, false);
+  zeile('bauteilListe: x+z auf z = 0 — keine zwei Einträge an derselben Stelle', `${new Set(orte).size} Einträge`, `${orte.length} Einträge`, orte.length === new Set(orte).size);
   zeile('bauteilListe: Kopie gespiegelt (p, n, spiegel-Vektor)', 'x: −3 | y: n −Y | x an der Seite: n −X',
     `${c0?.p.join('/')} | ${c2y?.n.join('/')} | ${c3?.n.join('/')}`,
     !!c0 && abst(c0.p, [-3, 7.5, 10]) === 0 && JSON.stringify(c0.n) === '[0,1,0]' && JSON.stringify(c0.spiegel) === '[-1,1,1]'
@@ -226,7 +226,7 @@ function eigeneMasse(form) {
   zeile('Masse Bollwerk-Bezug = Volumen·DICHTE + alle Bauteile', `${em.m.toFixed(1)} t (±0,5)`, fB.masse, Math.abs(fB.masse - em.m) <= 0.5);
   zeile('Schwerpunkt Bollwerk-Bezug (symmetrisch) | eigene Rechnung', `x = y = 0 | ±1 cm`, `${fB.schwerpunkt.map((x) => x.toFixed(3)).join('/')} | ${abst(fB.schwerpunkt, em.s).toFixed(4)}`,
     Math.abs(fB.schwerpunkt[0]) < 1e-9 && Math.abs(fB.schwerpunkt[1]) < 1e-9 && abst(fB.schwerpunkt, em.s) < 0.01);
-  zeile('Schubpunkt (4 × triebwerk_l) | Schub', `[0,0,−127,5] | ${4 * schubL} kN`, `${fB.schubpunkt?.join('/')} | ${fB.schub}`, !!fB.schubpunkt && abst(fB.schubpunkt, [0, 0, -127.5]) < 1e-9 && Math.abs(fB.schub - 4 * schubL) < 1e-9);
+  zeile('Schubpunkt (3 × triebwerk_l) | Schub', `[0,0,−127,5] | ${3 * schubL} kN`, `${fB.schubpunkt?.join('/')} | ${fB.schub}`, !!fB.schubpunkt && abst(fB.schubpunkt, [0, 0, -127.5]) < 1e-9 && Math.abs(fB.schub - 3 * schubL) < 1e-9);
   const ohne = flugwerte(ab(BOLLWERK_ART, (x) => { x.bauteile = x.bauteile.filter((b) => b.typ !== 'triebwerk_l'); }), KAT);
   zeile('Ohne Triebwerk: Schubpunkt null, Schub 0', 'null | 0', `${JSON.stringify(ohne.schubpunkt)} | ${ohne.schub}`, ohne.schubpunkt === null && ohne.schub === 0);
   // Gegenprobe Schwerpunkt: 500 t an x = +10 → Schwerpunkt wandert nach +x; gleiche Masse gespiegelt → zurück auf 0
@@ -239,7 +239,7 @@ function eigeneMasse(form) {
   const mehrSchub = flugwerte(mitTeil(BOLLWERK_ART, T(10, 'triebwerk_l', [0, 0, -127.5], [0, 0, -1])), KAT);
   const mehrMasse = flugwerte(ab(BOLLWERK_ART, (x) => { x.koerper[0].spanten.forEach((s) => { s.b = 30; }); }), KAT);
   const riesig = flugwerte(mitTeil(BOLLWERK_ART, ...Array.from({ length: 40 }, (_, i) => T(40 + i, 'triebwerk_l', [-9 + (i % 10) * 2, -6 + Math.floor(i / 10) * 4, -127.5], [0, 0, -1]))), KAT);
-  zeile('Gesetze: 5. Triebwerk → aVor höher | breiter (mehr Masse) → aVor niedriger | 44 Triebwerke → vMax ≤ 85', 'ja | ja | ≤ 85',
+  zeile('Gesetze: 4. Triebwerk → aVor höher | breiter (mehr Masse) → aVor niedriger | 44 Triebwerke → vMax ≤ 85', 'ja | ja | ≤ 85',
     `${mehrSchub.werte.aVor} > ${fB.werte.aVor} | ${mehrMasse.werte.aVor} < ${fB.werte.aVor} | ${riesig.werte.vMax}`,
     mehrSchub.werte.aVor > fB.werte.aVor && mehrMasse.werte.aVor < fB.werte.aVor && riesig.werte.vMax <= 85);
   const sym = flugwerte(ab(BOLLWERK_ART, (x) => { x.bauteile = x.bauteile.filter((b) => !(b.typ === 'triebwerk_l' && b.p[0] < 0)).map((b) => (b.typ === 'triebwerk_l' ? { ...b, spiegel: ['x'] } : b)); }), KAT);
@@ -289,8 +289,8 @@ function eigeneMasse(form) {
       // Düsen (E8): 4 haupt + 4 steuer, p − Schwerpunkt, n, r aus dem Katalog
       const haupt = s.duesen.filter((d) => d.art === 'haupt'), steuer = s.duesen.filter((d) => d.art === 'steuer');
       const dAbw = Math.max(...haupt.map((d) => Math.min(...BOLLWERK_ART.bauteile.filter((b) => b.typ === 'triebwerk_l').map((b) => abst([d.x, d.y, d.z], b.p.map((x, i) => x + v[i]))))));
-      zeile('formZuSchiff.duesen: haupt | steuer | Lage − Schwerpunkt | n, r', '4 | 4 | < 1e-9 | [0,0,−1], Katalog', `${haupt.length} | ${steuer.length} | ${dAbw.toExponential(1)} | ${JSON.stringify(haupt[0]?.n)}, ${haupt[0]?.r}`,
-        haupt.length === 4 && steuer.length === 4 && dAbw < 1e-9 && haupt.every((d) => JSON.stringify(d.n) === '[0,0,-1]' && d.r === ANTRIEBE.triebwerk_l.r));
+      zeile('formZuSchiff.duesen: haupt | steuer | Lage − Schwerpunkt | n, r', '3 | 4 | < 1e-9 | [0,0,−1], Katalog', `${haupt.length} | ${steuer.length} | ${dAbw.toExponential(1)} | ${JSON.stringify(haupt[0]?.n)}, ${haupt[0]?.r}`,
+        haupt.length === 3 && steuer.length === 4 && dAbw < 1e-9 && haupt.every((d) => JSON.stringify(d.n) === '[0,0,-1]' && d.r === ANTRIEBE.triebwerk_l.r));
       const kOk = s.kugeln.every((k) => [k.x, k.y, k.z, k.r].every(Number.isFinite) && k.r > 0);
       zeile('formZuSchiff: Kugeln endlich | laenge ≈ 255 m', 'ja | 255 ± 1', `${kOk ? 'ja' : 'NEIN'} | ${s.laenge}`, kOk && Math.abs(s.laenge - 255) <= 1);
       // Probeflug: erstelleSchiffSim(werte) — Vollgas aus dem Stand: Anfangsbeschleunigung = aVor, nach 60 s ≈ vMax
