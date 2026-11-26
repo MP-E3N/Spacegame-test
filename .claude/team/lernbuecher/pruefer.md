@@ -43,3 +43,7 @@
 - 2026-11-26 Runde 19 (tests/bauteile.mjs) — Bei unbekannten Schwellen „Code vorhanden + zeigt aufs Teil“ prüfen; nach dem
   Merge zwei Fälle angepasst (Klickpunkt im Rumpf wird bewusst auf die Fläche gelegt; Schräge muss über der Schwelle liegen).
   Kopien gegen ALLE Kopien auf gleiche Lage prüfen (Befund bauteilListe).
+- 2026-11-26 Runde 20 (tests/generator.mjs) — Erst gegen einen bewusst schwachen Ersatz-Generator (GENERATOR_MODUL) laufen
+  lassen: echte Fehler wurden rot, alle Gegenproben schlugen an. Gegen den echten Generator drei Annahmen im Test falsch
+  („Heck = Hauptrumpf“, „Standard je Regler statt je Klasse“, „Anzahl immer genau“). Lehre: Bezugskörper aus der Geometrie
+  bestimmen (hinterster Körper), nicht aus der Rolle; uncommitteten Stand schreibgeschützt über den Modulpfad prüfen.

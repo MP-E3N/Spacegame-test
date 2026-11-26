@@ -16,6 +16,16 @@
   <div id="hud">
     <div id="links" class="tafel">
       <div class="kopf">FORMEN</div>
+      <!-- Runde 20: Schiffsgenerator — Seed + wenige Regler → ganz normale Form (voll editierbar, flugtauglich) -->
+      <button id="g-auf" class="gross" title="Ein ganzes Schiff aus Zufall + wenigen Reglern erzeugen — danach frei weiterformen">🎲 Schiffsgenerator</button>
+      <div id="generator" class="versteckt">
+        <div class="g-zeile"><span>Klasse</span><select id="g-klasse"></select></div>
+        <div class="g-zeile"><span>Seed</span><input id="g-seed" type="number" min="1" step="1" /><button id="g-wuerfel" title="Neuer Zufall — gleiche Regler (Taste G)">🎲 Würfeln</button></div>
+        <div id="g-regler"></div>
+        <div class="g-zeile"><select id="g-favoriten"><option value="">★ Favoriten …</option></select><button id="g-merken" title="Diese Einstellung als Favorit merken">★ Merken</button></div>
+        <div class="g-zeile"><button id="g-standard" title="Regler dieser Klasse zurück auf Standard">Standard</button><button id="g-vergessen" title="Zuletzt geladenen Favoriten löschen">✕ Favorit löschen</button></div>
+        <div id="g-info" class="klein"></div>
+      </div>
       <button id="k-symmetrie" class="gross" title="An: neue Körper bekommen automatisch ihre Spiegelkopie (links ↔ rechts)">⇋ Symmetrie: an</button>
       <button id="k-skizze" class="gross" title="Taste K — Fläche auf der Ebene der aktuellen Ansicht zeichnen und dann nach hinten ziehen">✎ Skizze zeichnen (K)</button>
       <div class="kopf zwischen" title="Vorlage anklicken, dann auf eine Fläche oder den Boden zeigen und klicken">KÖRPER SETZEN <small>(dann auf Fläche klicken)</small></div>
@@ -102,7 +112,7 @@
       <b>Q</b> Ziehen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp; <b>S</b> Größe &nbsp; <b>Esc</b> zurück zu Ziehen<br>
       <b>K</b> Skizze zeichnen &nbsp; <b>P</b> Punkte (ziehen nur in gerader Ansicht) &nbsp; <b>L</b> fixieren &nbsp; <b>Würfel</b> oben = Ansicht wählen<br>
       <b>V</b> verschweißt / Einzelteile &nbsp; <b>M</b> spiegeln (Seite) &nbsp; <b>Strg+D</b> duplizieren &nbsp; <b>Entf</b> löschen &nbsp;
-      <b>Strg+Z</b>/<b>Strg+Y</b> rückgängig/wieder &nbsp; <b>F</b> Kamera &nbsp; <b>H</b> Hilfe<br>
+      <b>Strg+Z</b>/<b>Strg+Y</b> rückgängig/wieder &nbsp; <b>F</b> Kamera &nbsp; <b>H</b> Hilfe &nbsp; <b>G</b> Generator würfeln (wenn offen)<br>
       <b>Rechte Maus ziehen</b> (oder links im Leeren) Kamera drehen &nbsp; <b>Rad</b> zoomen &nbsp; <b>Mittlere Maus ziehen</b> schieben
     </div>
     <div id="masse"></div>

@@ -21,3 +21,6 @@
   melden (trifft auch schnelle Nutzer). Verdeckter Browser: Kamerafahrten per spiel.wuerfel.schritt(...) abschließen.
 - 2026-11-26 Runde 19 — Neuling-Pfad zuerst: erstes Triebwerk per Maus setzen → scheiterte an Schubversatz. Werte auf
   Plausibilität lesen (2,5 m/s² ohne Schub fiel auf). Probeflug-Sperre ist ein Befund, wenn der Weg dorthin unklar ist.
+- 2026-11-26 Runde 20 (Generator) — spiel.fokus() rahmte das Schiff zu klein → zoom-Region aufs Schiff; erst fokus, dann
+  ansicht. Je Wurf Seed + g-info + spiel.info.offeneKanten + Maße lesen (so fiel ein undichter Träger trotz FLUGTAUGLICH
+  auf). Seitenansicht zeigt die Silhouette am deutlichsten; zwei Seeds derselben Klasse nebeneinander vergleichen.

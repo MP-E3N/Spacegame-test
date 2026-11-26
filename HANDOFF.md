@@ -3,19 +3,22 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 19 gepusht**, 2026-11-26).
-> Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 19 gepusht**, Runde 20
+> nur lokal committet, 2026-11-26). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
-## Kurzfassung für einen frischen Chat (2026-11-26)
-- **Letzter Stand:** Runde 19 fertig und gepusht. Der Nutzer will als Nächstes selbst testen (Form-Werkstatt: Bauteile,
-  Probeflug). Sein Urteil zu R18 (Push/Pull) war „passt, mach weiter“; zu R19 steht es noch aus.
-- **Nächster geplanter Schritt: Runde 20 Schiffsgenerator** (nach Recherche, vom Nutzer gewünscht): Seed-Feld + wenige Regler
-  (Klasse Korvette/Fregatte/Träger, Länge, Breite, Kantigkeit, Aufbauten, Geschütze, Triebwerke), Knopf „Würfeln“, Favoriten.
-  Ablauf wie a1studmuffin-SpaceshipGenerator (Quader → Vorder-/Rückfläche mehrfach zufällig ziehen/skalieren → Seitenflächen
-  kleiner herausziehen → Details je Flächenrichtung: Triebwerke hinten, Türme oben/unten, Antennen), aber im Stil Schwarmfront
-  (industriell, kantig, keine Fenster) und als **ganz normale Werkstatt-Form** (Körper + Bauteile, voll editierbar, sofort
-  flugtauglich: Triebwerke auf der Schwerpunkt-Achse, Manöverdüsen vorn/hinten). Reiner Generator gehört nach `src/sim/form/`
-  (kein Math.random — eigener Seed-Zufall wie `src/grafik/zufall.js`).
+## Kurzfassung für einen frischen Chat (2026-11-26, nach Runde 20)
+- **Letzter Stand:** Runde 20 **Schiffsgenerator** fertig, lokal committet (nicht gepusht). Form-Werkstatt links oben
+  „🎲 Schiffsgenerator“: Klasse (Korvette/Fregatte/Träger), Seed + 🎲 Würfeln (Taste G bei offenem Generator), Regler Länge,
+  Breite, Kantigkeit (höher = kantiger), Aufbauten, Geschütze (0 = keine), Triebwerke (Stück; schwere Schiffe bekommen
+  automatisch mehr/größere), ★ Favoriten (localStorage, speichern Einstellung + GENERATOR_VERSION 2), Standard. Ergebnis
+  ist eine ganz normale Form (Strg+Z holt die vorige, Regler-Ziehen = ein Rückgängig-Schritt), sofort flugtauglich →
+  Probeflug geht. Protokoll `.claude/team/protokolle/2026-11-26-runde20.md`.
+- **Nutzer-Urteile offen:** R19 (Bauteile, Probeflug) und R20 (Generator: Aussehen, Vielfalt, Klassen). Beispiel-Seeds:
+  Korvette 24757 / 8919 / 40595 · Fregatte 24757 / 16838 / 72271 · Träger 24757 / 32676 / 8919.
+- **Offen aus R20:** 4 von 135 Träger-Formen (v. a. Kantigkeit 0) haben 3–20 offene Splitter-Kanten nach dem Verschweißen
+  (Anzeige „undicht“, Flächenschluss ~1e-9); Korvetten tragen wenige Türme (Ø 2); Antennen entfernt (rissen beim CSG);
+  nicht geprüft: Probeflug eines generierten Schiffs, Favoriten/Taste G per echter Maus/Tastatur. Ideen: Grundmuster
+  (`grundmuster(einst)`) in der Leiste anzeigen, Generator auch für Gegner-Drohnen, Gefechtstest mit eigenem Schiff.
 - **Arbeitsweise mit dem Nutzer:** Jede Runde mit Team-Routine (`schwarmfront-team`), AUSSER er sagt „ohne Team“/„Schnellfix“.
   Testrunden ≤ 3 Min., ≤ 3 je Runde, ihm vorher/nachher einen Satz sagen. Nach jeder Runde fragt er meist „erst selbst testen“.
   Commit lokal ok, **Push nur auf ausdrücklichen Wunsch**. `konfig/formen/` und `konfig/schiffe/` sind ungetrackt und
@@ -103,6 +106,13 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
      Düsen-Glut, Kollisionskugeln; V wechselt zu Bollwerk/Ambos. Module: `src/sim/form/geschuetze.js` (Waffentechniker),
      `flug.js` (Flugsystem, geeicht an Bollwerk/Ambos-Bezugsformen), `kugeln.js` + `src/grafik/form/schiff.js` (Schiffbauer),
      `bauteile.js` (formZuSchiff, Projektleitung); Tests `tests/bauteile.mjs`. Debug: `spiel.pruefung`, `spiel.setzeBauteil(typ, p, n)`.
+   - **Runde 20 Schiffsgenerator** (Team, Protokoll `…/2026-11-26-runde20.md`): `src/sim/form/generator.js` (Schiffbauer,
+     rein: `generiere(einst)` → normalisierte Form, `KLASSEN`, `GENERATOR_REGLER` mit `text(v, einst)`, `standardEinstellung`,
+     `grundmuster`, `GENERATOR_VERSION` 2; je Stufe eigener Zufallsstrom, Selbsttest, Triebwerke auf Schwerpunkt-Höhe im
+     eingezogenen Antriebsblock), Seite `src/werkstatt/generator-tafel.js` (Projektleitung), Tests `tests/generator.mjs`
+     (Prüfer, ~360 Formen, `GENERATOR_MODUL=<pfad>` prüft einen anderen Generator). `schweissen.js`: Spiegelkopie ohne
+     Berührung = gleiche Zugabe wie Original. Werkstatt: `fokus(true)` passt die ganze Form ein, Spiegelebenen wachsen mit
+     der Form. Debug: `spiel.generator.wuerfeln()`, `spiel.generator.einstellung()`.
    - Debug: `spiel.skizze` (start, zeichneDirekt(punkte, tiefe), erstellen, zustand), `spiel.wuerfel.drehNach(r)`,
      `spiel.punkte(an)`, `spiel.spantNr`, `spiel.punktBild(art, j)`, `spiel.spiegeln(achse)`, `spiel.spiegelKopie(achse)`.
 
@@ -114,7 +124,7 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 
 **Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
 - **Plan nach Recherche (Nutzer 2026-11-26):** R18 Bedienung (fertig) → R19 Bauteile + Probeflug im Freiflug (fertig) →
-  **R20 Schiffsgenerator** (Seed + wenige Regler, Ergebnis voll editierbar, a1studmuffin-Ablauf im Stil Schwarmfront).
+  R20 Schiffsgenerator (fertig, Nutzer-Urteil offen). Danach kein beauftragter Schritt — Nutzer fragen.
   Offen aus R18: Geist zeigt die künftige Spiegelkopie nicht; bündig an die eigene Spiegelkopie rasten geht nicht;
   Setzen am Trefferpunkt (nicht Flächenmitte); Kamera nach dem Setzen nicht nachgeführt; Kanten-Zug im Grenzfall 0,56 ms.
 - **Offen aus R19:** Gefechtstest mit eigenem Schiff (Flak braucht rumpfSperre für Formen); Geschütze an Seitenflächen
@@ -288,6 +298,11 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 20** (2026-11-26, mit Team): Schiffsgenerator in der Form-Werkstatt (Seed, Würfeln, 6 Regler, 3 Klassen,
+  Favoriten), v2 nach Spieltest mit Klassencharakter und Seed-Grundmustern; Kamera einpassen, Spiegelebenen mitwachsend.
+- **Runde 19** (2026-11-26, mit Team): Geschütze + Antriebe in der Werkstatt, Flugtauglichkeit, Probeflug im Freiflug.
+- **Runde 18** (2026-11-26, mit Team): Bedienung „Anfassen statt Einstellen“ (Push/Pull, Setzen auf Flächen, Leiste).
+- **Runde 15–17** (2026-11-22): Werft-Baukasten, Form-Werkstatt (CSG), Skizze/Punkte/Spiegeln/Ansichtswürfel.
 - **Runde 14** (2026-11-21, mit Team): Startmenü, Gefechtstest (Bollwerk + 14 Flak-Türme gegen Angreifer-KI, Flak am
   Schiff), Konfig T1 als Standard, kein Rauch bei Feuer halt. Protokoll `…/2026-11-21-runde14.md`.
 - **Runde 13** (2026-11-21, Schnellrunde ohne Team auf Nutzerwunsch): mehr Glut, weniger Rauch, Taste T Leuchtspur dauerhaft.

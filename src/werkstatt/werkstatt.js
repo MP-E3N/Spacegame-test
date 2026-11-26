@@ -26,6 +26,7 @@ import { BAUTEILE, passtAuf, FLAECHEN, pruefeSchiff } from '../sim/form/bauteile
 import { bauteilGrafik } from '../grafik/form/schiff.js';
 import { bauteilListe } from '../sim/form/form.js';
 import { BEISPIEL_FORMEN } from '../sim/form/beispiele.js';
+import { erstelleGeneratorTafel } from './generator-tafel.js';
 
 const $ = (id) => document.getElementById(id);
 const ZWISCHEN = 'schwarmfront-werkstatt-form';
@@ -169,6 +170,21 @@ function sichtbarkeit() {
   // WARUM Minus-Körper immer sichtbar als roter Geist: sonst findet man Ausschnitte nicht wieder
   rohGruppe.traverse((o) => { if (o.isMesh) o.visible = !fertig || form.koerper.find((k) => k.id === o.userData.id)?.op === 'minus'; });
   ACHSEN.forEach((a, i) => { mittelebenen[i].visible = form.koerper.some((k) => k.spiegel.includes(a)); });
+  passeEbenenAn();
+}
+/**
+ * Spiegelebenen an die Größe der Form anpassen. WARUM (Spieltest R20, Kann): die feste 120 × 60-m-Ebene stand bei einem
+ * 280-m-Träger als blaue Wand mitten im Rumpf und ragte weit über ihn hinaus — jetzt knapp größer als die Form.
+ */
+function passeEbenenAn() {
+  const box = new THREE.Box3(); rohGruppe.traverse((o) => { if (o.isMesh) box.expandByObject(o); });
+  if (box.isEmpty()) return;
+  const g = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const lz = Math.max(20, g.z * 1.15), hy = Math.max(10, g.y * 1.3), bx = Math.max(20, g.x * 1.3);
+  const [ex, ey, ez] = mittelebenen;
+  ex.scale.set(lz / 120, hy / 60, 1); ex.position.set(0, c.y, c.z);            // Ebene x = 0: Länge × Höhe
+  ey.scale.set(bx / 120, lz / 60, 1); ey.position.set(c.x, 0, c.z);            // Ebene y = 0: Breite × Länge
+  ez.scale.set(bx / 120, hy / 60, 1); ez.position.set(c.x, c.y, 0);            // Ebene z = 0: Breite × Höhe
 }
 
 function zeigeHilfen() {
@@ -885,13 +901,22 @@ function loescheKoerper() {
   aendere({ ...form, koerper: form.koerper.filter((x) => x.id !== k.id) }); waehle(null);
   zeigeMeldungKurz('Körper gelöscht — Strg+Z holt ihn zurück');
 }
-function fokus() {
+function fokus(ganz = false) {
   wuerfel?.halt(); wuerfel?.normal(); // WARUM normal(): fokus rechnet den Abstand für den normalen Bildwinkel
   const box = new THREE.Box3(); rohGruppe.traverse((o) => { if (o.isMesh) box.expandByObject(o); });
   const m = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
   const r = box.isEmpty() ? 30 : Math.max(12, box.getSize(new THREE.Vector3()).length());
   // WARUM 1,7 statt 1,1 (Spieltest R18, Soll): zu nah — Flächen und Griffe am Rand schwer zu treffen
-  steuer.target.copy(m); camera.position.copy(m).add(new THREE.Vector3(0.7, 0.45, 0.8).normalize().multiplyScalar(r * 1.7));
+  let d = r * 1.7;
+  if (ganz) {
+    // R20 (Spieltest, Soll): ganze Form einpassen — Kugel um die Form in den freien Bildteil zwischen den Tafeln
+    // (links ~240 px, rechts ~330 px). WARUM aus Bildwinkel statt fester Faktor: bei 1,7 füllte ein langes Schiff nur ein
+    // Drittel, ein fester kleinerer Faktor schnitt es in schmalen Fenstern ab.
+    const w = $('leinwand').clientWidth || innerWidth, frei = Math.max(0.35, (w - 570) / w);
+    const halbV = camera.fov * RAD / 2, halbH = Math.atan(Math.tan(halbV) * camera.aspect * frei);
+    d = (r / 2) / Math.sin(Math.min(halbV, halbH)) * 1.05;
+  }
+  steuer.target.copy(m); camera.position.copy(m).add(new THREE.Vector3(0.7, 0.45, 0.8).normalize().multiplyScalar(d));
 }
 
 addEventListener('keydown', (e) => {
@@ -925,6 +950,7 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (!loescheBauteil()) loescheKoerper(); }
   else if (t === 'f') fokus();
   else if (t === 'h') $('hilfe').classList.toggle('versteckt');
+  else if (t === 'g' && generator.offen()) generator.wuerfeln(); // R20: nur bei offenem Generator (sonst ungewollt neue Form)
 }, { capture: true });
 addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') { griff.setTranslationSnap(0.5); griff.setRotationSnap(15 * RAD); } });
 
@@ -956,6 +982,21 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   setzeForm(f, merk) { ziehen = false; if (merk) { zurueck.push(merk); vor.length = 0; } aendere(f, { merken: false }); },
 });
 
+// ---------------- Schiffsgenerator (Runde 20) ----------------
+// WARUM aendere statt eigener Weg: das Ergebnis ist eine ganz normale Form (Nutzer) — Rückgängig, Zwischenstand,
+// Prüfliste, Speichern und Probeflug gelten sofort. Kamera nur beim ersten Schritt nachführen (beim Regler-Ziehen ruhig).
+const generator = erstelleGeneratorTafel({ meldung: zeigeMeldungKurz,
+  uebernimm(f, merken) {
+    bedienung.abbrechen(); if (punkteModus) schaltePunkte(false); setzeModus('ziehen');
+    aendere(f, { merken }); waehle(null);
+    // WARUM einpassen (Spieltest R20, Soll): beim Generator geht es ums Ansehen der ganzen Form, nicht ums Greifen von Flächen
+    if (merken) fokus(true);
+    const p = schiffPruefung;
+    // WARUM echte Zahl (Schiffbauer R20): ist das Schiff zu schwer, setzt der Generator mehr Triebwerke als eingestellt
+    const tw = bauteilListe(form).filter((e) => (BAUTEILE[e.b.typ]?.flaeche ?? []).includes('hinten')).length;
+    return `${tw} Triebwerk${tw === 1 ? '' : 'e'} · ` + (p ? (p.flugtauglich ? 'FLUGTAUGLICH' : 'NICHT FLUGTAUGLICH') : '');
+  } });
+
 // ---------------- Start ----------------
 neuZeichnen(); fokus(); waehle(gewaehlt);
 $('laden').remove();
@@ -985,4 +1026,5 @@ window.spiel = {
     const v = o.position.clone().project(camera), r = $('leinwand').getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   ansicht(r = [0.7, 0.45, 0.8]) { wuerfel.normal(); const m = steuer.target.clone(), d = camera.position.distanceTo(m); camera.position.copy(m).add(new THREE.Vector3(...r).normalize().multiplyScalar(d)); steuer.update(); bild.zeichnen(); },
   messwerte: () => { bild.zeichnen(); return bild.messwerte(); },
+  generator, // R20: generator.wuerfeln(), generator.einstellung()
 };

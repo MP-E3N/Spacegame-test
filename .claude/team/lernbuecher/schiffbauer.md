@@ -35,3 +35,10 @@
 - 2026-11-26 Runde 19 (Form-Schiff) — Feste Bauteile mit der CSG-Hülle zu einem Netz je Material, nur Türme eigene Gruppen;
   Gehäuselänge aus der Materialtiefe; Kugeln je Zelle um die Oberflächenpunkte statt je Körper (r 103 → ≤ 15 m). Gegen
   Ersatz-Module messen, kennzeichnen und nach dem Merge mit den echten wiederholen.
+- 2026-11-26 Runde 20 (Generator) — Flugtauglich per Bau: erst alles außer den Haupttriebwerken, dann Schwerpunkt
+  rechnen, Triebwerke genau auf seine Höhe (Fixpunkt, Hebel 0). Antriebsblock als eigener Körper hält den Hauptrumpf
+  unabhängig (Teilstrom bitgleich). Regler monoton: gierig über ALLE Kandidaten annehmen, dann Präfix k. Grenzfälle
+  (alle Regler am Anschlag) zuerst messen. v2 nach Spieltest: Klassencharakter + Seed wählt Grundmuster (Bug, Profil,
+  Brücke, Seiten, Rücken) — Technik-Zahlen allein sagen nichts übers Aussehen. Offene Kanten kamen von verschiedenen
+  Schweißzugaben für Original und Spiegelkopie (0,25 mm versetzt → Splitter); kleine Teile (Antennen) auf großen Decks
+  reißen beim Triangulieren.

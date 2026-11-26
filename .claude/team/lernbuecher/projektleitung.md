@@ -60,3 +60,9 @@
   vorab selbst committet → Merge ohne Konflikt. Eich-Vorgaben erzwingen Katalogwerte (4 × L → L ≈ M): Folgen vorher
   überschlagen. Lage-kritische Teile (Triebwerk ↔ Schwerpunkt) beim Setzen einrasten — Prüfliste allein reicht Neulingen nicht.
   Testdateien, die Probeflug/Speichern in konfig/ anlegt, nach eigenen Tests löschen (Nutzerdateien dort NICHT anfassen).
+- 2026-11-26 Runde 20 (Schiffsgenerator) — Regler-Bedeutungen (kantiger = Fase kleiner, Triebwerke = Stück) in der
+  Frühwarnung entschieden → Generator und Tests parallel, Merge ohne Konflikt. Aber: der erste Wurf erfüllte alle
+  Technik-Zahlen und sah trotzdem nicht nach dem Wunsch aus (alle Klassen gleiche Grundform, wenig Vielfalt). Lehre: bei
+  Generatoren Vielfalts- und Silhouettenmaß in den Bauauftrag (Grundmuster je 20 Seeds, Seitenverhältnis je Klasse) und
+  die Bildprüfung VOR dem Feinschliff. Kamera-Einpassen aus Bildwinkel + freier Bildbreite statt festem Faktor. Eigene
+  Browsertests ändern den localStorage des Nutzers → vorher sichern (sessionStorage), danach zurückschreiben.

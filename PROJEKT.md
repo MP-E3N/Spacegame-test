@@ -32,6 +32,7 @@ npm test           # Messflüge ohne Browser
 | `src/grafik/schiff/module.js` | `modulGeometrie(id)`, `schiffNetz(teile, mats, {effekte})` (je Material ein Netz, Türme eingeschmolzen), `lageMatrix` |
 | `werkstatt.html`, `src/werkstatt/*` | **Form-Werkstatt** (Runde 16): Körper/Spanten modellieren, Plus/Minus, Spiegel, Verschweißen, Andockpunkte, Speichern |
 | `src/sim/form/form.js`, `beispiele.js` | Form-Daten (rein): `profilPunkte` (eckig/gefast/rund), `VORLAGEN`, `normalisiere`, `pruefe`, `huelle`, `volumen`, `formZuModul` · 3 Beispielformen |
+| `src/sim/form/generator.js`, `src/werkstatt/generator-tafel.js` | **Schiffsgenerator** (Runde 20, rein): `generiere(einst)` → normalisierte, flugtaugliche Form (Korvette/Fregatte/Träger), `KLASSEN`, `GENERATOR_REGLER`, `standardEinstellung`, `grundmuster`, `GENERATOR_VERSION` · Seite: Seed, Würfeln (G), Regler, Favoriten · Tests `tests/generator.mjs` |
 | `src/grafik/form/koerper.js`, `schweissen.js` | `koerperGeometrie(k)` (Loft + Kappen, Knick-Normalen) · `formGeometrie(form, {schweissen})` (CSG three-bvh-csg, `.info`) |
 | `server/ablage.js` | Datei-Ablage des Dev-Servers (Fabrik): `/api/flak-konfig` → `konfig/flak/`, `/api/schiffe` → `konfig/schiffe/`, `/api/formen` → `konfig/formen/` |
 | `freiflug.html`, `src/main.js` | Freiflug: Start, Hauptschleife (feste Sim 60 Hz + interpolierte Darstellung), `window.spiel` |
