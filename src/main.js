@@ -13,6 +13,9 @@ import { lokaleGeschwindigkeit } from './sim/schiff.js';
 import { erstelleSimWelt } from './sim/welt.js';
 import { leseEingabe } from './eingabe.js';
 import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig, zeigeSchiff } from './hud.js';
+import { formZuSchiff } from './sim/form/bauteile.js';
+import { registriereSchiff } from './sim/schiffe/index.js';
+import { erstelleFormSchiff } from './grafik/form/schiff.js';
 
 const SCHRITT = 1 / 60;
 const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei — Maus ziehen, Rad zoomt' };
@@ -20,21 +23,37 @@ const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei �
 const bild = erstelleRenderer(document.getElementById('leinwand'));
 const staub = erstelleStaub(bild.scene);
 const asteroiden = erstelleAsteroiden(bild.scene);
-// Beide Schiffe einmal bauen, nur eins ist sichtbar (V wechselt). WARUM vorab: Wechsel ohne Ruckler.
-const SCHIFFE = [erstelleBollwerk(bild.scene), erstelleAmbos(bild.scene)];
+// R19 Probeflug: freiflug.html?form=<Name> lädt eine Werkstatt-Form (konfig/formen) als eigenes Schiff. WARUM vor allen
+// anderen Schiffen und vor dem ersten Bild (await): jedes Schiff bringt ein Heck-Licht mit — kommt eins später dazu,
+// kompilieren alle Shader neu (Ruckler, CLAUDE.md Regel 5).
+const formName = new URLSearchParams(location.search).get('form');
+let eigenes = null, eigenesFehler = '';
+if (formName) {
+  try {
+    const r = await fetch('/api/formen/' + encodeURIComponent(formName)); const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler ?? r.status);
+    const schiff = formZuSchiff(d);
+    registriereSchiff('eigen', schiff, schiff.werte);
+    eigenes = erstelleFormSchiff(bild.scene, schiff); eigenes.typ = 'eigen';
+  } catch (f) { console.error(f); eigenesFehler = 'Probeflug: Form „' + formName + '“ ließ sich nicht laden — ' + (f.message ?? f); }
+}
+// Schiffe einmal bauen, nur eins ist sichtbar (V wechselt). WARUM vorab: Wechsel ohne Ruckler.
+const SCHIFFE = [...(eigenes ? [eigenes] : []), erstelleBollwerk(bild.scene), erstelleAmbos(bild.scene)];
 let modell = SCHIFFE[0];
 const kamera = erstelleKamera(bild.camera);
 const welt = erstelleSimWelt('bollwerk');
 const sim = welt.schiff; // Kurzname: Schiffs-Simulation (Zustand sim.z)
 function waehleSchiff(i) {
   modell = SCHIFFE[i];
-  welt.waehle(modell.name.toLowerCase()); // Flugwerte + Kollisionskugeln des Schiffs
+  welt.waehle(modell.typ ?? modell.name.toLowerCase()); // Flugwerte + Kollisionskugeln des Schiffs
   SCHIFFE.forEach((s) => { s.gruppe.visible = s === modell; });
   kamera.setzeSkala(modell.laenge / 150);
   bild.setzeSchattenRadius(Math.max(110, modell.laenge * 0.62));
   zeigeSchiff(modell.kennung + ' ' + modell.name);
 }
 waehleSchiff(0);
+if (eigenes) setTimeout(() => zeigeMeldung('Probeflug: ' + eigenes.kennung + ' ' + eigenes.name + ' — V wechselt das Schiff, Esc = Menü'), 300);
+if (eigenesFehler) setTimeout(() => zeigeMeldung(eigenesFehler), 300);
 
 const lagePos = new THREE.Vector3(), lageRot = new THREE.Quaternion(), vl = new THREE.Vector3();
 let zeit = 0, rest = 0, zuletzt = performance.now(), standbild = false;

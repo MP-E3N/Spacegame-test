@@ -251,12 +251,15 @@ export const koerperListe = (form) => form.koerper.flatMap((k) => [{ k, lage: ko
 export function bauteilListe(form) {
   const aus = [];
   for (const b of form.bauteile ?? []) {
-    aus.push({ b, p: [...b.p], n: [...b.n], spiegel: null, kopie: 0 });
+    const eigene = [{ b, p: [...b.p], n: [...b.n], spiegel: null, kopie: 0 }];
     teilmengen(spiegelAchsen(b.spiegel)).forEach((t, i) => {
       const s = ACHSEN.map((a) => (t.includes(a) ? -1 : 1)), p = b.p.map((v, j) => v * s[j]), n = b.n.map((v, j) => v * s[j] + 0);
-      if (p.every((v, j) => Math.abs(v - b.p[j]) < 1e-6) && n.every((v, j) => v === b.n[j])) return; // liegt auf sich selbst
-      aus.push({ b, p, n, spiegel: s, kopie: i + 1 });
+      // WARUM gegen ALLE bisherigen Kopien (Prüfer R19): bei x + z mit Bauteil auf z = 0 fiele die xz-Kopie sonst genau auf
+      // die x-Kopie — doppelte Masse und doppelter Schub an derselben Stelle
+      if (eigene.some((e) => e.p.every((v, j) => Math.abs(v - p[j]) < 1e-6) && e.n.every((v, j) => v === n[j]))) return;
+      eigene.push({ b, p, n, spiegel: s, kopie: i + 1 });
     });
+    aus.push(...eigene);
   }
   return aus;
 }

@@ -93,3 +93,12 @@
 #links button.gross.an { border-color: rgba(74, 168, 255, 0.8); color: #9ccfff; background: rgba(74, 168, 255, 0.14); }
 #k-mehr.breit { width: 100%; margin-top: 4px; }
 #links .kopf small { letter-spacing: 0; color: var(--bern-matt); }
+
+/* ---- Runde 19: Bauteile, Flugstatus, Probeflug ---- */
+#links .bauteile { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+#links .bauteile button { font: inherit; font-size: 11px; color: #c9a060; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--linie); padding: 4px 6px; cursor: pointer; text-align: left; }
+#links .bauteile button:hover { border-color: var(--bern); color: #f2c070; }
+#flugstatus { float: right; letter-spacing: 0.1em; }
+#flugstatus.gut { color: #9ad27a; }
+#flugstatus.schlecht { color: #e8907a; }
+#k-probeflug { border-color: rgba(154, 210, 122, 0.7) !important; color: #9ad27a !important; }

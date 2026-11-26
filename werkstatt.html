@@ -20,6 +20,10 @@
       <button id="k-skizze" class="gross" title="Taste K — Fläche auf der Ebene der aktuellen Ansicht zeichnen und dann nach hinten ziehen">✎ Skizze zeichnen (K)</button>
       <div class="kopf zwischen" title="Vorlage anklicken, dann auf eine Fläche oder den Boden zeigen und klicken">KÖRPER SETZEN <small>(dann auf Fläche klicken)</small></div>
       <div id="vorlagen"></div>
+      <div class="kopf zwischen" title="Klicken, dann auf die passende Fläche zeigen und klicken (Esc beendet)">GESCHÜTZE <small>(Ober-/Unterseite)</small></div>
+      <div id="geschuetze" class="bauteile"></div>
+      <div class="kopf zwischen" title="Klicken, dann auf die passende Fläche zeigen und klicken (Esc beendet)">ANTRIEBE <small>(Triebwerke ans Heck)</small></div>
+      <div id="antriebe" class="bauteile"></div>
       <div class="kopf zwischen">KÖRPER DER FORM</div>
       <div id="koerperliste"></div>
     </div>
@@ -33,6 +37,7 @@
         <button id="k-neu">Neu</button>
         <select id="k-beispiel"><option value="">Beispiele …</option></select>
         <button id="k-werft" title="Speichern und in der Werft ansetzen">In die Werft</button>
+        <button id="k-probeflug" title="Speichern und im Freiflug fliegen (nur wenn flugtauglich)">✈ Probeflug</button>
       </div>
       <div id="f-datei" class="klein"></div>
       <button id="k-ansicht" class="breit" title="Taste V">Ansicht: verschweißt (V)</button>
@@ -69,7 +74,7 @@
       <div class="kopf zwischen">ANDOCKPUNKTE <span class="knopfreihe"><button id="a-neu" title="Am gewählten Körper ansetzen">+</button></span></div>
       <div id="andock"></div>
 
-      <div class="kopf zwischen">WERTE</div>
+      <div class="kopf zwischen">WERTE <span id="flugstatus"></span></div>
       <div id="werte"></div>
       <div id="meldungen"></div>
     </div>

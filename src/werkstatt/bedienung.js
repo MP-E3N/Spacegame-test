@@ -5,7 +5,10 @@
 //           Enter = genaue Zugweite (auch direkt nach dem Loslassen: der letzte Zug wird auf die Zahl gesetzt).
 //        2) SETZEN: Vorlage gewählt → Geist folgt der Maus und liegt bündig auf der Fläche darunter (ohne Fläche auf dem
 //           Boden-Raster) → Klick setzt, Esc/Rechtsklick bricht ab.
-// LIEFERT: erstelleBedienung(ctx) → { setzen(vorlage), abbrechen(), aktiv(), taste(e) → bool, setztGerade(), zieht() }
+// LIEFERT: erstelleBedienung(ctx) → { setzen(vorlage), setzeBauteil(typ), abbrechen(), aktiv(), taste(e) → bool, setztGerade(), zieht() }
+//        3) BAUTEIL SETZEN (Runde 19): Geschütz/Antrieb gewählt → Geist sitzt auf der Fläche unter der Maus, Ring grün
+//           (passt) oder rot (falsche Fläche, z. B. Triebwerk nicht am Heck) → Klick setzt. ctx.bauteilGeist(typ, p, n),
+//           ctx.platziereBauteil({ typ, p, n }), ctx.passtAuf(typ, n), ctx.flaechenText(typ).
 //          ctx = { scene, camera, leinwand, steuer, rohGruppe, wuerfel, griff, holeForm(), koerper(), waehle(id),
 //                  vorschau(id, k), uebernehme(merk), setzeForm(form, merk), platziere(k), meldung(t), darf(), klickVerbraucht() }
 //          + fremd() (Werkstatt ruft es bei JEDER Änderung; eigene Änderungen der Bedienung zählen nicht)
@@ -183,6 +186,44 @@ export function erstelleBedienung(ctx) {
   }
   function versteckeMass() { mass.classList.remove('sichtbar'); }
 
+  // ---------- Bauteil setzen (Runde 19) ----------
+  const ringGut = new THREE.MeshBasicMaterial({ color: 0x9ad27a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthTest: false, toneMapped: false });
+  const ringSchlecht = new THREE.MeshBasicMaterial({ color: 0xe06040, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthTest: false, toneMapped: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.8, 32), ringGut); ring.renderOrder = 35; ring.visible = false; scene.add(ring);
+  let bauteilGeist = null;
+  function startBauteil(typ) {
+    abbrechen();
+    setzen = { art: 'bauteil', typ, p: null, n: null, gut: false };
+    ctx.meldung(`${ctx.bauteilName(typ)}: auf die ${ctx.flaechenText(typ)} zeigen und klicken (Esc = abbrechen)`);
+  }
+  function bewegeBauteil(cx, cy) {
+    // WARUM Minus-Körper überspringen: auf einen Ausschnitt kann man nichts montieren
+    const form = ctx.holeForm();
+    const t = strahlVon(cx, cy).intersectObjects(rohGruppe.children, true)
+      .find((x) => x.object.isMesh && form.koerper.find((k) => k.id === x.object.userData.id)?.op !== 'minus');
+    if (!t) { ring.visible = false; if (bauteilGeist) bauteilGeist.visible = false; setzen.p = null; return; }
+    const nw = t.face.normal.clone().transformDirection(t.object.matrixWorld).toArray();
+    const i = [0, 1, 2].reduce((b, a) => (Math.abs(nw[a]) > Math.abs(nw[b]) ? a : b), 0), n = [0, 0, 0]; n[i] = Math.sign(nw[i]) || 1;
+    // quer zur Normalen auf 0,5 m rasten (Strg-frei kommt später), längs n genau auf der Fläche (0,1 mm)
+    const p = t.point.toArray().map((v, j) => (j === i ? Math.round(v * 1e4) / 1e4 : Math.round(v * 2) / 2) + 0);
+    const schl = p.join() + '|' + n.join();
+    if (setzen.schl !== schl) {
+      setzen.schl = schl; setzen.p = p; setzen.n = n; setzen.gut = ctx.passtAuf(setzen.typ, n);
+      if (bauteilGeist) scene.remove(bauteilGeist);
+      bauteilGeist = ctx.bauteilGeist(setzen.typ, p, n); if (bauteilGeist) scene.add(bauteilGeist);
+      ring.material = setzen.gut ? ringGut : ringSchlecht;
+      ring.position.set(...p).addScaledVector(new THREE.Vector3(...n), 0.05);
+      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...n));
+    }
+    ring.visible = true; if (bauteilGeist) bauteilGeist.visible = true;
+  }
+  function setzeBauteilAb() {
+    if (!setzen?.p) return;
+    if (!setzen.gut) { ctx.meldung(`${ctx.bauteilName(setzen.typ)} passt nur auf die ${ctx.flaechenText(setzen.typ)}`); return; }
+    const b = { typ: setzen.typ, p: setzen.p, n: setzen.n };
+    ctx.platziereBauteil(b); setzen.schl = null; // WARUM im Modus bleiben: man setzt meist mehrere (Triebwerke, Türme)
+  }
+
   // ---------- Setzen (Tinkercad-Arbeitsebene) ----------
   function startSetzen(vorlage) {
     abbrechen();
@@ -192,6 +233,7 @@ export function erstelleBedienung(ctx) {
     ctx.meldung(`${NAMEN[vorlage] ?? vorlage}: auf eine Fläche zeigen und klicken (Esc = abbrechen)`);
   }
   function bewegeSetzen(cx, cy) {
+    if (setzen.art === 'bauteil') { bewegeBauteil(cx, cy); return; }
     const st = strahlVon(cx, cy);
     const t = st.intersectObjects(rohGruppe.children, true).find((x) => x.object.isMesh);
     let treffer;
@@ -207,6 +249,7 @@ export function erstelleBedienung(ctx) {
     geist.position.set(...setzen.pos); geist.visible = true;
   }
   function setzeAb() {
+    if (setzen?.art === 'bauteil') { setzeBauteilAb(); return; }
     if (!setzen?.pos) return;
     const k = { ...setzen.k, pos: setzen.pos };
     setzen = null; geist.visible = false;
@@ -269,9 +312,10 @@ export function erstelleBedienung(ctx) {
   function abbrechen() {
     if (zug) endeZug(true);
     setzen = null; geist.visible = false; unten = null; vergiss();
+    ring.visible = false; if (bauteilGeist) { scene.remove(bauteilGeist); bauteilGeist = null; }
   }
 
-  return { setzen: startSetzen, abbrechen, vergiss, fremd: () => { if (!eigen && !zug) vergiss(); }, taste, aktiv: () => !!(zug || setzen), setztGerade: () => !!setzen, zieht: () => !!zug,
+  return { setzen: startSetzen, setzeBauteil: startBauteil, abbrechen, vergiss, fremd: () => { if (!eigen && !zug) vergiss(); }, taste, aktiv: () => !!(zug || setzen), setztGerade: () => !!setzen, zieht: () => !!zug,
     // Debug/Prüfung: Fläche unter einem Bildpunkt und Zug ohne Maus
     flaecheBei(cx, cy) { hoverAn(cx, cy); return hover && { id: hover.id, ...hover.f }; },
     get hover() { return hover; } };

@@ -22,6 +22,9 @@ import { VORLAGEN, neuerKoerper, normalisiere, pruefe, formZuModul, huelle, koer
 import { erstelleAnsichtswuerfel } from './ansichtswuerfel.js';
 import { erstelleSkizze } from './skizze.js';
 import { erstelleBedienung } from './bedienung.js';
+import { BAUTEILE, passtAuf, FLAECHEN, pruefeSchiff } from '../sim/form/bauteile.js';
+import { bauteilGrafik } from '../grafik/form/schiff.js';
+import { bauteilListe } from '../sim/form/form.js';
 import { BEISPIEL_FORMEN } from '../sim/form/beispiele.js';
 
 const $ = (id) => document.getElementById(id);
@@ -61,6 +64,8 @@ const bugPfeil = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vec
 const rohGruppe = new THREE.Group(); scene.add(rohGruppe);           // je Körper ein Netz (+ Spiegelkopie)
 const schweissGruppe = new THREE.Group(); scene.add(schweissGruppe); // verschweißtes Ergebnis
 const hilfsGruppe = new THREE.Group(); scene.add(hilfsGruppe);       // Spant-Ring, Andockmarken
+const bauteilGruppe = new THREE.Group(); scene.add(bauteilGruppe);   // R19: Geschütze, Triebwerke (+ Spiegelkopien)
+const markerGruppe = new THREE.Group(); scene.add(markerGruppe);     // R19: Schwerpunkt, Schubpunkt, Schubpfeil
 const griff = new TransformControls(camera, $('leinwand'));
 griff.setTranslationSnap(0.5); griff.setRotationSnap(15 * RAD); griff.setScaleSnap(0.05);
 scene.add(griff.getHelper());
@@ -78,6 +83,8 @@ let punkteModus = false;  // Taste P: Punkte des aktuellen Spants ziehen, + an K
 let punktZug = null;      // { j, merk (Form vor dem Zug), basis (Körper zu Zugbeginn) }
 // R18: Werkzeug des gewählten Körpers — 'ziehen' (Flächen anfassen, Standard) | 'schieben' | 'drehen' | 'groesse' (Griffe)
 let modus = 'ziehen';
+let bauteilWahl = null;   // R19: gewähltes Bauteil (b.id) — statt eines Körpers
+let schiffPruefung = null; // R19: pruefeSchiff(form) — Flugwerte, Meldungen, flugtauglich
 // WARUM let oben statt const unten (Prüfer R18): ?. schützt nicht vor der „temporal dead zone“ — so sind die drei vor
 // ihrer Erzeugung (Ende der Datei) einfach null
 let wuerfel = null, skizze = null, bedienung = null;
@@ -128,6 +135,7 @@ function neuZeichnen() {
     const sp = new THREE.Group(); sp.scale.set(...lage.spiegel);
     netz.userData.spiegel = true; sp.add(netz); rohGruppe.add(sp);
   }
+  zeigeBauteile();
   const k = koerper();
   haengeGriff();
   zeigeHilfen();
@@ -373,10 +381,79 @@ $('leinwand').addEventListener('pointerup', (e) => {
   }
   if (e.button !== 0 || griff.axis) return; // WARUM griff.axis: Klick auf einen Griff ist kein Auswahl-Klick
   // WARUM rohe Netze auch wenn unsichtbar: Raycaster prüft keine Sichtbarkeit → Auswahl geht auch in der verschweißten Ansicht
+  // R19: Bauteile liegen auf dem Rumpf — erst sie prüfen
+  const tb = strahl.intersectObjects(bauteilGruppe.children, true).find((x) => x.object.isMesh && x.object.userData.bauteil !== undefined);
   const t = strahl.intersectObjects(rohGruppe.children, true)[0];
+  if (tb && (!t || tb.distance <= t.distance + 0.5)) { waehleBauteil(tb.object.userData.bauteil); return; }
+  if (bauteilWahl !== null) { bauteilWahl = null; zeigeBauteile(); }
   waehle(t ? t.object.userData.id : null);
 });
 $('leinwand').addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ---------------- Bauteile, Schwerpunkt, Schubpunkt (Runde 19) ----------------
+function zeigeBauteile() {
+  bauteilGruppe.clear();
+  for (const e of bauteilListe(form)) {
+    let g = null;
+    try { g = bauteilGrafik(e, mats, form); } catch (f) { console.warn('Bauteil', e.b.typ, f); }
+    if (!g) continue;
+    g.traverse((o) => { o.userData.bauteil = e.b.id; });
+    bauteilGruppe.add(g);
+  }
+  // Auswahl-Kasten um das gewählte Bauteil (alle Kopien)
+  if (bauteilWahl !== null) for (const g of bauteilGruppe.children) if (g.userData.bauteil === bauteilWahl) bauteilGruppe.add(new THREE.BoxHelper(g, 0xf2c070));
+}
+function zeichen(farbe, art) {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.beginPath(); g.arc(32, 32, 26, 0, 7); g.fillStyle = '#111'; g.fill(); g.lineWidth = 4; g.strokeStyle = farbe; g.stroke();
+  if (art === 'schwer') { g.fillStyle = farbe; g.beginPath(); g.moveTo(32, 32); g.arc(32, 32, 24, 0, Math.PI / 2); g.fill(); g.beginPath(); g.moveTo(32, 32); g.arc(32, 32, 24, Math.PI, Math.PI * 1.5); g.fill(); }
+  else { g.fillStyle = farbe; g.beginPath(); g.arc(32, 32, 10, 0, 7); g.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.SpriteMaterial({ map: t, sizeAttenuation: false, depthTest: false, toneMapped: false });
+}
+const schwerMat = zeichen('#f2c070', 'schwer'), schubMat = zeichen('#6ab4ff', 'schub');
+/** Schwerpunkt (gelb, geviertelt) und Schubpunkt (blau) + Schubpfeil — wie KSP: liegt der Schub neben dem Schwerpunkt, dreht das Schiff. */
+function zeigeMarker() {
+  markerGruppe.clear();
+  const fl = schiffPruefung?.flug; if (!fl) return;
+  if (fl.schwerpunkt) { const s = new THREE.Sprite(schwerMat); s.scale.setScalar(0.04); s.position.set(...fl.schwerpunkt); s.renderOrder = 50; markerGruppe.add(s); }
+  if (fl.schubpunkt) {
+    const s = new THREE.Sprite(schubMat); s.scale.setScalar(0.034); s.position.set(...fl.schubpunkt); s.renderOrder = 51; markerGruppe.add(s);
+    const pf = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...fl.schubpunkt), 12, 0x6ab4ff, 3, 1.6);
+    pf.traverse((o) => { if (o.material) { o.material.depthTest = false; o.material.toneMapped = false; } o.renderOrder = 49; });
+    markerGruppe.add(pf);
+  }
+}
+function platziereBauteil(b) {
+  const id = form.bauteile.reduce((m, x) => Math.max(m, x.id), -1) + 1;
+  const neu = { id, ...b, spiegel: symmetrie && Math.abs(b.p[0]) > 0.01 ? ['x'] : [] };
+  aendere({ ...form, bauteile: [...form.bauteile, neu] });
+  zeigeMeldungKurz(`${BAUTEILE[b.typ]?.name ?? b.typ} gesetzt${neu.spiegel.length ? ' (mit Spiegelkopie)' : ''} — weiter klicken setzt mehr, Esc beendet`);
+}
+function waehleBauteil(id) {
+  bauteilWahl = id;
+  if (id !== null) { gewaehlt = null; punkteModus = false; griff.detach(); }
+  zeigeBauteile(); zeigeHilfen(); zeigeTafeln();
+  const b = form.bauteile.find((x) => x.id === id);
+  if (b) zeigeMeldungKurz(`${BAUTEILE[b.typ]?.name ?? b.typ} ${b.id} gewählt — Entf löscht, M schaltet die Spiegelkopie`);
+}
+function loescheBauteil() {
+  if (bauteilWahl === null) return false;
+  aendere({ ...form, bauteile: form.bauteile.filter((b) => b.id !== bauteilWahl) }); bauteilWahl = null; zeigeBauteile();
+  zeigeMeldungKurz('Bauteil gelöscht — Strg+Z holt es zurück'); return true;
+}
+function spiegleBauteil() {
+  if (bauteilWahl === null) return false;
+  aendere({ ...form, bauteile: form.bauteile.map((b) => (b.id === bauteilWahl ? { ...b, spiegel: b.spiegel.includes('x') ? [] : ['x'] } : b)) }); return true;
+}
+async function probeflug() {
+  const pr = pruefeSchiff(form);
+  if (!pr.flugtauglich) {
+    const f1 = pr.meldungen.find((m) => m.stufe === 'fehler');
+    zeigeMeldungKurz('Nicht flugtauglich: ' + (f1?.text ?? '') + ' — rechts unter WERTE steht, was fehlt'); return;
+  }
+  if (await speichern()) location.href = '/freiflug.html?form=' + encodeURIComponent(form.name);
+}
 
 /** Griffe (W/E/S) nur im passenden Werkzeug, nie bei fixierten Körpern, Punkten oder Skizze. */
 function haengeGriff() {
@@ -399,7 +476,9 @@ function waehle(id) {
   // WARUM Punkte-Modus aus bei neuer Auswahl: er würde den neuen Körper sonst ungefragt in Punkte umwandeln
   if (id !== gewaehlt && punkteModus) punkteModus = false;
   if (id !== gewaehlt) { bedienung?.vergiss(); if (id === null) modus = 'ziehen'; }
+  if (id !== null && bauteilWahl !== null) { bauteilWahl = null; zeigeBauteile(); }
   gewaehlt = id; spantNr = 0;
+  zeigeBauteile();
   const k = koerper();
   haengeGriff();
   zeigeHilfen(); zeigeTafeln();
@@ -577,17 +656,29 @@ function zeigeWerte() {
   const modul = formZuModul(form);
   const h = modul.quader.reduce((a, q) => ({ min: a.min.map((v, i) => Math.min(v, q.min[i])), max: a.max.map((v, i) => Math.max(v, q.max[i])) }), { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
   const mass = modul.quader.length ? [0, 1, 2].map((i) => h.max[i] - h.min[i]) : [0, 0, 0];
+  try { schiffPruefung = pruefeSchiff(form); } catch (f) { console.warn('Prüfung', f); schiffPruefung = null; }
+  const fl = schiffPruefung?.flug, w = fl?.werte;
+  zeigeMarker();
+  const st = $('flugstatus');
+  st.textContent = !schiffPruefung ? '' : schiffPruefung.flugtauglich ? 'FLUGTAUGLICH' : 'NICHT FLUGTAUGLICH';
+  st.className = schiffPruefung?.flugtauglich ? 'gut' : 'schlecht';
   const reihen = [
-    ['Körper', form.koerper.length], ['Länge · Breite · Höhe', `${zahl(mass[2])} · ${zahl(mass[0])} · ${zahl(mass[1])} m`],
-    ['Masse (geschätzt)', zahl(modul.werte.masse, 0) + ' t'], ['Andockpunkte', form.andock.length],
+    ['Körper · Bauteile', `${form.koerper.length} · ${bauteilListe(form).length}`], ['Länge · Breite · Höhe', `${zahl(mass[2])} · ${zahl(mass[0])} · ${zahl(mass[1])} m`],
+    ['Masse', zahl(fl?.masse ?? modul.werte.masse, 0) + ' t'], ['Schub', fl ? zahl(fl.schub, 0) + ' kN' : '–'],
+    ['Beschleunigung · Höchstfahrt', w ? `${zahl(w.aVor)} m/s² · ${zahl(w.vMax, 0)} m/s` : '–'],
+    ['Wendigkeit (gieren · rollen)', w ? `${zahl(w.drehMax.gieren * 180 / Math.PI)} · ${zahl(w.drehMax.rollen * 180 / Math.PI)} °/s` : '–'],
+    ['Andockpunkte', form.andock.length],
     ['Verschweißen', !verschweisst ? 'aus (Einzelteile)' : schweissInfo ? `${zahl(schweissInfo.ms, 0)} ms${schweissInfo.dreiecke ? ' · ' + zahl(schweissInfo.dreiecke, 0) + ' Dreiecke' : ''}${dichtText(schweissInfo)}` : '…'],
   ];
   zeigeMasse();
   $('werte').innerHTML = reihen.map(([a, b]) => `<div class="reihe"><span>${a}</span><b>${b}</b></div>`).join('');
   const liste = $('meldungen'); liste.innerHTML = '';
-  for (const m of pruefe(form)) {
-    const z = document.createElement('div'); z.className = 'm ' + m.stufe; z.textContent = m.text;
-    if (m.id !== undefined) { z.dataset.nr = m.id; z.addEventListener('click', () => waehle(m.id)); }
+  // Form-Meldungen + Prüfliste „flugtauglich“ (Starfield-Lehre: Klick zeigt auf das Teil)
+  for (const m of [...pruefe(form), ...(schiffPruefung?.meldungen ?? [])]) {
+    const z = document.createElement('div'); z.className = 'm ' + (m.stufe === 'hinweis' ? 'warnung' : m.stufe); z.textContent = m.text;
+    const kid = m.id ?? m.koerper;
+    if (m.bauteil !== undefined) { z.dataset.nr = m.bauteil; z.addEventListener('click', () => waehleBauteil(m.bauteil)); }
+    else if (kid !== undefined) { z.dataset.nr = kid; z.addEventListener('click', () => waehle(kid)); }
     liste.append(z);
   }
 }
@@ -611,6 +702,13 @@ function zeigeMeldungKurz(text) {
 }
 
 // ---------------- Bedienelemente verdrahten ----------------
+for (const [typ, v] of Object.entries(BAUTEILE)) {
+  const b = document.createElement('button');
+  b.textContent = (v.art === 'geschuetz' ? '⌖ ' : '▲ ') + v.name; b.title = `Auf die ${flaechenText(typ)} setzen (${v.masse ?? '?'} t)`;
+  b.addEventListener('click', () => { bauteilWahl = null; bedienung.setzeBauteil(typ); });
+  $(v.art === 'geschuetz' ? 'geschuetze' : 'antriebe').append(b);
+}
+function flaechenText(typ) { return [...new Set((BAUTEILE[typ]?.flaeche ?? ['alle']).map((x) => FLAECHEN[x] ?? x))].join(' oder '); }
 for (const [name, v] of Object.entries(VORLAGEN)) {
   const b = document.createElement('button'); b.textContent = v.name; b.title = 'Neuen Körper ansetzen (neben dem gewählten)';
   b.title = 'Klicken, dann auf eine Fläche (oder den Boden) zeigen und klicken'; b.addEventListener('click', () => bedienung.setzen(name)); $('vorlagen').append(b);
@@ -658,6 +756,7 @@ $('k-punkte-weg').addEventListener('click', () => {
   zeigeMeldungKurz('Umriss zurückgesetzt — wieder Rechteck mit Rundung und Fase');
 });
 $('k-skizze').addEventListener('click', starteSkizze);
+$('k-probeflug').addEventListener('click', probeflug);
 $('k-symmetrie').addEventListener('click', () => {
   symmetrie = !symmetrie; try { localStorage.setItem(SYM, symmetrie ? 'an' : 'aus'); } catch { /* egal */ }
   zeigeTafeln(); zeigeMeldungKurz(symmetrie ? 'Symmetrie an — neue Körper bekommen ihre Spiegelkopie (links ↔ rechts)' : 'Symmetrie aus — neue Körper ohne Spiegelkopie');
@@ -782,6 +881,7 @@ addEventListener('keydown', (e) => {
   const strg = e.ctrlKey || e.metaKey, t = e.key.toLowerCase();
   if (e.key === 'Escape' && punkteModus) { schaltePunkte(false); e.preventDefault(); return; }
   if (e.key === 'Escape' && modus !== 'ziehen') { setzeModus('ziehen'); e.preventDefault(); return; }
+  if (e.key === 'Escape' && bauteilWahl !== null) { waehleBauteil(null); e.preventDefault(); return; }
   if (e.key === 'Escape' && gewaehlt !== null) { waehle(null); e.preventDefault(); return; }
   if (strg && t === 'z') { e.preventDefault(); e.shiftKey ? wiederholen() : rueckgaengig(); return; }
   if (strg && t === 'y') { e.preventDefault(); wiederholen(); return; }
@@ -793,11 +893,11 @@ addEventListener('keydown', (e) => {
   else if (t === 's') setzeModus('groesse');
   else if (t === 'q') setzeModus('ziehen');
   else if (t === 'v') schalteSchweissen();
-  else if (t === 'm') schalteSpiegel('x');
+  else if (t === 'm') { if (!spiegleBauteil()) schalteSpiegel('x'); }
   else if (t === 'k') starteSkizze();
   else if (t === 'p') schaltePunkte();
   else if (t === 'l') schalteFest();
-  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); loescheKoerper(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (!loescheBauteil()) loescheKoerper(); }
   else if (t === 'f') fokus();
   else if (t === 'h') $('hilfe').classList.toggle('versteckt');
 }, { capture: true });
@@ -821,6 +921,9 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   holeForm: () => form, koerper, waehle, meldung: zeigeMeldungKurz, platziere,
   darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen',
   klickVerbraucht() { gedrueckt = null; },
+  // R19: Bauteile setzen
+  passtAuf, flaechenText, bauteilName: (typ) => BAUTEILE[typ]?.name ?? typ, platziereBauteil,
+  bauteilGeist(typ, p, n) { try { return bauteilGrafik({ b: { id: -1, typ, p, n, spiegel: [] }, p, n, spiegel: null, kopie: 0 }, mats, form); } catch { return null; } },
   vorschau(id, k) { ziehen = true; form = normalisiere({ ...form, koerper: form.koerper.map((x) => (x.id === id ? k : x)) }); schnellZeichnen(id); },
   uebernehme(merk) { ziehen = false; zurueck.push(merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; aendere(form, { merken: false }); },
   setzeForm(f, merk) { ziehen = false; if (merk) { zurueck.push(merk); vor.length = 0; } aendere(f, { merken: false }); },
@@ -848,7 +951,7 @@ window.spiel = {
   lade(f) { aendere(kopie(f)); fokus(); },
   setze: setzeVorlage, waehle, rueckgaengig, wiederholen, fokus, speichern,
   spant(feld, wert) { const k = koerper(); if (k) setzeSpantFeld(k.id, feld, wert, true); },
-  skizze, wuerfel, bedienung, modus: setzeModus, kamera: camera, steuer, get symmetrie() { return symmetrie; }, punkte: schaltePunkte, spiegeln: schalteSpiegel, spiegelKopie, klappe, fest: schalteFest, get punkteAnsicht() { return punkteAnsicht; },
+  skizze, wuerfel, bedienung, modus: setzeModus, get pruefung() { return schiffPruefung; }, setzeBauteil: (typ, p, n) => platziereBauteil({ typ, p, n }), waehleBauteil, probeflug, kamera: camera, steuer, get symmetrie() { return symmetrie; }, punkte: schaltePunkte, spiegeln: schalteSpiegel, spiegelKopie, klappe, fest: schalteFest, get punkteAnsicht() { return punkteAnsicht; },
   get spantNr() { return spantNr; }, set spantNr(n) { spantNr = n; zeigeHilfen(); const k = koerper(); if (k) zeigeSpant(k); },
   /** Bildpunkt (clientX/Y) eines Punktes oder einer Plus-Marke im Punkte-Modus — für Mausprüfungen */
   punktBild(art, j, i) { const o = punktGruppe.children.find((x) => x.userData.art === art && x.userData.j === j && (i === undefined || x.userData.i === i)); if (!o) return null;
