@@ -3,7 +3,7 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15–18 nur lokal committet, nicht gepusht**).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; Runde 14 gepusht, **Runden 15–19 nur lokal committet, nicht gepusht**).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
 
 ## Worum es geht
@@ -11,7 +11,7 @@ Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spiele
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
 
-## Stand jetzt (2026-11-26, nach Runde 18) — hier einsteigen
+## Stand jetzt (2026-11-26, nach Runde 19) — hier einsteigen
 **Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–5 / Pfeile + Enter / Klick; aus jeder
 Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
@@ -75,6 +75,16 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
      **Rechte Maus = Kamera drehen** (links im Leeren auch). **Würfel-Fläche → Tele-Ansicht** (3° Bildwinkel, wirkt wie
      ohne Perspektive; beim Wegdrehen zurück). Rechnung `src/sim/form/ziehen.js` (Schiffbauer; Tests `tests/ziehen.mjs`,
      Prüfer), Maus/Anzeige `src/werkstatt/bedienung.js`. Debug: `spiel.bedienung`, `spiel.modus(m)`, `spiel.kamera`.
+   - **Runde 19 Bauteile + Probeflug** (Team, Protokoll `…/2026-11-26-runde19.md`): links **GESCHÜTZE** (PDC 12 t, Flak-Turm
+     35 t, Schwerer Turm 90 t — nur Ober-/Unterseite) und **ANTRIEBE** (Haupttriebwerk S 3,5 / M 8 / L 12,7 MN — nur Heck;
+     Manöverdüsen-Block — überall). Knopf → Geist + Ring (grün/rot) → Klick setzt (bleibt im Modus, Esc beendet); rastet
+     auf die Schwerpunkt-Achse (Triebwerke) bzw. x = 0 (nahe der Mitte, dann ohne Spiegelkopie). Klick auf ein Bauteil wählt
+     es (Entf löscht, M spiegelt). **Marker:** gelb = Schwerpunkt, blau = Schubpunkt + Pfeil. Rechts **FLUGTAUGLICH / NICHT
+     FLUGTAUGLICH**, Masse, Schub, Beschleunigung, Höchstfahrt, Wendigkeit, Prüfliste (Klick zeigt aufs Teil). **✈ Probeflug**
+     speichert und öffnet `freiflug.html?form=<Name>` (nur wenn flugtauglich): eigenes Schiff mit Flugwerten, Türmen,
+     Düsen-Glut, Kollisionskugeln; V wechselt zu Bollwerk/Ambos. Module: `src/sim/form/geschuetze.js` (Waffentechniker),
+     `flug.js` (Flugsystem, geeicht an Bollwerk/Ambos-Bezugsformen), `kugeln.js` + `src/grafik/form/schiff.js` (Schiffbauer),
+     `bauteile.js` (formZuSchiff, Projektleitung); Tests `tests/bauteile.mjs`. Debug: `spiel.pruefung`, `spiel.setzeBauteil(typ, p, n)`.
    - Debug: `spiel.skizze` (start, zeichneDirekt(punkte, tiefe), erstellen, zustand), `spiel.wuerfel.drehNach(r)`,
      `spiel.punkte(an)`, `spiel.spantNr`, `spiel.punktBild(art, j)`, `spiel.spiegeln(achse)`, `spiel.spiegelKopie(achse)`.
 
@@ -85,12 +95,14 @@ Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 `angreifergeschosse.js`. Regler-Tabellen (je Besitzer, eine Quelle): `STREU_REGLER`, `WAFFEN_REGLER`, `GRAFIK_REGLER`.
 
 **Offen / nächste Schritte (Vorschlag, nicht beauftragt):**
-- **Plan nach Recherche (Nutzer 2026-11-26):** R18 Bedienung (fertig) → **R19 Bauteile (Geschütze, Antriebe) +
-  Schwerpunkt/Schubpunkt-Marker + Prüfliste flugtauglich + Probeflug** (gebautes Schiff im Freiflug/Gefecht laden) →
+- **Plan nach Recherche (Nutzer 2026-11-26):** R18 Bedienung (fertig) → R19 Bauteile + Probeflug im Freiflug (fertig) →
   **R20 Schiffsgenerator** (Seed + wenige Regler, Ergebnis voll editierbar, a1studmuffin-Ablauf im Stil Schwarmfront).
   Offen aus R18: Geist zeigt die künftige Spiegelkopie nicht; bündig an die eigene Spiegelkopie rasten geht nicht;
   Setzen am Trefferpunkt (nicht Flächenmitte); Kamera nach dem Setzen nicht nachgeführt; Kanten-Zug im Grenzfall 0,56 ms.
-- **Form-Werkstatt:** Nutzer-Urteil zu Runde 18 einholen (Push/Pull-Gefühl). Per Maus geprüft: Skizze
+- **Offen aus R19:** Gefechtstest mit eigenem Schiff (Flak braucht rumpfSperre für Formen); Geschütze an Seitenflächen
+  (Sim-Turmrahmen nur oben/unten); Bauteile verschieben (heute: löschen + neu setzen); L-Düse ragt an schmalen Hecks seitlich
+  über; Turm-Spiegelkopie kann zu dicht stehen (Warnung rohre_kreuzen); Fehlerfall beim Laden lässt evtl. Reste in der Szene.
+- **Form-Werkstatt:** Nutzer-Urteil zu Runde 18 + 19 einholen (Push/Pull-Gefühl, Bauteile, Probeflug). Per Maus geprüft: Skizze
   zeichnen + schließen + erstellen, Punkt ziehen, + herausziehen, Rechtsklick löschen, Würfel OBEN. Ideen R17: Skizze auf
   einer Körperfläche starten (Inventor), Bögen/Kreisbogen im Linienzug, Punkte im Spant-Feld als Zahlen. Nicht per Maus
   geprüft: W schieben, S Größe ziehen.

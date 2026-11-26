@@ -32,3 +32,6 @@
 - 2026-11-26 Runde 18 (ziehen.js) — Kappe nur am End-Spant erkennen (Flanken von Keil/Bug hätten sonst als Kappe gegolten);
   Dreieck-Index des rohen Netzes gibt Kante/Abschnitt sicher. Kanten gleiten entlang der Nachbarkanten, Klemmung gegen
   Länge < 6 cm, Selbstschnitt UND Kippen (Halbierungssuche). Strahl-Treffer runden (0,1 mm), sonst 5,9999999 in den Daten.
+- 2026-11-26 Runde 19 (Form-Schiff) — Feste Bauteile mit der CSG-Hülle zu einem Netz je Material, nur Türme eigene Gruppen;
+  Gehäuselänge aus der Materialtiefe; Kugeln je Zelle um die Oberflächenpunkte statt je Körper (r 103 → ≤ 15 m). Gegen
+  Ersatz-Module messen, kennzeichnen und nach dem Merge mit den echten wiederholen.

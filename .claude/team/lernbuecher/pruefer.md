@@ -40,3 +40,6 @@
 - 2026-11-26 Runde 18 (tests/ziehen.mjs) — Test gegen eine eigene Ersatz-Umsetzung im Scratchpad vorab laufen lassen →
   zeigt, dass die Prüfungen anschlagen. Bei Klemmung immer gegen das ZURÜCKGEGEBENE d prüfen, nicht gegen das gewünschte
   (eine Zeile war deshalb rot). Durchsicht: Einfang-Phase + stopPropagation gegen OrbitControls' document-Pointerup prüfen.
+- 2026-11-26 Runde 19 (tests/bauteile.mjs) — Bei unbekannten Schwellen „Code vorhanden + zeigt aufs Teil“ prüfen; nach dem
+  Merge zwei Fälle angepasst (Klickpunkt im Rumpf wird bewusst auf die Fläche gelegt; Schräge muss über der Schwelle liegen).
+  Kopien gegen ALLE Kopien auf gleiche Lage prüfen (Befund bauteilListe).

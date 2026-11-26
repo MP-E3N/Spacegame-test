@@ -50,3 +50,6 @@
   drehen, vorPos aus dem vorigen Rahmen): Prüfstand bitgleich, Richtungsfehler 0, Sperrverletzungen 0, 0,027 ms/Schritt.
   Lehre: Darstellungsquellen an das echte Ereignis koppeln, nicht an den Planungszustand. Bitgleichheit: Differenzen zum
   Bezugswert rechnen (1,4 + 3,8 ≠ 5,2). Dateien kommen mit CRLF — Ersetzungsskripte müssen \r\n behandeln.
+- 2026-11-26 Runde 19 (geschuetze.js) — Höhenprobe gegen Form-Lofts statt fusspunkt(TEILE); tragend nur, was von unten
+  bis auf Fußhöhe reicht (schwebende Platte hob sonst den Turm). Gier-Spiegel: x/y g → −g, z g → π − g. Erst profilieren,
+  dann optimieren (Zwischenlisten waren der Engpass, 7 → 3,4 ms).

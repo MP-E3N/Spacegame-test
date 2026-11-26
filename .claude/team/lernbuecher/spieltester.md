@@ -19,3 +19,5 @@
 - 2026-11-26 Runde 18 (Werkstatt-Bedienung) — Vor/nach jedem Schritt spiel.form messen (ein „verschwundener“ Körper fiel nur
   an der Körperzahl auf). left_click_drag drückt ohne Mausbewegung davor → Hover-Zustände sind veraltet; Befund trotzdem
   melden (trifft auch schnelle Nutzer). Verdeckter Browser: Kamerafahrten per spiel.wuerfel.schritt(...) abschließen.
+- 2026-11-26 Runde 19 — Neuling-Pfad zuerst: erstes Triebwerk per Maus setzen → scheiterte an Schubversatz. Werte auf
+  Plausibilität lesen (2,5 m/s² ohne Schub fiel auf). Probeflug-Sperre ist ein Befund, wenn der Weg dorthin unklar ist.

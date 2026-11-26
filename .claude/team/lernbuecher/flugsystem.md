@@ -13,3 +13,6 @@
 - 2026-11-15 Runde 5 — aDaempfer 6/9 verfehlte das Driftziel (21,9/70 m/s). Ursache: in voller Kurve wächst Seitendrift
   um vMax·gierMax. Änderung: 9/28. Messung: Spitze 11,7/10,7 m/s, Abbau 3,0/1,8 s. Lehre: Dämpfer-Querbeschleunigung
   ≥ vMax·Drehrate; Nachhüpf-Testfenster an den ersten Treffer binden, nicht an feste Zeiten.
+- 2026-11-26 Runde 19 (flug.js) — Flugwerte aus Masse/Schub/Trägheit, geeicht an zwei Bezugsformen (Bollwerk/Ambos);
+  K aus der Bezugsform rechnen statt eintippen. WERTE.bollwerk verletzt selbst aDaempfer ≥ vMax·gierMax → mit dem 5-s-Test
+  aus tests/flug.mjs messen. Bezugs-Vorgaben können die Katalog-Stufung verbiegen (L ≈ M) → Stufung mitmessen.

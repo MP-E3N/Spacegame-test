@@ -55,3 +55,8 @@
   bedienung.js statt werkstatt.js weiter aufzublähen. Hover-Zustand beim Drücken neu bestimmen (Automatisierung klickt ohne
   Mausbewegung — echte Schnell-Klicker auch). Schwebende Leisten nie über anderen Bedienelementen (Würfel → 🗑-Fehlklick).
   Ereignisse in der Einfang-Phase: Pointerup nur stoppen, wenn auch der Pointerdown gestoppt wurde (OrbitControls hängt sonst).
+- 2026-11-26 Runde 19 (Bauteile + Probeflug) — vier Rollen parallel (Waffentechniker, Flugsystem, Schiffbauer, Prüfer) nach
+  Schnittstelle + Code-Listen + Bezugsformen im Protokoll; gemeinsame Grundlage (bauteilListe, KOLLISION, registriereSchiff)
+  vorab selbst committet → Merge ohne Konflikt. Eich-Vorgaben erzwingen Katalogwerte (4 × L → L ≈ M): Folgen vorher
+  überschlagen. Lage-kritische Teile (Triebwerk ↔ Schwerpunkt) beim Setzen einrasten — Prüfliste allein reicht Neulingen nicht.
+  Testdateien, die Probeflug/Speichern in konfig/ anlegt, nach eigenen Tests löschen (Nutzerdateien dort NICHT anfassen).
