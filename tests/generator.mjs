@@ -100,15 +100,17 @@ function eigene(f, klasse, s = null) {
     const sp = b.spiegel.includes('x');
     if (sp ? Math.abs(b.p[0]) < 1e-6 : b.p[0] !== 0) add('symmetrie', `Bauteil ${b.id} (${b.typ}) x ${b.p[0]} ${sp ? 'mit' : 'ohne'} Spiegel`);
   }
-  // Heck (Frühwarnung Schiffbauer): Triebwerke auf der ebenen Heckkappe des Hauptrumpfs, Scheibe ganz auf der Fläche,
-  // nichts steht hinter dem Heck vor, Triebwerke überlappen nicht (Spiegelkopien mitgezählt)
-  const H = hauptrumpf(f), tw = hauptTriebwerke(f);
+  // Heck (Frühwarnung Schiffbauer): Triebwerke auf der ebenen Heckkappe des HINTERSTEN Plus-Körpers ohne Spiegel (WARUM
+  // nicht Hauptrumpf: der Generator setzt einen eigenen Antriebsblock dahinter), Scheibe ganz auf der Fläche, nichts
+  // steht hinter dem Heck vor, Triebwerke überlappen nicht (Spiegelkopien mitgezählt)
+  const tw = hauptTriebwerke(f);
+  const H = f.koerper.filter((k) => k.op === 'plus' && !k.spiegel.includes('x')).reduce((a, k) => (!a || huelle(k).min[2] < huelle(a).min[2] - 1e-9 ? k : a), null);
   if (H && tw.length) {
     const lage = koerperMatrix(H);
     const kappen = H.spanten.map((sp) => profilPunkte(sp).map(([x, y]) => wendeK(lage, [x, y, sp.z])));
     const kappe = kappen.reduce((a, q) => (Math.min(...q.map((v) => v[2])) < Math.min(...a.map((v) => v[2])) ? q : a));
     const zH = Math.min(...kappe.map((v) => v[2]));
-    if (Math.max(...kappe.map((v) => v[2])) - zH > 1e-6) add('heck', 'Heckkappe des Hauptrumpfs nicht eben');
+    if (Math.max(...kappe.map((v) => v[2])) - zH > 1e-6) add('heck', `Heckkappe von Körper ${H.id} nicht eben`);
     const zAlle = Math.min(...plusHuellen(f).map((q) => q.min[2]));
     if (zAlle < zH - 1e-3) add('heck', `Körper steht ${(zH - zAlle).toFixed(2)} m hinter dem Heck vor`);
     const poly = kappe.map((v) => [v[0], v[1]]);
@@ -158,11 +160,11 @@ function eigene(f, klasse, s = null) {
   for (const k of KL) {
     const s = sicher(() => standardEinstellung(k), (e) => ({ fehler: e.message }));
     if (s.klasse !== k || !Number.isInteger(s.seed) || s.seed < 1 || s.seed > 999999) sFehler.push(`${k}: klasse ${s.klasse}, seed ${s.seed}`);
-    for (const r of REGLER) if (s[r] !== R[r]?.standard) sFehler.push(`${k}.${r} ${s[r]} ≠ ${R[r]?.standard}`);
+    for (const r of REGLER) if (r === 'triebwerke' ? !(Number.isInteger(s[r]) && s[r] >= R[r].min && s[r] <= R[r].max) : s[r] !== R[r]?.standard) sFehler.push(`${k}.${r} ${s[r]} ≠ ${R[r]?.standard}`);
     const a = standardEinstellung(k); a.laenge = -99;
     if (standardEinstellung(k).laenge === -99) sFehler.push(`${k}: gibt geteiltes Objekt zurück`);
   }
-  zeile('standardEinstellung(k): klasse, Seed 1…999 999, Regler = standard, frisches Objekt', 'alle ok', sFehler.slice(0, 3).join('; ') || 'alle ok', sFehler.length === 0);
+  zeile('standardEinstellung(k): klasse, Seed 1…999 999, Regler = standard (triebwerke je Klasse im Bereich), frisches Objekt', 'alle ok', sFehler.slice(0, 3).join('; ') || 'alle ok', sFehler.length === 0);
   zeile('GENERATOR_VERSION', 'ganze Zahl ≥ 1 (E1: 1)', GENERATOR_VERSION, Number.isInteger(GENERATOR_VERSION) && GENERATOR_VERSION >= 1);
 }
 
@@ -250,10 +252,13 @@ for (const k of KL) for (const ende of ['min', 'max']) for (const seed of SEEDS.
   const tw = [];
   for (const k of KL) for (const seed of SR.slice(0, 5)) for (let n = R.triebwerke.min; n <= R.triebwerke.max; n++) {
     const f = generiere(einst(k, seed, { triebwerke: n })), t = hauptTriebwerke(f);
-    tw.push({ k, seed, n, ist: t.length, mitte: n % 2 === 1 ? t.some((e) => e.p[0] === 0 && !e.b.spiegel.includes('x')) : true });
+    const groesste = KLASSEN[k].groessen ? KLASSEN[k].groessen[KLASSEN[k].groessen.length - 1] : 'triebwerk_l';
+    tw.push({ k, seed, n, ist: t.length, gross: t.every((e) => e.b.typ === groesste), mitte: t.length % 2 === 1 ? t.some((e) => e.p[0] === 0 && !e.b.spiegel.includes('x')) : true });
   }
-  const twFalsch = tw.filter((x) => x.ist !== x.n || !x.mitte);
-  zeile('triebwerke = Anzahl Haupttriebwerke (inkl. Kopien), ungerade → eins auf x = 0 (E2)', `0 / ${tw.length}`, twFalsch.length ? `${twFalsch.length} — z. B. ${twFalsch[0].k} ${twFalsch[0].seed} n=${twFalsch[0].n}: ${twFalsch[0].ist}${twFalsch[0].mitte ? '' : ', keins mittig'}` : '0', twFalsch.length === 0);
+  // WARUM Ausnahme: ist die größte Größe der Klasse schon erreicht, bleibt gegen zu_schwach nur „mehr Stück“ (Tipp des Reglers)
+  const twFalsch = tw.filter((x) => x.ist < x.n || (x.ist !== x.n && !x.gross) || !x.mitte), twGenau = tw.filter((x) => x.ist === x.n).length;
+  zeile('triebwerke: Anzahl ≥ Regler (mehr nur bei größter Größe), ungerade Anzahl → eins auf x = 0', `0 / ${tw.length}`, twFalsch.length ? `${twFalsch.length} — z. B. ${twFalsch[0].k} ${twFalsch[0].seed} n=${twFalsch[0].n}: ${twFalsch[0].ist}${twFalsch[0].mitte ? '' : ', keins mittig'}` : '0', twFalsch.length === 0);
+  zeile('triebwerke: Anzahl genau = Reglerwert', '≥ 80 %', pz(twGenau, tw.length), twGenau >= 0.8 * tw.length);
   // Teilströme (E6): aufbauten ändern → Hauptrumpf bitgleich
   let tsAnders = 0, tsBsp = '';
   for (const k of KL) for (const seed of SR) {
