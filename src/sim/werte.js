@@ -1,12 +1,12 @@
 // ZWECK: Flug- und Kollisionswerte je Schiff an einer Stelle — Abstimmung nur hier.
-// LIEFERT: WERTE = { bollwerk, ambos } · SCHIFF = WERTE.bollwerk (Alias für ältere Aufrufer).
+// LIEFERT: WERTE = { bollwerk, ambos } · SCHIFF = WERTE.bollwerk (Alias für ältere Aufrufer) · KOLLISION (R19: für flug.js)
 // REGEL: Einheiten Meter, Sekunden, Radiant. Schiff lokal: +Z vorne, +X links (Backbord), +Y oben.
 // WARUM so träge: ein großes Kriegsschiff mit vier Leuten an Bord soll sich schwer anfühlen, nicht wie ein Jäger.
 // VERLAUF: Runde 1 vMax 140 / aVor 16 → Spieltest „viel zu schnell“ → Runde 2 etwa 40 % davon.
 //          Runde 5: eigene Werte je Schiff (Ambos spürbar wendiger), aDaempfer gegen Drift, Kollision, HP.
 
 /** Kollision mit Felsen (statisch, unendlich schwer) — für beide Schiffe gleich. */
-const KOLLISION = {
+export const KOLLISION = {
   abprall: 0.3,          // Anteil der Aufprallgeschwindigkeit, der zurückfedert (senkrecht zur Fläche)
   gleit: 0.9,            // Anteil der Fahrt entlang der Fläche, der beim Aufprall bleibt
   schadenSchwelle: 3,    // m/s: darunter kein Schaden, kein Abprall (Anlegen statt Zittern)

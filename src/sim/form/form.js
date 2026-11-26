@@ -242,6 +242,25 @@ const teilmengen = (a) => a.reduce((l, x) => [...l, ...l.map((t) => [...t, x])],
 export const koerperListe = (form) => form.koerper.flatMap((k) => [{ k, lage: koerperMatrix(k) },
   ...teilmengen(spiegelAchsen(k.spiegel)).map((t) => ({ k, lage: koerperMatrix(k, t) }))]);
 
+/**
+ * Alle Bauteile samt Spiegelkopien (Runde 19): [{ b, p, n, spiegel: null | [sx, sy, sz], kopie }]. p/n schon gespiegelt
+ * (Form-Koordinaten); spiegel = Vorzeichen der Kopie (Geschütze rechnen damit die Gier-Mitte um). WARUM hier und nicht in
+ * bauteile.js: flug.js und geschuetze.js brauchen die Liste, bauteile.js importiert beide (sonst Zirkel-Import).
+ * Eine Kopie, die genau auf ihrem Original liegt (Bauteil auf der Spiegelebene), entfällt.
+ */
+export function bauteilListe(form) {
+  const aus = [];
+  for (const b of form.bauteile ?? []) {
+    aus.push({ b, p: [...b.p], n: [...b.n], spiegel: null, kopie: 0 });
+    teilmengen(spiegelAchsen(b.spiegel)).forEach((t, i) => {
+      const s = ACHSEN.map((a) => (t.includes(a) ? -1 : 1)), p = b.p.map((v, j) => v * s[j]), n = b.n.map((v, j) => v * s[j] + 0);
+      if (p.every((v, j) => Math.abs(v - b.p[j]) < 1e-6) && n.every((v, j) => v === b.n[j])) return; // liegt auf sich selbst
+      aus.push({ b, p, n, spiegel: s, kopie: i + 1 });
+    });
+  }
+  return aus;
+}
+
 /** Schlüssel für Zwischenspeicher der Körper-Geometrie (nur was die Form des Lofts bestimmt). */
 export const koerperSchluessel = (k) => JSON.stringify(k.spanten);
 

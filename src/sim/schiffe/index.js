@@ -4,8 +4,16 @@
 // REGEL: ohne three, ohne grafik-Importe. Turm-Datensatz und Winkel-Vorzeichen: siehe turm.js.
 import { BOLLWERK } from './bollwerk.js';
 import { AMBOS } from './ambos.js';
+import { WERTE } from '../werte.js';
 export { masse, oberkante, unterkante, fusspunkt, alleTeile } from './rumpf.js';
 export { TURM } from './turm.js';
 export { rumpfSperre, sperrSektor } from './sperre.js'; // R14: kleinster freier Nick je Gier-Sektor (Kopf von sperre.js)
 
 export const SCHIFFSDATEN = { bollwerk: BOLLWERK, ambos: AMBOS };
+
+/**
+ * Eigenes Schiff zur Laufzeit eintragen (Runde 19, Probeflug einer Werkstatt-Form): Daten hier, Flugwerte in WERTE.
+ * WARUM eine Funktion statt direktem Zuweisen: welt.js liest beide Tabellen über den Typ-Namen — beide müssen
+ * zusammen gesetzt werden, sonst rechnet die Sim still mit dem alten Schiff (Befund Prüfer R5).
+ */
+export function registriereSchiff(typ, daten, werte) { SCHIFFSDATEN[typ] = daten; WERTE[typ] = werte; }
