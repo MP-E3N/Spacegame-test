@@ -76,3 +76,20 @@
 #k-fest.breit { width: 100%; margin: 2px 0 6px; }
 #k-fest.an { border-color: rgba(242, 192, 112, 0.9); color: #ffd080; background: rgba(224, 160, 64, 0.2); }
 #rechts input:disabled, #rechts button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Runde 18: Leiste am Teil, Zugmaß, Symmetrie, Details ---- */
+#am-teil { position: absolute; transform: translate(-50%, -100%); display: flex; gap: 2px; pointer-events: auto; z-index: 5;
+  background: var(--grund); border: 1px solid var(--linie); padding: 3px; white-space: nowrap; }
+#am-teil button { font: inherit; font-size: 11px; color: #f2c070; background: rgba(0, 0, 0, 0.45); border: 1px solid transparent; padding: 3px 6px; cursor: pointer; }
+#am-teil button:hover { border-color: var(--bern); }
+#am-teil button.an { border-color: rgba(74, 168, 255, 0.8); color: #9ccfff; background: rgba(74, 168, 255, 0.16); }
+#am-teil button:disabled { opacity: 0.35; cursor: not-allowed; }
+#zugmass { position: absolute; pointer-events: none; font-size: 12px; color: var(--bern-matt); background: var(--grund);
+  border: 1px solid rgba(74, 168, 255, 0.7); padding: 4px 8px; line-height: 1.5; opacity: 0; transition: opacity 0.15s; z-index: 6; }
+#zugmass.sichtbar { opacity: 1; }
+#zugmass b { color: #9ccfff; font-weight: normal; }
+#zugmass span { font-size: 10px; }
+#zugmass .buendig { color: #9ad27a; }
+#links button.gross.an { border-color: rgba(74, 168, 255, 0.8); color: #9ccfff; background: rgba(74, 168, 255, 0.14); }
+#k-mehr.breit { width: 100%; margin-top: 4px; }
+#links .kopf small { letter-spacing: 0; color: var(--bern-matt); }

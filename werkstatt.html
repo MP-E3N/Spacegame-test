@@ -15,9 +15,10 @@
   <canvas id="leinwand"></canvas>
   <div id="hud">
     <div id="links" class="tafel">
-      <div class="kopf">ZEICHNEN</div>
+      <div class="kopf">FORMEN</div>
+      <button id="k-symmetrie" class="gross" title="An: neue Körper bekommen automatisch ihre Spiegelkopie (links ↔ rechts)">⇋ Symmetrie: an</button>
       <button id="k-skizze" class="gross" title="Taste K — Fläche auf der Ebene der aktuellen Ansicht zeichnen und dann nach hinten ziehen">✎ Skizze zeichnen (K)</button>
-      <div class="kopf zwischen">KÖRPER ANSETZEN</div>
+      <div class="kopf zwischen" title="Vorlage anklicken, dann auf eine Fläche oder den Boden zeigen und klicken">KÖRPER SETZEN <small>(dann auf Fläche klicken)</small></div>
       <div id="vorlagen"></div>
       <div class="kopf zwischen">KÖRPER DER FORM</div>
       <div id="koerperliste"></div>
@@ -35,6 +36,7 @@
       </div>
       <div id="f-datei" class="klein"></div>
       <button id="k-ansicht" class="breit" title="Taste V">Ansicht: verschweißt (V)</button>
+      <button id="k-mehr" class="breit">▸ Details des Körpers</button>
 
       <div id="k-tafel">
         <div class="kopf zwischen">KÖRPER <span id="k-titel"></span></div>
@@ -72,6 +74,11 @@
       <div id="meldungen"></div>
     </div>
     <button id="w-home" title="Startansicht (F)">⌂</button>
+    <!-- R18: Werkzeugleiste am gewählten Teil (schwebt über ihm) -->
+    <div id="am-teil" class="versteckt">
+      <button data-t="ziehen" title="Flächen anfassen und ziehen (Q) — Standard">✋ Ziehen</button><button data-t="schieben" title="Verschieben (W)">✥ Schieben</button><button data-t="drehen" title="Drehen (E)">⟳ Drehen</button><button data-t="kopie" title="Duplizieren (Strg+D)">⧉ Kopie</button><button data-t="minus" title="Ausschneiden an/aus: ein Minus-Körper schneidet aus allem, was er berührt">◐ Ausschneiden</button><button data-t="spiegel" title="Spiegelkopie links ↔ rechts an/aus (M)">⇋ Spiegeln</button><button data-t="fest" title="Fixieren: nichts verrutscht mehr aus Versehen (L)">🔓 Fixieren</button><button data-t="loeschen" title="Löschen (Entf)">🗑</button><button data-t="mehr" title="Details: Spanten, Punkte, Material, genaue Lage">⋯ Mehr</button>
+    </div>
+    <div id="zugmass"></div>
     <div id="skizze-leiste" class="tafel versteckt">
       <div id="sk-zeichnen"><span class="kopf">SKIZZE</span>
         <button id="sk-linie">Linienzug</button><button id="sk-rechteck">Rechteck</button><button id="sk-kreis">Kreis</button>
@@ -85,12 +92,13 @@
     </div>
     <button id="hilfe-knopf" title="Taste H">? Hilfe</button>
     <div id="hilfe" class="werkstatt-hilfe versteckt">
-      <b>Klick</b> Vorlage links = Körper ansetzen &nbsp; <b>Klick</b> auf Körper = wählen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp;
-      <b>S</b> Größe ziehen &nbsp; <b>Strg</b> halten = ohne Raster<br>
+      <b>Klick</b> auf Körper = wählen &nbsp; <b>Fläche des gewählten Körpers ziehen</b> = länger/breiter/höher &nbsp; <b>Zahl + Enter</b> = genau &nbsp;
+      <b>Vorlage</b> links, dann auf eine Fläche klicken = setzen &nbsp; <b>Strg</b> = ohne Raster<br>
+      <b>Q</b> Ziehen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp; <b>S</b> Größe &nbsp; <b>Esc</b> zurück zu Ziehen<br>
       <b>K</b> Skizze zeichnen &nbsp; <b>P</b> Punkte (ziehen nur in gerader Ansicht) &nbsp; <b>L</b> fixieren &nbsp; <b>Würfel</b> oben = Ansicht wählen<br>
       <b>V</b> verschweißt / Einzelteile &nbsp; <b>M</b> spiegeln (Seite) &nbsp; <b>Strg+D</b> duplizieren &nbsp; <b>Entf</b> löschen &nbsp;
       <b>Strg+Z</b>/<b>Strg+Y</b> rückgängig/wieder &nbsp; <b>F</b> Kamera &nbsp; <b>H</b> Hilfe<br>
-      <b>Linke Maus ziehen</b> Kamera drehen &nbsp; <b>Rad</b> zoomen &nbsp; <b>Mittlere Maus ziehen</b> schieben
+      <b>Rechte Maus ziehen</b> (oder links im Leeren) Kamera drehen &nbsp; <b>Rad</b> zoomen &nbsp; <b>Mittlere Maus ziehen</b> schieben
     </div>
     <div id="masse"></div>
     <div id="meldung"></div>

@@ -2,7 +2,8 @@
 //        wechseln kann, wie bei Inventor“). Kleiner Würfel oben rechts im Bild, dreht sich mit der Kamera. Klick auf
 //        Fläche = gerade Ansicht (VORNE, OBEN …), auf Kante = halb schräg, auf Ecke = Iso-Ansicht. Kamera fährt weich hin.
 // LIEFERT: erstelleAnsichtswuerfel({ renderer, camera, steuer, leinwand, rechtsFrei }) → { zeichne(), schritt(jetzt),
-//          drehNach(richtung, oben?), achsen(), ueber(clientX, clientY), klick(clientX, clientY), bewegt(clientX, clientY), faehrt(), halt() }
+//          drehNach(richtung, oben?), achsen(), ueber(clientX, clientY), klick(clientX, clientY), bewegt(clientX, clientY), faehrt(), halt(),
+//          gerade(), normal() (Bildwinkel sofort normal — vor jedem Setzen der Kamera von außen), tele (an/aus) }
 // REGEL: Richtungen im Form-Rahmen (+Z Bug = VORNE, +X Backbord = LINKS, +Y OBEN; CLAUDE.md Regel 3). Der Würfel zeichnet
 //        nach dem Hauptbild in einen eigenen Ausschnitt (eigene Szene, eigene Kamera) — keine Wirkung auf Licht/Schatten.
 import * as THREE from 'three';
@@ -90,7 +91,36 @@ export function erstelleAnsichtswuerfel({ renderer, camera, steuer, leinwand, re
     const versatz = camera.position.clone().sub(steuer.target);
     fahrt = { von: versatz.clone().normalize(), nach, start: performance.now(), abstand: versatz.length() };
   }
+  /**
+   * Tele-Ansicht (Runde 18, „gerade Ansichten ohne Perspektive“ wie im CAD): steht die Kamera genau auf einer Achse,
+   * wird der Bildwinkel klein (TELE_FOV) und die Kamera entsprechend weiter weg gestellt — vorderer und hinterer Spant
+   * decken sich dann im Bild. Beim Wegdrehen zurück auf den normalen Winkel. WARUM nicht OrthographicCamera: Renderer,
+   * Nachbearbeitung und OrbitControls hängen an dieser einen Kamera; ein Wechsel hieße alles doppelt verdrahten.
+   * Die scheinbare Größe bleibt beim Umblenden gleich: Abstand × tan(fov/2) = konstant.
+   */
+  const NORMAL_FOV = camera.fov, TELE_FOV = 3;
+  let teleAn = true;
+  function gerade() {
+    const d = camera.position.clone().sub(steuer.target).normalize();
+    return Math.max(Math.abs(d.x), Math.abs(d.y), Math.abs(d.z)) > 0.9995;
+  }
+  function fernglas() {
+    const ziel = teleAn && !fahrt && gerade() ? TELE_FOV : NORMAL_FOV;
+    if (Math.abs(camera.fov - ziel) < 0.01) return;
+    const alt = camera.fov, neu = Math.abs(ziel - alt) < 0.3 ? ziel : alt + (ziel - alt) * 0.25; // weich in ~10 Bildern
+    const versatz = camera.position.clone().sub(steuer.target), faktor = Math.tan(alt * Math.PI / 360) / Math.tan(neu * Math.PI / 360);
+    versatz.multiplyScalar(faktor);
+    if (fahrt) fahrt.abstand *= faktor; // sonst setzt die Fahrt den alten Abstand zurück
+    camera.position.copy(steuer.target).add(versatz);
+    camera.fov = neu; camera.updateProjectionMatrix();
+    // Zoom-Grenzen mitziehen, sonst schnappt OrbitControls die Entfernung auf maxDistance zurück
+    const f = Math.tan(NORMAL_FOV * Math.PI / 360) / Math.tan(neu * Math.PI / 360);
+    steuer.minDistance = grenzen.min * f; steuer.maxDistance = grenzen.max * f;
+  }
+  const grenzen = { min: steuer.minDistance, max: steuer.maxDistance };
+
   function schritt(jetzt = performance.now()) {
+    fernglas();
     if (!fahrt) return;
     const t = Math.min(1, (jetzt - fahrt.start) / (FAHRT * 1000)), w = t * t * (3 - 2 * t);
     // Kugel-Interpolation der Richtung (bei Gegenrichtung über eine Seitenachse, sonst wäre die Drehachse unbestimmt)
@@ -141,5 +171,11 @@ export function erstelleAnsichtswuerfel({ renderer, camera, steuer, leinwand, re
   }
 
   // halt: laufende Fahrt abbrechen (z. B. F = Kamera auf die Form) — sonst überschriebe die Fahrt die neue Lage
-  return { zeichne, schritt, drehNach, achsen, ueber, klick, bewegt, faehrt: () => !!fahrt, halt: () => { fahrt = null; } };
+  return { zeichne, schritt, drehNach, achsen, ueber, klick, bewegt, faehrt: () => !!fahrt, halt: () => { fahrt = null; },
+    gerade, normal() {
+      // Abstand mitnehmen, damit die Form gleich groß bleibt (Abstand × tan(fov/2) = konstant)
+      const v = camera.position.clone().sub(steuer.target).multiplyScalar(Math.tan(camera.fov * Math.PI / 360) / Math.tan(NORMAL_FOV * Math.PI / 360));
+      camera.position.copy(steuer.target).add(v);
+      camera.fov = NORMAL_FOV; camera.updateProjectionMatrix(); steuer.minDistance = grenzen.min; steuer.maxDistance = grenzen.max;
+    }, get tele() { return teleAn; }, set tele(an) { teleAn = !!an; } };
 }

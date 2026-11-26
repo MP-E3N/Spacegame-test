@@ -247,10 +247,13 @@ const zahlenAbw = (a, b) => { let m = 0; const geh = (x, y) => { if (typeof x ==
   const tp = KOERPER.punkte_trapez, tf = [];
   for (let j = 0; j < profilPunkte(tp.spanten[0]).length; j++) {
     const f = flaecheAn(tp, KANTE(j)); if (!f) continue;
-    const { k2 } = lauf(tp, f, 0.8), P0 = absPunkte(tp), P2 = absPunkte(k2);
+    // WARUM r.d statt 0,8 (Projektleitung R18): kurze Fasen werden gegen Kippen geklemmt (Entscheidung 2 + Nachtrag) —
+    // geprüft wird die tatsächliche Zugweite, und dass sie > 0 ist
+    const { r, k2 } = lauf(tp, f, 0.8), P0 = absPunkte(tp), P2 = absPunkte(k2);
+    if (!(r.d > 0)) tf.push(`j${j} d=${r.d}`);
     for (let s = 0; s < P0.length; s++) {
       const n2 = normale2(P0[s], j), j2 = (j + 1) % P0[s].length;
-      for (const i of [j, j2]) if (Math.abs((P2[s][i][0] - P0[s][i][0]) * n2[0] + (P2[s][i][1] - P0[s][i][1]) * n2[1] - 0.8) > TOL) tf.push(`j${j} Spant ${s}`);
+      for (const i of [j, j2]) if (Math.abs((P2[s][i][0] - P0[s][i][0]) * n2[0] + (P2[s][i][1] - P0[s][i][1]) * n2[1] - r.d) > TOL) tf.push(`j${j} Spant ${s}`);
     }
   }
   zeile('Kante an alsPunkte(Trapez): je Spant um d entlang der eigenen Normalen', '0 falsch', tf.slice(0, 4).join(', ') || 0, tf.length === 0);

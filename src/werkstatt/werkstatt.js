@@ -4,6 +4,8 @@
 //        Gespeicherte Formen erscheinen in der Werft als Module („Eigene Formen“).
 //        Runde 17 (Schnellrunde ohne Team, Nutzerwunsch): Skizze zeichnen + ziehen (skizze.js), Punkte an Kanten setzen und
 //        ziehen (Taste P), Spiegeln an drei Ebenen (verbunden oder als eigene Kopie), Ansichtswürfel (ansichtswuerfel.js).
+//        Runde 18 „Anfassen statt Einstellen“ (bedienung.js): Push/Pull auf Flächen, Setzen auf die Fläche unter der Maus,
+//        Symmetrie als ein Schalter (Standard an), Werkzeugleiste am gewählten Teil, Details unter „Mehr“, rechte Maus dreht.
 // ABLAUF: Form (Daten, src/sim/form/form.js) → rohe Körper (koerperGeometrie, je Körper ein Netz, sofort) und — 250 ms
 //         nach der letzten Änderung — verschweißtes Netz (formGeometrie, CSG). Beim Ziehen sieht man die rohen Körper.
 // REGEL: Daten nur über form.js (normalisiere/pruefe/formZuModul). Rückgängig = ganze Schnappschüsse. Zwischenstand im
@@ -19,6 +21,7 @@ import { VORLAGEN, neuerKoerper, normalisiere, pruefe, formZuModul, huelle, koer
   alsPunkte, fuegePunktEin, loeschePunkt, spiegelKoerper, verschiebePunkte, fuegeSpantEin, loescheSpant, klappeKoerper } from '../sim/form/form.js';
 import { erstelleAnsichtswuerfel } from './ansichtswuerfel.js';
 import { erstelleSkizze } from './skizze.js';
+import { erstelleBedienung } from './bedienung.js';
 import { BEISPIEL_FORMEN } from '../sim/form/beispiele.js';
 
 const $ = (id) => document.getElementById(id);
@@ -35,7 +38,9 @@ const { scene, camera } = bild;
 camera.position.set(45, 28, 55);
 const steuer = new OrbitControls(camera, $('leinwand'));
 steuer.enableDamping = true; steuer.dampingFactor = 0.12; steuer.minDistance = 3; steuer.maxDistance = 800;
-steuer.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: null };
+// WARUM rechts auch drehen (R18): links auf einer Fläche des gewählten Körpers zieht die Fläche (Push/Pull) — die Kamera
+// dreht man dann mit links im Leeren oder mit rechts überall (wie Tinkercad)
+steuer.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
 const mats = materialien();
 const minusMat = new THREE.MeshBasicMaterial({ color: 0xe06040, transparent: true, opacity: 0.28, depthWrite: false });
 const auswahlMat = new THREE.MeshBasicMaterial({ color: 0xf2c070, wireframe: true, transparent: true, opacity: 0.35 });
@@ -71,6 +76,11 @@ let schweissUhr = 0, schweissInfo = null;
 const netze = new Map(); // Körper-id → Mesh (Original, Griff hängt daran)
 let punkteModus = false;  // Taste P: Punkte des aktuellen Spants ziehen, + an Kanten, Rechtsklick löscht
 let punktZug = null;      // { j, merk (Form vor dem Zug), basis (Körper zu Zugbeginn) }
+// R18: Werkzeug des gewählten Körpers — 'ziehen' (Flächen anfassen, Standard) | 'schieben' | 'drehen' | 'groesse' (Griffe)
+let modus = 'ziehen';
+let mehrOffen = false;    // rechte Tafel: Körper-Details (Spanten, Punkte, Lage …) nur auf Wunsch
+const SYM = 'schwarmfront-werkstatt-symmetrie';
+let symmetrie = localStorage.getItem(SYM) !== 'aus'; // Standard an (KSP/Space Engineers: Symmetrie ist EIN Schalter)
 const punktGruppe = new THREE.Group(); scene.add(punktGruppe);
 
 function kopie(x) { return JSON.parse(JSON.stringify(x)); }
@@ -91,8 +101,8 @@ function aendere(neu, { merken = true } = {}) {
 }
 /** Einen Körper ändern: fn bekommt eine Kopie und gibt sie (geändert) zurück. */
 function aendereKoerper(id, fn, opt) { aendere({ ...form, koerper: form.koerper.map((k) => (k.id === id ? fn(kopie(k)) : k)) }, opt); }
-function rueckgaengig() { if (!zurueck.length) return; vor.push(kopie(form)); aendere(zurueck.pop(), { merken: false }); }
-function wiederholen() { if (!vor.length) return; zurueck.push(kopie(form)); aendere(vor.pop(), { merken: false }); }
+function rueckgaengig() { bedienung?.vergiss(); if (!zurueck.length) return; vor.push(kopie(form)); aendere(zurueck.pop(), { merken: false }); }
+function wiederholen() { bedienung?.vergiss(); if (!vor.length) return; zurueck.push(kopie(form)); aendere(vor.pop(), { merken: false }); }
 
 // ---------------- Zeichnen ----------------
 function setzeLage(obj, k) {
@@ -115,7 +125,7 @@ function neuZeichnen() {
     netz.userData.spiegel = true; sp.add(netz); rohGruppe.add(sp);
   }
   const k = koerper();
-  if (k && netze.has(k.id) && !punkteModus && !k.fest && !skizze?.aktiv()) griff.attach(netze.get(k.id));
+  haengeGriff();
   zeigeHilfen();
   zeigeTafeln();
   clearTimeout(schweissUhr);
@@ -364,23 +374,57 @@ $('leinwand').addEventListener('pointerup', (e) => {
 });
 $('leinwand').addEventListener('contextmenu', (e) => e.preventDefault());
 
+/** Griffe (W/E/S) nur im passenden Werkzeug, nie bei fixierten Körpern, Punkten oder Skizze. */
+function haengeGriff() {
+  griff.detach();
+  const k = koerper();
+  if (!k || !netze.has(k.id) || modus === 'ziehen' || punkteModus || k.fest || skizze?.aktiv()) return;
+  griff.setMode({ schieben: 'translate', drehen: 'rotate', groesse: 'scale' }[modus]);
+  griff.attach(netze.get(k.id));
+}
+/** Werkzeug wechseln (Leiste am Teil oder W/E/S, Esc = zurück zu „Ziehen“). */
+function setzeModus(m) {
+  const k = koerper();
+  if (m !== 'ziehen' && k?.fest) { zeigeMeldungKurz('Körper ist fixiert — erst lösen (L)'); m = 'ziehen'; }
+  if (punkteModus) schaltePunkte(false);
+  modus = m; haengeGriff(); zeigeLeiste();
+  if (k) zeigeMeldungKurz({ ziehen: 'Ziehen: Fläche anfassen und ziehen · Zahl + Enter = genau', schieben: 'Verschieben: an den Pfeilen ziehen · Esc = zurück zu Ziehen',
+    drehen: 'Drehen: an den Ringen ziehen (15°-Raster) · Esc = zurück zu Ziehen', groesse: 'Größe: an den Würfeln ziehen · Esc = zurück zu Ziehen' }[m]);
+}
 function waehle(id) {
   // WARUM Punkte-Modus aus bei neuer Auswahl: er würde den neuen Körper sonst ungefragt in Punkte umwandeln
   if (id !== gewaehlt && punkteModus) punkteModus = false;
+  if (id !== gewaehlt) { bedienung?.vergiss(); if (id === null) modus = 'ziehen'; }
   gewaehlt = id; spantNr = 0;
   const k = koerper();
-  griff.detach(); if (k && netze.has(k.id) && !punkteModus && !k.fest) griff.attach(netze.get(k.id));
+  haengeGriff();
   zeigeHilfen(); zeigeTafeln();
-  if (k) zeigeMeldungKurz(`${NAMEN[k.typ] ?? 'Körper'} ${k.id} gewählt — W schieben, E drehen, S Größe ziehen, P Punkte an Kanten, rechts Spanten formen`);
+  if (k) zeigeMeldungKurz(`${NAMEN[k.typ] ?? 'Körper'} ${k.id} gewählt — Fläche anfassen und ziehen · Leiste am Teil: Schieben, Drehen, Kopie …`);
+  zeigeLeiste();
 }
 
 // ---------------- Körper ansetzen ----------------
+/**
+ * Symmetrie-Schalter (R18): neue Körper bekommen die verbundene Spiegelung an x = 0 — außer sie liegen quer über der
+ * Mitte (dann sind sie selbst die Mitte des Schiffs, eine Kopie läge in ihnen).
+ */
+function mitSymmetrie(k) {
+  if (!symmetrie || k.spiegel?.includes('x')) return k;
+  const h = huelle(normalisiere({ koerper: [k] }).koerper[0]);
+  return h.min[0] < -0.01 && h.max[0] > 0.01 ? k : { ...k, spiegel: [...(k.spiegel ?? []), 'x'] };
+}
+function platziere(k) {
+  const id = naechsteId(), neu = mitSymmetrie({ ...k, id });
+  aendere({ ...form, koerper: [...form.koerper, neu] });
+  waehle(id);
+  zeigeMeldungKurz(`${NAMEN[neu.typ] ?? 'Körper'} ${id} gesetzt${neu.spiegel.includes('x') ? ' (mit Spiegelkopie — Symmetrie an)' : ''} — jetzt Flächen ziehen`);
+}
 function setzeVorlage(name) {
   const alt = koerper(), id = naechsteId();
   // WARUM neben dem gewählten Körper: so „setzt man an“ statt alles im Ursprung zu stapeln
   let pos = [0, 0, 0];
   if (alt) { const h = huelle(alt); pos = [alt.pos[0], alt.pos[1], Math.round(h.max[2] + 5)]; }
-  const k = neuerKoerper(name, id, { pos });
+  const k = mitSymmetrie(neuerKoerper(name, id, { pos }));
   aendere({ ...form, koerper: [...form.koerper, k] });
   waehle(id);
   zielAuf(id);
@@ -410,7 +454,11 @@ function zeigeTafeln() {
   }
   // Körper
   const k = koerper();
-  $('k-tafel').classList.toggle('aus', !k);
+  $('k-tafel').classList.toggle('aus', !k || !mehrOffen);
+  $('k-mehr').classList.toggle('versteckt', !k);
+  $('k-mehr').textContent = mehrOffen ? '▾ Details des Körpers ausblenden' : '▸ Details des Körpers (Spanten, Punkte, Lage …)';
+  $('k-symmetrie').textContent = symmetrie ? '⇋ Symmetrie: an' : '⇋ Symmetrie: aus';
+  $('k-symmetrie').classList.toggle('an', symmetrie);
   if (k) {
     $('k-titel').textContent = `${NAMEN[k.typ] ?? k.typ} ${k.id}`;
     $('k-op').textContent = k.op === 'minus' ? 'Minus (schneidet aus)' : 'Plus (Material)';
@@ -557,7 +605,7 @@ function zeigeMeldungKurz(text) {
 // ---------------- Bedienelemente verdrahten ----------------
 for (const [name, v] of Object.entries(VORLAGEN)) {
   const b = document.createElement('button'); b.textContent = v.name; b.title = 'Neuen Körper ansetzen (neben dem gewählten)';
-  b.addEventListener('click', () => setzeVorlage(name)); $('vorlagen').append(b);
+  b.title = 'Klicken, dann auf eine Fläche (oder den Boden) zeigen und klicken'; b.addEventListener('click', () => bedienung.setzen(name)); $('vorlagen').append(b);
 }
 $('f-art').innerHTML = ARTEN.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
 $('k-mat').innerHTML = MATS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
@@ -602,6 +650,45 @@ $('k-punkte-weg').addEventListener('click', () => {
   zeigeMeldungKurz('Umriss zurückgesetzt — wieder Rechteck mit Rundung und Fase');
 });
 $('k-skizze').addEventListener('click', starteSkizze);
+$('k-symmetrie').addEventListener('click', () => {
+  symmetrie = !symmetrie; try { localStorage.setItem(SYM, symmetrie ? 'an' : 'aus'); } catch { /* egal */ }
+  zeigeTafeln(); zeigeMeldungKurz(symmetrie ? 'Symmetrie an — neue Körper bekommen ihre Spiegelkopie (links ↔ rechts)' : 'Symmetrie aus — neue Körper ohne Spiegelkopie');
+});
+$('k-mehr').addEventListener('click', () => { mehrOffen = !mehrOffen; zeigeTafeln(); });
+for (const b of document.querySelectorAll('#am-teil button')) b.addEventListener('click', () => leistenKnopf(b.dataset.t));
+function leistenKnopf(t) {
+  const k = koerper(); if (!k) return;
+  if (['ziehen', 'schieben', 'drehen', 'groesse'].includes(t)) setzeModus(modus === t && t !== 'ziehen' ? 'ziehen' : t);
+  else if (t === 'kopie') dupliziere();
+  else if (t === 'minus') { if (k.fest) zeigeMeldungKurz('Körper ist fixiert'); else aendereKoerper(k.id, (x) => ({ ...x, op: x.op === 'minus' ? 'plus' : 'minus' })); }
+  else if (t === 'spiegel') schalteSpiegel('x');
+  else if (t === 'fest') { schalteFest(); setzeModus('ziehen'); }
+  else if (t === 'loeschen') loescheKoerper();
+  else if (t === 'mehr') { mehrOffen = !mehrOffen; zeigeTafeln(); }
+  zeigeLeiste();
+}
+/** Leiste am Teil: Zustand der Knöpfe. Lage setzt die Schleife (folgt der Kamera). */
+function zeigeLeiste() {
+  const k = koerper(), l = $('am-teil');
+  l.classList.toggle('versteckt', !k || skizze?.aktiv());
+  if (!k) return;
+  for (const b of l.querySelectorAll('button')) {
+    const t = b.dataset.t;
+    b.classList.toggle('an', t === modus || (t === 'mehr' && mehrOffen) || (t === 'fest' && !!k.fest) || (t === 'spiegel' && k.spiegel.includes('x')) || (t === 'minus' && k.op === 'minus'));
+    b.disabled = !!k.fest && ['schieben', 'drehen', 'groesse', 'minus', 'loeschen'].includes(t);
+  }
+  l.querySelector('[data-t="fest"]').textContent = k.fest ? '🔒 Gelöst?' : '🔓 Fixieren';
+  l.querySelector('[data-t="minus"]').textContent = k.op === 'minus' ? '◐ Material' : '◐ Ausschneiden';
+}
+/** Leiste über der Hülle des gewählten Körpers (Mitte oben, im Bild), bleibt im Bild. */
+function legeLeiste() {
+  const k = koerper(), l = $('am-teil'); if (!k || l.classList.contains('versteckt')) return;
+  const h = huelle(k), v = new THREE.Vector3((h.min[0] + h.max[0]) / 2, h.max[1], (h.min[2] + h.max[2]) / 2).project(camera);
+  const r = $('leinwand').getBoundingClientRect();
+  const x = Math.min(r.width - 340 - l.offsetWidth / 2, Math.max(240 + l.offsetWidth / 2, (v.x + 1) / 2 * r.width));
+  const y = Math.min(r.height - 60, Math.max(l.offsetHeight + 70, (1 - v.y) / 2 * r.height - 14));
+  l.style.left = x + 'px'; l.style.top = y + 'px';
+}
 $('w-home').addEventListener('click', () => fokus());
 for (const [i, a] of ['x', 'y', 'z'].entries()) {
   $('k-p' + a).addEventListener('change', (e) => { e.target.blur(); const k = koerper(); if (k) aendereKoerper(k.id, (x) => { x.pos[i] = +e.target.value; return x; }); });
@@ -674,7 +761,7 @@ function loescheKoerper() {
   zeigeMeldungKurz('Körper gelöscht — Strg+Z holt ihn zurück');
 }
 function fokus() {
-  wuerfel?.halt();
+  wuerfel?.halt(); wuerfel?.normal(); // WARUM normal(): fokus rechnet den Abstand für den normalen Bildwinkel
   const box = new THREE.Box3(); rohGruppe.traverse((o) => { if (o.isMesh) box.expandByObject(o); });
   const m = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
   const r = box.isEmpty() ? 30 : Math.max(12, box.getSize(new THREE.Vector3()).length());
@@ -688,19 +775,21 @@ addEventListener('keydown', (e) => {
   }
   // Skizze hat Vorrang: Enter/Esc/Rücktaste gehören ihr, die übrigen Werkstatt-Tasten ruhen
   if (skizze.aktiv()) { if (skizze.taste(e)) { e.preventDefault(); e.stopPropagation(); } return; }
+  // Push/Pull und Setzen: Zahl + Enter, Esc
+  if (bedienung.taste(e)) { e.preventDefault(); e.stopPropagation(); return; }
   const strg = e.ctrlKey || e.metaKey, t = e.key.toLowerCase();
   if (e.key === 'Escape' && punkteModus) { schaltePunkte(false); e.preventDefault(); return; }
+  if (e.key === 'Escape' && modus !== 'ziehen') { setzeModus('ziehen'); e.preventDefault(); return; }
   if (e.key === 'Escape' && gewaehlt !== null) { waehle(null); e.preventDefault(); return; }
   if (strg && t === 'z') { e.preventDefault(); e.shiftKey ? wiederholen() : rueckgaengig(); return; }
   if (strg && t === 'y') { e.preventDefault(); wiederholen(); return; }
   if (strg && t === 's') { e.preventDefault(); speichern(); return; }
   if (strg && t === 'd') { e.preventDefault(); dupliziere(); return; }
   if (strg) { griff.setTranslationSnap(null); griff.setRotationSnap(null); return; } // Strg halten = ohne Raster
-  if (['w', 'e', 's'].includes(t) && koerper()?.fest) zeigeMeldungKurz('Körper ist fixiert — L oder rechts „Lösen“');
-  if (['w', 'e', 's'].includes(t) && punkteModus) schaltePunkte(false); // Griffe statt Punkte
-  if (t === 'w') griff.setMode('translate');
-  else if (t === 'e') griff.setMode('rotate');
-  else if (t === 's') griff.setMode('scale');
+  if (t === 'w') setzeModus('schieben');
+  else if (t === 'e') setzeModus('drehen');
+  else if (t === 's') setzeModus('groesse');
+  else if (t === 'q') setzeModus('ziehen');
   else if (t === 'v') schalteSchweissen();
   else if (t === 'm') schalteSpiegel('x');
   else if (t === 'k') starteSkizze();
@@ -717,15 +806,22 @@ const wuerfel = erstelleAnsichtswuerfel({ renderer: bild.renderer, camera, steue
 const skizze = erstelleSkizze({ scene, camera, leinwand: $('leinwand'), steuer, wuerfel, meldung: zeigeMeldungKurz,
   fertig(daten) {
     const id = naechsteId();
-    aendere({ ...form, koerper: [...form.koerper, { ...daten, id }] });
+    aendere({ ...form, koerper: [...form.koerper, mitSymmetrie({ ...daten, id })] });
     waehle(id);
     zeigeMeldungKurz(`Körper aus der Skizze erstellt (${daten.spanten[0].p.length} Punkte) — W schieben, P Punkte ziehen, rechts Spanten formen`);
   } });
 function starteSkizze() {
   if (punkteModus) punkteModus = false;
-  griff.detach(); punktGruppe.clear();
-  skizze.start();
+  bedienung.abbrechen(); griff.detach(); punktGruppe.clear();
+  skizze.start(); zeigeLeiste();
 }
+const bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, rohGruppe, wuerfel, griff,
+  holeForm: () => form, koerper, waehle, meldung: zeigeMeldungKurz, platziere,
+  darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen',
+  vorschau(id, k) { ziehen = true; form = normalisiere({ ...form, koerper: form.koerper.map((x) => (x.id === id ? k : x)) }); schnellZeichnen(id); },
+  uebernehme(merk) { ziehen = false; zurueck.push(merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; aendere(form, { merken: false }); },
+  setzeForm(f, merk) { ziehen = false; if (merk) { zurueck.push(merk); vor.length = 0; } aendere(f, { merken: false }); },
+});
 
 // ---------------- Start ----------------
 neuZeichnen(); fokus(); waehle(gewaehlt);
@@ -738,6 +834,7 @@ function schleife() {
     const kam = camera.matrixWorld.elements.map((v) => v.toFixed(3)).join();
     if (kam !== letzteKamera && performance.now() - punkteUhr > 100) { letzteKamera = kam; punkteUhr = performance.now(); zeigePunkte(); }
   }
+  legeLeiste();
   bild.zeichnen(); wuerfel.zeichne(); requestAnimationFrame(schleife);
 }
 requestAnimationFrame(schleife);
@@ -749,11 +846,11 @@ window.spiel = {
   lade(f) { aendere(kopie(f)); fokus(); },
   setze: setzeVorlage, waehle, rueckgaengig, wiederholen, fokus, speichern,
   spant(feld, wert) { const k = koerper(); if (k) setzeSpantFeld(k.id, feld, wert, true); },
-  skizze, wuerfel, punkte: schaltePunkte, spiegeln: schalteSpiegel, spiegelKopie, klappe, fest: schalteFest, get punkteAnsicht() { return punkteAnsicht; },
+  skizze, wuerfel, bedienung, modus: setzeModus, kamera: camera, steuer, get symmetrie() { return symmetrie; }, punkte: schaltePunkte, spiegeln: schalteSpiegel, spiegelKopie, klappe, fest: schalteFest, get punkteAnsicht() { return punkteAnsicht; },
   get spantNr() { return spantNr; }, set spantNr(n) { spantNr = n; zeigeHilfen(); const k = koerper(); if (k) zeigeSpant(k); },
   /** Bildpunkt (clientX/Y) eines Punktes oder einer Plus-Marke im Punkte-Modus — für Mausprüfungen */
   punktBild(art, j, i) { const o = punktGruppe.children.find((x) => x.userData.art === art && x.userData.j === j && (i === undefined || x.userData.i === i)); if (!o) return null;
     const v = o.position.clone().project(camera), r = $('leinwand').getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
-  ansicht(r = [0.7, 0.45, 0.8]) { const m = steuer.target.clone(), d = camera.position.distanceTo(m); camera.position.copy(m).add(new THREE.Vector3(...r).normalize().multiplyScalar(d)); steuer.update(); bild.zeichnen(); },
+  ansicht(r = [0.7, 0.45, 0.8]) { wuerfel.normal(); const m = steuer.target.clone(), d = camera.position.distanceTo(m); camera.position.copy(m).add(new THREE.Vector3(...r).normalize().multiplyScalar(d)); steuer.update(); bild.zeichnen(); },
   messwerte: () => { bild.zeichnen(); return bild.messwerte(); },
 };

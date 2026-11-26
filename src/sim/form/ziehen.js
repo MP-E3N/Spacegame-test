@@ -243,7 +243,8 @@ const raster = (v) => Math.round(v * 2) / 2 + 0;
 export function ablegen(huelle, treffer) {
   const n = treffer.n, a = [0, 1, 2].reduce((b, i) => (Math.abs(n[i]) > Math.abs(n[b]) ? i : b), 1), vz = n[a] < 0 ? -1 : 1;
   return [0, 1, 2].map((i) => {
-    if (i === a) return treffer.p[i] - (vz > 0 ? huelle.min[i] : huelle.max[i]) + 0;
+    // WARUM auf 0,1 mm runden (Projektleitung R18): Strahl-Treffer tragen Rechenrauschen (5,999999999 statt 6) in die Daten
+    if (i === a) return Math.round((treffer.p[i] - (vz > 0 ? huelle.min[i] : huelle.max[i])) * 1e4) / 1e4 + 0;
     return raster(treffer.p[i]) - (huelle.min[i] + huelle.max[i]) / 2 + 0;
   });
 }
