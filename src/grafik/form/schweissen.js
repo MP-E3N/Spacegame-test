@@ -27,7 +27,11 @@ const PLATZ = Object.fromEntries(MATERIALIEN.map((n) => [n, new THREE.MeshBasicM
 const NAME = new Map(MATERIALIEN.map((n) => [PLATZ[n], n]));
 
 // 1 … 3 mm in 0,25-mm-Stufen nach Listenplatz — WARUM je Körper verschieden: zwei gleich hohe Deckflächen mit gleicher
-// Zugabe lägen wieder genau aufeinander (Splitter-Flut, gemessen R16); neun Nachbarn in Folge sind immer verschieden
+// Zugabe lägen wieder genau aufeinander (Splitter-Flut, gemessen R16); neun Nachbarn in Folge sind immer verschieden.
+// Runde 20: eine Spiegelkopie, die ihr Original nicht berührt, bekommt dessen Zugabe (formGeometrie) — WARUM: bekamen
+// Original und Kopie verschiedene Zugaben,
+// lagen ihre Stirnflächen 0,25 mm auseinander; die CSG schnitt das Deck darunter an beiden Linien und ließ 0,25 mm
+// breite Splitter stehen (offene Kanten, Generator-Träger 279: Kasten-Paar auf dem Deck).
 const zugabeVon = (i) => 0.001 + 0.00025 * (i % 9);
 
 let evaluator = null;
@@ -92,6 +96,14 @@ export function formGeometrie(roheForm, { schweissen = true, zugabe = true, prue
   const form = normalisiere(roheForm);
   form.koerper = form.koerper.filter((k) => k.spanten.length >= 2);
   const liste = koerperListe(form).map(({ k, lage }, i) => ({ k, lage, h: huelle(k, lage), e: zugabe ? zugabeVon(i) : 0 }));
+  // Spiegelkopie, die ihr Original nicht berührt → Zugabe des Originals (Runde 20, siehe zugabeVon). WARUM nur dann:
+  // berühren sie sich (Körper an der Spiegelebene), bräuchten sie wieder verschiedene Zugaben (Prüfform 30, R16)
+  const erstes = new Map();
+  for (const x of liste) {
+    const o = erstes.get(x.k);
+    if (!o) erstes.set(x.k, x);
+    else if (!ueber(x.h, o.h, 0.01)) x.e = o.e;
+  }
   const plus = liste.filter((x) => x.k.op === 'plus'), minus = schweissen ? liste.filter((x) => x.k.op === 'minus') : [];
   const eimer = {};
   let csg = 0, gruppenZahl = 0;
