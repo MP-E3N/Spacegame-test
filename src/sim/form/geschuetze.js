@@ -2,6 +2,7 @@
 //        (eigene Höhenprobe gegen die Form-Lofts) und Montage-Prüfung. Rein rechnend: ohne three, ohne DOM, ohne Zufall.
 // LIEFERT: GESCHUETZE = { pdc, flak, schwer } · turmAusBauteil(eintrag, id, form) → Turm-Datensatz | null
 //          · pruefeGeschuetze(form) → [{ code, stufe, text, bauteil }]
+//          · formHoehenfeld(form, versatz) → Höhenfeld für die Rumpf-Sperre (R21, Kopf der Funktion) | null
 // REGEL (Protokoll R19, Entscheidungen 2 + 3):
 //   - Katalogeintrag { art: 'geschuetz', name, masse (t), turm: { typ: 'flak' | 'schwer', s, sockel }, gier: [mitte,
 //     halbweite] RELATIV im Turm-Rahmen, aussen?, nick: [min, max], flaeche: ['oben', 'unten'] }. aussen: true → die
@@ -286,6 +287,86 @@ function schussfeld(sz, t) {
 
 const m1 = (v) => v.toFixed(1).replace('.', ',');
 const pz = (v) => Math.round(v * 100);
+
+// ---------------- Höhenfeld für die Rumpf-Sperre (R21: Form im Gefecht) ----------------
+export const HOEHENFELD = {
+  zelleMin: 0.5,     // m — Probenabstand (WARUM 0,5: Masten/Antennen der Formen sind ≥ 0,5 m dick, Rohre 0,2–0,4 m)
+  probenMax: 60000,  // senkrechte Proben höchstens (sonst wächst die Zelle) — hält den Aufbau < 0,5 s auch bei 1000 m
+  rand: 0.5,         // m — Aufblasen wie sperre.js RAND (Rohrdicke), senkrecht und waagrecht
+};
+const hoehenfelder = new WeakMap(); // form → Map(versatz → Feld)
+
+/**
+ * Höhenfeld einer (normalisierten) Form für rumpfSperre(turm, quelle) in sperre.js, in SCHIFFS-Koordinaten
+ * (Form + versatz, wie formZuSchiff). → { zelle, x0, z0, nx, nz, oben, unten (Float64Array nx·nz), huelle { x0, x1, z0, z1 },
+ * weite, hoehe(x, z, oben) → y | null } oder null (keine Plus-Körper).
+ * hoehe(…, true) = höchste Oberkante des Materials über (x, z) + rand, hoehe(…, false) = tiefste Unterkante − rand.
+ * WARUM senkrechte Geradenproben (festStrecken): dieselbe Rechnung wie die Höhenprobe der Türme — Plus minus Minus,
+ * Drehung und Spiegel stimmen von selbst. Raster je Probenpunkt, danach Maximum über (2r + 1)² Nachbarn mit
+ * r = ⌈rand / zelle⌉ + 1: Material bis rand neben dem Abfragepunkt zählt sicher mit (Abfrage = nächster Probenpunkt).
+ */
+export function formHoehenfeld(form, versatz = [0, 0, 0]) {
+  let karte = hoehenfelder.get(form);
+  if (!karte) hoehenfelder.set(form, karte = new Map());
+  const schluessel = versatz.join(',');
+  if (karte.has(schluessel)) return karte.get(schluessel);
+  const sz = szene(form), plus = sz.filter((kp) => kp.plus);
+  if (!plus.length) { karte.set(schluessel, null); return null; }
+  let hx0 = Infinity, hx1 = -Infinity, hz0 = Infinity, hz1 = -Infinity;
+  for (const kp of plus) { hx0 = Math.min(hx0, kp.h.min[0]); hx1 = Math.max(hx1, kp.h.max[0]); hz0 = Math.min(hz0, kp.h.min[2]); hz1 = Math.max(hz1, kp.h.max[2]); }
+  const H = HOEHENFELD, dx = hx1 - hx0, dz = hz1 - hz0;
+  const c = Math.max(H.zelleMin, Math.sqrt((dx + 1) * (dz + 1) / H.probenMax));
+  const r = Math.ceil(H.rand / c) + 1;            // Nachbar-Radius in Zellen
+  const x0 = hx0 - r * c, z0 = hz0 - r * c;       // Rand von r Zellen: die Dehnung reicht über die Hülle hinaus
+  const nx = Math.ceil(dx / c) + 2 * r + 1, nz = Math.ceil(dz / c) + 2 * r + 1;
+  const ob = new Float64Array(nx * nz).fill(-Infinity), un = new Float64Array(nx * nz).fill(Infinity);
+  for (let k = 0; k < nz; k++) {
+    const pz = z0 + k * c;
+    // WARUM je Zeile vorsortieren: festStrecken prüft sonst für jede Probe die Hüllen aller Körper
+    const zeile = sz.filter((kp) => !(kp.h.max[2] < pz || kp.h.min[2] > pz));
+    if (!zeile.some((kp) => kp.plus)) continue;
+    for (let i = 0; i < nx; i++) {
+      const px = x0 + i * c;
+      const st = festStrecken(zeile, [px, -W, pz], [0, 1, 0], [[px, -Infinity, pz], [px, Infinity, pz]], true);
+      if (!st.length) continue;
+      ob[k * nx + i] = st[st.length - 1][1] - W; un[k * nx + i] = st[0][0] - W;
+    }
+  }
+  // Dehnung (getrennt nach x und z) + senkrechter Rand, dann um den Versatz in Schiffs-Koordinaten
+  const dehne = (a, max) => {
+    const b = new Float64Array(a.length);
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      let m = max ? -Infinity : Infinity;
+      for (let j = Math.max(0, i - r); j <= Math.min(nx - 1, i + r); j++) { const v = a[k * nx + j]; m = max ? (v > m ? v : m) : (v < m ? v : m); }
+      b[k * nx + i] = m;
+    }
+    const e = new Float64Array(a.length);
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      let m = max ? -Infinity : Infinity;
+      for (let j = Math.max(0, k - r); j <= Math.min(nz - 1, k + r); j++) { const v = b[j * nx + i]; m = max ? (v > m ? v : m) : (v < m ? v : m); }
+      e[k * nx + i] = m;
+    }
+    return e;
+  };
+  const vx = versatz[0], vy = versatz[1], vz = versatz[2];
+  const oben = dehne(ob, true), unten = dehne(un, false);
+  for (let q = 0; q < oben.length; q++) { oben[q] += vy + H.rand; unten[q] += vy - H.rand; }
+  const sx0 = x0 + vx, sz0 = z0 + vz;
+  const huelleS = { x0: sx0, x1: sx0 + (nx - 1) * c, z0: sz0, z1: sz0 + (nz - 1) * c };
+  const feld = {
+    zelle: c, x0: sx0, z0: sz0, nx, nz, oben, unten, huelle: huelleS,
+    weite: Math.hypot(huelleS.x1 - huelleS.x0, huelleS.z1 - huelleS.z0),
+    /** Ober- (oben) bzw. Unterkante an (x, z) in Schiffs-Koordinaten, null = kein Material. */
+    hoehe(x, z, o) {
+      const i = Math.round((x - sx0) / c), k = Math.round((z - sz0) / c);
+      if (i < 0 || i >= nx || k < 0 || k >= nz) return null;
+      const v = (o ? oben : unten)[k * nx + i];
+      return Number.isFinite(v) ? v : null;
+    },
+  };
+  karte.set(schluessel, feld);
+  return feld;
+}
 
 /** Montage-Prüfung aller Geschütze einer (normalisierten) Form. */
 export function pruefeGeschuetze(form) {
