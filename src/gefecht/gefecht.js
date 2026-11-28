@@ -20,6 +20,7 @@ import { formZuSchiff } from '../sim/form/bauteile.js';
 import { formId } from '../sim/form/form.js';
 import { erstelleFormSchiff } from '../grafik/form/schiff.js';
 import { BEISPIEL_SCHIFFE } from '../sim/form/beispiele.js';
+import { erstelleCic } from '../cic/cic.js';
 
 const SCHRITT = 1 / 60;
 const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei — Maus ziehen, Rad zoomt' };
@@ -61,15 +62,22 @@ const feindGrafik = erstelleDrohnenGrafik(bild.scene, 16, { skala: 2, augePx: 6 
 const feindFeuer = erstelleAngreiferGeschossGrafik(bild.scene, { max: angreifer.geschosse.max });
 
 // Flak-Befehl (Seite → Sim): Standards wie im Labor, Killzone/Räume rechnet die KI im Schiffsrahmen
-const flakBefehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800, v0: 1100 };
+// R23: modus/Freigabe/Munition/Zielvorgabe kommen aus der Gefechtszentrale (Waffen-Posten) — darum hier ohne modus.
+const flakBefehl = { feuerFrei: true, folgen: true, schirmAbstand: 800, v0: 1100 };
+const zentrale = gefecht.zentrale;
+const cic = erstelleCic({ gefecht, zentrale, flakBefehl, name: SCHIFFSNAME, sende: (b) => zentrale.befehl(b) });
+// Tab = Gefechtszentrale auf/zu (Nutzer R23: „ein CIC … zentral ein Lageplan“)
+addEventListener('keydown', (e) => { if (e.code === 'Tab') { e.preventDefault(); cic.umschalten(); } });
+const waffen = () => zentrale.zustand.waffen;
 
 // ---------------- Flak-Tasten (zusätzlich zur Flugsteuerung aus eingabe.js) ----------------
 const flakTasten = new Set();
 addEventListener('keydown', (e) => { if (!e.repeat && ['Space', 'Digit1', 'Digit2', 'Numpad1', 'Numpad2', 'KeyL'].includes(e.code)) flakTasten.add(e.code); });
 function flakBedienen() {
-  if (flakTasten.has('Space')) { flakBefehl.feuerFrei = !flakBefehl.feuerFrei; zeigeMeldung(flakBefehl.feuerFrei ? 'Flak: Feuer frei' : 'Flak: Feuer halt'); }
-  if (flakTasten.has('Digit1') || flakTasten.has('Numpad1')) { flakBefehl.modus = 'sperrfeuer'; zeigeMeldung('Flak: Sperrfeuer — Raum vor den Angreifern sättigen'); }
-  if (flakTasten.has('Digit2') || flakTasten.has('Numpad2')) { flakBefehl.modus = 'zielfeuer'; zeigeMeldung('Flak: Zielfeuer — Türme wählen Ziele'); }
+  // WARUM über die Zentrale: sonst gälten zwei Freigaben nebeneinander (CIC-Waffen-Posten und Tasten)
+  if (flakTasten.has('Space')) { const frei = !waffen().frei; zentrale.befehl({ station: 'waffen', art: 'feuer', frei }); zeigeMeldung(frei ? 'Waffen: Feuer frei' : 'Waffen: Feuer halt'); }
+  if (flakTasten.has('Digit1') || flakTasten.has('Numpad1')) { zentrale.befehl({ station: 'waffen', art: 'modus', modus: 'sperrfeuer' }); zeigeMeldung('Waffen: Sperrfeuer — Raum vor den Angreifern sättigen'); }
+  if (flakTasten.has('Digit2') || flakTasten.has('Numpad2')) { zentrale.befehl({ station: 'waffen', art: 'modus', modus: 'zielfeuer' }); zeigeMeldung('Waffen: Zielfeuer — Türme wählen Ziele'); }
   if (flakTasten.has('KeyL')) { grafik.regler.spurImmer = !grafik.regler.spurImmer; zeigeMeldung(grafik.regler.spurImmer ? 'Leuchtspur dauerhaft' : 'Leuchtspur nur im Nahbereich'); }
   flakTasten.clear();
 }
@@ -91,7 +99,8 @@ function gefechtHud(dt) {
   gsetze('abschuesse', String(gefecht.zaehler.abschuesse));
   // WARUM „durch Beschuss“: der Rumpf-Wert unten links enthält auch Kollisionen (Asteroiden) — Spieltest R14
   gsetze('treffer', gefecht.zaehler.trefferAmSchiff + ' · −' + Math.round(gefecht.zaehler.schadenAmSchiff / welt.werte.hpMax * 100) + ' % Rumpf');
-  gsetze('flak', (flakBefehl.modus === 'sperrfeuer' ? 'Sperrfeuer' : 'Zielfeuer') + ' · ' + (flakBefehl.feuerFrei ? 'frei' : 'HALT'));
+  const wa = waffen(), frei = zentrale.wirkung.feuerFrei;
+  gsetze('flak', (wa.modus === 'sperrfeuer' ? 'Sperrfeuer' : 'Zielfeuer') + ' · ' + (frei ? 'frei' : wa.frei ? 'GESICHERT (Alarm)' : 'HALT'));
   const nah = !!gefecht.ki.lage?.nahbereich;
   gsetze('alarm', nah ? 'NAHBEREICH' : '');
   gel.alarm.classList.toggle('an', nah);
@@ -136,6 +145,11 @@ function frame(jetzt) {
   const e = leseEingabe();
   flakBedienen();
   const befehl = window.spiel.befehlErsatz ? { ...e.befehl, ...window.spiel.befehlErsatz } : e.befehl;
+  // Ruder in die Hand nehmen schaltet den Navigator-Autopiloten ab (Vorschlag Netz-Architekt R23) — WARUM: sonst
+  // kämpfen Spieler und Autopilot ums Ruder, und das Schiff „hört nicht“
+  if (!cic.aktiv && zentrale.zustand.navigator.kursAktiv && (befehl.gieren || befehl.nicken || befehl.rollen)) {
+    zentrale.befehl({ station: 'navigator', art: 'kursAus' }); zeigeMeldung('Autopilot aus — Ruder von Hand');
+  }
   if (e.neustart) { gefecht.zuruecksetzen(); gelesen = 0; wrackGemeldet = false; zeigeMeldung('Neustart — Angreifer im Anflug'); }
   if (e.hilfe) hilfeUmschalten();
   if (e.kamera) zeigeMeldung('Kamera: ' + KAMERA_NAMEN[kamera.naechsterModus()]);
@@ -153,19 +167,20 @@ function frame(jetzt) {
   staub.aktualisiere(bild.camera.position, sim.z.vel);
   bild.zeichnen();
   gefechtHud(dt);
+  cic.aktualisiere(dt);
   requestAnimationFrame(frame);
 }
 
 // ---------------- DEBUG / Testhilfen (Browser-Konsole) ----------------
 window.spiel = {
-  THREE, bild, gefecht, welt, sim, flak, angreifer, grafik, modell, kamera, flakBefehl, SCHRITT,
+  THREE, bild, gefecht, welt, sim, flak, angreifer, grafik, modell, kamera, flakBefehl, SCHRITT, cic, zentrale,
   befehlErsatz: null,
   /** n ganze Bilder von Hand (verdecktes Pane: requestAnimationFrame läuft nicht). */
   bilder(n = 60, befehl = {}) {
     flakBedienen();
     for (let i = 0; i < n; i++) { simSchritt({ ...befehl, ...(this.befehlErsatz ?? {}) }); zeit += SCHRITT; darstellen(SCHRITT, 1); kamera.update(SCHRITT, lagePos, lageRot, null); }
     staub.aktualisiere(bild.camera.position, sim.z.vel);
-    bild.zeichnen(); gefechtHud(SCHRITT * n);
+    bild.zeichnen(); gefechtHud(SCHRITT * n); cic.aktualisiere(SCHRITT * n);
     return { ...gefecht.zaehler, hp: Math.round(sim.z.hp), welle: angreifer.welle.nr, ...grafik.zaehler };
   },
   taste(code) { flakTasten.add(code); return code; },

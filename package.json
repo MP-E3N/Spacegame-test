@@ -7,7 +7,7 @@
     "dev": "vite --port 5180 --strictPort",
     "build": "vite build",
     "preview": "vite preview --port 5180",
-    "test": "node tests/flug.mjs && node tests/schiffe.mjs && node tests/waffen.mjs && node tests/ki.mjs && node tests/werft.mjs && node tests/form.mjs && node tests/ziehen.mjs && node tests/bauteile.mjs && node tests/generator.mjs && node tests/kanten.mjs && node tests/gefecht.mjs && node tests/dicht.mjs && node tests/silberlanze.mjs"
+    "test": "node tests/flug.mjs && node tests/schiffe.mjs && node tests/waffen.mjs && node tests/ki.mjs && node tests/werft.mjs && node tests/form.mjs && node tests/ziehen.mjs && node tests/bauteile.mjs && node tests/generator.mjs && node tests/kanten.mjs && node tests/gefecht.mjs && node tests/dicht.mjs && node tests/silberlanze.mjs && node tests/zentrale.mjs"
   },
   "dependencies": {
     "three": "^0.187.0",

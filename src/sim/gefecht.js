@@ -34,6 +34,7 @@ import { inSchiffsrahmen } from './ki/schiffsrahmen.js';
 import { formHoehenfeld } from './form/geschuetze.js';
 import { punktInForm } from './form/kugeln.js';
 import { koerperListe } from './form/form.js';
+import { erstelleZentrale } from './zentrale.js';
 
 const START = { flak: 303, ki: 202, angreifer: 101 };
 const ABSCHUSS_VORRAT = 32;
@@ -137,11 +138,25 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
   const zaehler = { takt: 0, schuesse: 0, abschuesse: 0, trefferAmSchiff: 0, schadenAmSchiff: 0 };
   const abschuesse = Array.from({ length: ABSCHUSS_VORRAT }, () => ({ x: 0, y: 0, z: 0 }));
   const ergebnis = { kollision: null, treffer: 0 };
+  // R23 Gefechtszentrale (CIC, Protokoll E5): Stationen wirken über die Zentrale-Sim. WARUM eigene feste Objekte
+  // steuerMix/fbZ: keine neuen Objekte im Schritt; ohne Befehle/Treffer, Alarm Rot = keine Wirkung (bitgleich).
+  const zentrale = erstelleZentrale({ kugeln: daten.kugeln, laenge: daten.laenge });
+  const LEER = [];
+  const lageZ = { schiffZ: schiff.z, treffer: LEER, tuerme: flak.tuerme, ziele: angreifer.ziele, welle: angreifer.welle, werte: null };
+  const steuerMix = {}, fbZ = {};
   const halt = {}; // Haltebefehl für das Wrack — WARUM fest angelegt: keine neuen Objekte im Schritt (Befund Prüfer R14)
 
   function schritt(dt, steuerBefehl, flakBefehl) {
+    // 0) Wirkung der Zentrale aus dem vorigen Schritt (ein Schritt Verzug — deterministisch, Koop)
+    const w = zentrale.wirkung;
+    Object.assign(steuerMix, steuerBefehl);
+    if (w.steuer?.lenkt) { steuerMix.gieren = w.steuer.gieren; steuerMix.nicken = w.steuer.nicken; steuerMix.rollen = w.steuer.rollen; }
+    if (w.steuer?.faehrt) { steuerMix.hebel = w.steuer.hebel; if (w.steuer.stopp) steuerMix.stopp = true; }
+    if (!w.nachbrennerFrei) steuerMix.nachbrenner = false;
+    if (w.drehFaktor < 1) { steuerMix.gieren = (steuerMix.gieren ?? 0) * w.drehFaktor; steuerMix.nicken = (steuerMix.nicken ?? 0) * w.drehFaktor; steuerMix.rollen = (steuerMix.rollen ?? 0) * w.drehFaktor; }
+    if (schiff.z.hebel > w.hebelMax) schiff.z.hebel = w.hebelMax;
     // 1) Schiff + Kollision
-    ergebnis.kollision = welt.schritt(dt, steuerBefehl);
+    ergebnis.kollision = welt.schritt(dt, steuerMix);
     // 2) Angreifer (Flak-Ereignisse des vorigen Schritts), Treffer am Schiff verbuchen
     const a = angreifer.schritt(dt, flak.ereignisse, schiff.z, daten.kugeln);
     let schaden = 0;
@@ -152,6 +167,10 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
       zaehler.trefferAmSchiff += a.treffer.length; zaehler.schadenAmSchiff += schaden;
     }
     ergebnis.treffer = schaden;
+    // Zentrale: Treffer → Bereiche, Trupps reparieren (nie mehr als den Schaden des Bereichs)
+    lageZ.treffer = a?.treffer ?? LEER; lageZ.werte = welt.werte;
+    const wz = zentrale.schritt(dt, lageZ);
+    if (!schiff.z.zerstoert && wz.reparatur > 0) schiff.z.hp = Math.min(welt.werte.hpMax, schiff.z.hp + wz.reparatur * dt);
     for (const ab of a?.abschuesse ?? []) {
       const z = abschuesse[zaehler.abschuesse % ABSCHUSS_VORRAT];
       z.x = ab.pos.x; z.y = ab.pos.y; z.z = ab.pos.z;
@@ -161,9 +180,16 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
     flak.setzeRahmen(schiff.z);
     zieleLokal = inSchiffsrahmen(angreifer.ziele, schiff.z, zieleLokal);
     // WARUM kein Feuer als Wrack: ein zerstörtes Schiff hat keine Energie für die Türme
-    let fb = flakBefehl;
-    if (schiff.z.zerstoert) { Object.assign(halt, flakBefehl); halt.feuerFrei = false; fb = halt; }
+    Object.assign(fbZ, flakBefehl);
+    const wa = zentrale.zustand.waffen;
+    // WARUM „?? Zentrale“: ein ausdrücklicher Seiten-/Testbefehl (modus im flakBefehl) gilt weiter (Tests, Labor-Weg);
+    // die Gefecht-Seite lässt modus weg und schaltet über die Zentrale (Tasten 1/2/Leertaste = Waffen-Posten).
+    fbZ.feuerFrei = (flakBefehl.feuerFrei ?? true) && wz.feuerFrei; fbZ.modus = flakBefehl.modus ?? wa.modus;
+    fbZ.hauptMunition = flakBefehl.hauptMunition ?? wa.munition; fbZ.zielVorgabe = flakBefehl.zielVorgabe ?? wa.zielVorgabe;
+    let fb = fbZ;
+    if (schiff.z.zerstoert) { Object.assign(halt, fbZ); halt.feuerFrei = false; fb = halt; }
     const befehle = ki.schritt(dt, fb, zieleLokal, flak.tuerme);
+    for (const i of wz.tuermeAus) befehle[i].feuer = false; // beschädigt / ohne Energie / ohne Besatzung
     flak.schritt(dt, befehle, angreifer.ziele);
     zaehler.schuesse += flak.ereignisse.schuesse.length;
     zaehler.takt++;
@@ -171,13 +197,15 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
   }
 
   function zuruecksetzen() {
-    welt.zuruecksetzen(); flak.zuruecksetzen(); ki.zuruecksetzen?.(); angreifer.zuruecksetzen();
+    welt.zuruecksetzen(); flak.zuruecksetzen(); ki.zuruecksetzen?.(); angreifer.zuruecksetzen(); zentrale.zuruecksetzen();
     for (const k of Object.keys(zaehler)) zaehler[k] = 0;
     // R22 (Pflege): Neustart = frische Instanz — auch die eigenen Arbeitsfelder (Ziele im Schiffsrahmen, Abschuss-Ring,
     // Wrack-Haltebefehl, letztes Ergebnis). WARUM zieleLokal neu: eine frische Instanz beginnt mit leerer Liste.
     zieleLokal = [];
     for (const a of abschuesse) a.x = a.y = a.z = 0;
     for (const k of Object.keys(halt)) delete halt[k];
+    for (const k of Object.keys(steuerMix)) delete steuerMix[k];
+    for (const k of Object.keys(fbZ)) delete fbZ[k];
     ergebnis.kollision = null; ergebnis.treffer = 0;
   }
 
@@ -191,7 +219,7 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
   }
 
   return {
-    welt, schiff, flak, ki, angreifer, daten, lafetten, zaehler, abschuesse, schritt, zuruecksetzen, pruefsumme, START,
+    welt, schiff, flak, ki, angreifer, zentrale, daten, lafetten, zaehler, abschuesse, schritt, zuruecksetzen, pruefsumme, START,
     typ: name, istForm, stumm, schussfeld, abstaende, hoehenfeld, ueberzaehlig,
     get zieleLokal() { return zieleLokal; },
   };
