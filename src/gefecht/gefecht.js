@@ -210,7 +210,7 @@ setTimeout(() => {
   if (formFehler) zeigeMeldung(formFehler);
   else if (formDaten) {
     const stumm = gefecht.stumm?.length ?? gefecht.stumm ?? 0;
-    zeigeMeldung(`Gefecht mit ${SCHIFFSNAME}: ${gefecht.lafetten.length} Flak-Türme${stumm ? ` (${stumm} stumm — Montage prüfen)` : ''}` +
+    zeigeMeldung(`Gefecht mit ${SCHIFFSNAME}: ${gefecht.lafetten.length} Türme${stumm ? ` (${stumm} stumm — Montage prüfen)` : ''}` +
       (formDaten.flugtauglich ? '' : ' · NICHT flugtauglich: ' + (formDaten.meldungen.find((m) => m.stufe === 'fehler')?.text ?? '')));
   }
 }, 300);

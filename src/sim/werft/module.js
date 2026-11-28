@@ -194,7 +194,7 @@ ROH.push({
 // Türme: Ursprung im Fußpunkt, Ruhelage gier 0 (Rohre nach +Z), nick 0.
 const turmPunkt = () => ({ id: 'fuss', p: [0, 0, 0], n: [0, -1, 0], u: [0, 0, 1], groesse: 'S', art: 'turm', dreh: [0, 1, 2, 3], stecker: true });
 const PI = Math.PI;
-for (const [id, name, typ, s, nick] of [['turm_flak', 'Flak-Turm', 'flak', 1, [-0.05, 1.45]], ['turm_schwer', 'Schwerer Turm', 'schwer', 1.3, [-0.1, 0.8]]]) {
+for (const [id, name, typ, s, nick] of [['turm_flak', 'Flak-Gatling', 'flak', 1, [-0.05, 1.45]], ['turm_schwer', 'Hauptbatterie', 'schwer', 1.3, [-0.1, 0.8]]]) {
   const fr = TURM.fussR * s, mz = (TURM.zapfenZ + TURM.rohrZ + TURM.rohrL / 2) * s;
   ROH.push({
     id, name, art: 'turm', grafik: 'turm', teile: [],

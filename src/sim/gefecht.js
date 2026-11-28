@@ -44,7 +44,8 @@ const FEST = new Set(['bollwerk', 'ambos']);
  *  Zünder 150, rumpfZiel 90 ≈ 0,35 · 255 m, Vorrat 640 / 14 Türme, Splitter 256 / 14). */
 export const GEFECHT_FORM = {
   mindestRand: 37, zuenderRand: 17, rumpfZielAnteil: 0.35, rumpfZielMin: 5,
-  geschosseJeTurm: 46, splitterJeTurm: 19, turmMax: 255, // flak.js merkt den Turm je Granate in einem Uint8Array
+  geschosseJeTurm: 100, splitterJeTurm: 64, // R23: Gatling 36 Schuss/s (Waffentechniker; vorher 46 / 19)
+  turmMax: 255, // flak.js merkt den Turm je Granate in einem Uint8Array
   schussfeldGier: 48, schussfeldNick: 8,
 };
 
