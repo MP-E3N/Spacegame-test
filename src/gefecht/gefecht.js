@@ -15,7 +15,7 @@ import { erstelleDrohnenGrafik } from '../labor/drohnen.js';
 import { lokaleGeschwindigkeit } from '../sim/schiff.js';
 import { erstelleGefecht } from '../sim/gefecht.js';
 import { leseEingabe } from '../eingabe.js';
-import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig } from '../hud.js';
+import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig, zeigeSchiff } from '../hud.js';
 import { formZuSchiff } from '../sim/form/bauteile.js';
 import { formId } from '../sim/form/form.js';
 import { erstelleFormSchiff } from '../grafik/form/schiff.js';
@@ -183,6 +183,7 @@ if (wahl) {
   // WARUM blur: sonst steuern Pfeil-/Buchstabentasten danach die Auswahl statt des Schiffs
   wahl.addEventListener('keydown', (e) => { if (e.key === 'Escape') wahl.blur(); });
 }
+if (formDaten) zeigeSchiff(SCHIFFSNAME); // Spieltest R21 (Soll): oben stand weiter „STEUER · BT-12 BOLLWERK“
 setTimeout(() => {
   if (formFehler) zeigeMeldung(formFehler);
   else if (formDaten) {

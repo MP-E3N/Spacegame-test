@@ -499,7 +499,13 @@ export function erstelleBedienung(ctx) {
 
   // Prüfer R18: bricht der Browser den Zeiger ab (Fokuswechsel, Touch), Zug sauber beenden statt Kamera gesperrt zu lassen
   addEventListener('pointercancel', () => { unten = null; if (zug) endeZug(true); if (schieb) endeSchieben(true); if (setzen?.umsetzen) endeUmsetzen(true); }, { capture: true });
-  leinwand.addEventListener('lostpointercapture', () => { if (zug && !unten) endeZug(true); });
+  leinwand.addEventListener('lostpointercapture', () => {
+    if (zug && !unten) endeZug(true);
+    // Spieltest R21 (Soll): ohne Pointerup (Fenster verloren) blieb das Maß-Schild stehen und der Körper nur als Umriss —
+    // Verschieben dann so übernehmen, wie es zuletzt zu sehen war
+    if (schieb) endeSchieben();
+    if (setzen?.umsetzen) endeUmsetzen();
+  });
 
   function taste(e) {
     if (schieb && e.key === 'Escape') { endeSchieben(true); ctx.meldung('Verschieben abgebrochen'); return true; }

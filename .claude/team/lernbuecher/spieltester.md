@@ -24,3 +24,6 @@
 - 2026-11-26 Runde 20 (Generator) — spiel.fokus() rahmte das Schiff zu klein → zoom-Region aufs Schiff; erst fokus, dann
   ansicht. Je Wurf Seed + g-info + spiel.info.offeneKanten + Maße lesen (so fiel ein undichter Träger trotz FLUGTAUGLICH
   auf). Seitenansicht zeigt die Silhouette am deutlichsten; zwei Seeds derselben Klasse nebeneinander vergleichen.
+- 2026-11-28 Runde 21 — Würfel-Flächen per echtem Klick (OBEN ≈ 555,30 / SEITE ≈ 568,58 im 800×450-Frame bei 1280×720).
+  Kanten-Werkzeuge über spanten[].ecken bzw. kf messen (nicht fase/rundung). Gefecht: spiel.gefecht.istForm/lafetten,
+  Schüsse über spiel.bilder(n).schuesse. Fehlklick-Verdacht trotzdem als Muss melden — die Projektleitung stellt nach.

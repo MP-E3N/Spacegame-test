@@ -42,3 +42,6 @@
   Brücke, Seiten, Rücken) — Technik-Zahlen allein sagen nichts übers Aussehen. Offene Kanten kamen von verschiedenen
   Schweißzugaben für Original und Spiegelkopie (0,25 mm versetzt → Splitter); kleine Teile (Antennen) auf großen Decks
   reißen beim Triangulieren.
+- 2026-11-28 Runde 21 (Kanten) — Kanten-Maß in Metern je Ecke als optionales Spant-Feld (ecken), Kappenkanten als echte
+  Spanten mit kf-Marker am End-Spant; PROFIL_N bleibt 32. Jede Funktion, die Spanten kopiert/spiegelt, muss neue Felder
+  kennen. Im Browser: Pick-Zone 7 px wurde verfehlt → 12 px (Projektleitung); Bildraum-Picking vor Abgabe mit echter Maus.

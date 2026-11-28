@@ -53,3 +53,7 @@
 - 2026-11-26 Runde 19 (geschuetze.js) — Höhenprobe gegen Form-Lofts statt fusspunkt(TEILE); tragend nur, was von unten
   bis auf Fußhöhe reicht (schwebende Platte hob sonst den Turm). Gier-Spiegel: x/y g → −g, z g → π − g. Erst profilieren,
   dann optimieren (Zwischenlisten waren der Engpass, 7 → 3,4 ms).
+- 2026-11-28 Runde 21 — Form im Gefecht: Rumpfsperre aus Höhenfeld (senkrechte festStrecken-Proben, 0,5 m) statt aus den
+  Kollisionskugeln (zu groß). Ein Turm mit Zapfen im Material lässt trotz Höhensperre steile Schüsse zu (Strahl beginnt im
+  Rumpf) → Zapfen per punktInForm prüfen, Turm ganz sperren, als stumm melden. Bollwerk bitgleich, 0 Rumpftreffer bei
+  ~31 000 Strahlen. Lehre: eine Höhen-Sperre gilt nur für Strahlen, die außerhalb beginnen; Bezug vor der ersten Änderung speichern.

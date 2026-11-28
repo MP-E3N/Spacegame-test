@@ -66,3 +66,8 @@
   Generatoren Vielfalts- und Silhouettenmaß in den Bauauftrag (Grundmuster je 20 Seeds, Seitenverhältnis je Klasse) und
   die Bildprüfung VOR dem Feinschliff. Kamera-Einpassen aus Bildwinkel + freier Bildbreite statt festem Faktor. Eigene
   Browsertests ändern den localStorage des Nutzers → vorher sichern (sessionStorage), danach zurückschreiben.
+- 2026-11-28 Runde 21 (6 Nutzerpunkte nach eigenem Test) — Ursache „riesiger Punkt“ vorab selbst gefunden: Sprites ohne
+  Größenabnahme skalieren mit der Projektion, die Würfel-Ansicht ist Tele (3°). Vier Rollen parallel, Frühwarnung + Bauauftrag
+  per SendMessage. Gestrichene Schnittstelle (kanteFlaechen) nur dem Schiffbauer gemeldet → Prüfer testete sie trotzdem:
+  Streichungen ALLEN melden. UI-Module mit Attrappen-Test vor der Testrunde selbst mit echter Maus bedienen (Pick-Zone 7 px
+  zu klein). Verschieben vs. Push/Pull: Körper ziehen = verschieben, Fläche nur am Griff — „ein Werkzeug für alles“ verwirrt.

@@ -69,6 +69,10 @@
 #skizze-leiste label { display: inline-flex; gap: 4px; align-items: center; color: var(--bern-matt); }
 #sk-hinweis { margin-top: 5px; color: var(--bern-matt); }
 
+/* ---- Runde 21: Studio-Hintergrund (hell) — Schrift ohne eigenen Grund braucht einen dunklen Unterleger (Spieltest R21) ---- */
+body.studio #masse, body.studio #zugmass, body.studio #meldung { background: rgba(14, 16, 20, 0.86); border: 1px solid rgba(224, 160, 64, 0.35); padding: 4px 9px; }
+body.studio .tafel { background: rgba(14, 16, 20, 0.9); }
+
 /* ---- Runde 20: Schiffsgenerator (links oben, klappt auf) ---- */
 #generator { border: 1px solid var(--linie); padding: 6px; margin-bottom: 6px; background: rgba(0, 0, 0, 0.3); font-size: 11px; color: var(--bern-matt); }
 #generator .g-zeile { display: flex; gap: 4px; align-items: center; margin-bottom: 5px; }

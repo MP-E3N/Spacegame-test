@@ -4,10 +4,24 @@
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
 > Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 19 gepusht**, Runde 20
-> nur lokal committet, 2026-11-26). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test`.
+> + 21 nur lokal committet, 2026-11-28). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (10 Dateien, ~40 s).
 
-## Kurzfassung für einen frischen Chat (2026-11-26, nach Runde 20)
-- **Letzter Stand:** Runde 20 **Schiffsgenerator** fertig, lokal committet (nicht gepusht). Form-Werkstatt links oben
+## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 21)
+- **Letzter Stand:** Runde 21 = sechs Nutzerpunkte nach seinem R20-Test, alle umgesetzt, lokal committet (nicht gepusht),
+  Protokoll `.claude/team/protokolle/2026-11-28-runde21.md`:
+  1. Riesiger Punkt in den Würfel-Ansichten behoben (Sprites gegen den Tele-Bildwinkel ausgeglichen, `spriteGroessen`).
+  2. „🗋 Neu anfangen (leer)“ links oben (Strg+Z holt die alte Form).
+  3. **Gespeicherte Form im Gefechtstest**: Werkstatt-Knopf „⚔ Gefecht“ bzw. `gefecht.html?form=<Name>`, im Gefecht oben
+     „Schiff“-Auswahl. Sim `erstelleGefecht({ typ, daten, werte })`, Rumpfsperre aus Höhenfeld, `gefecht.stumm`.
+  4. **Kanten wie Inventor**: Leiste „◢ Fase“ (R) / „◜ Rundung“ (T) → Kanten anklicken (Umschalt = mehrere) → Maß in m →
+     Enter. Längskanten `L0–L3` (Spant-Feld `ecken`), Kappenkanten `K0o…K1r` (echte Spanten + `kf`), eigener Umriss `P<j>`.
+     In gerader Ansicht (Würfel-Fläche) blaue Pfeile an den Seiten → Seite länger/kürzer ziehen.
+  5. **Verschieben**: Körper/Bauteil ziehen = verschieben (Körper auf der Ebene der angefassten Fläche, Raster 0,5 m,
+     Strg frei); Fläche ziehen nur noch am **blauen Pfeil-Griff** in der Flächenmitte.
+  6. **Hintergrund Weltall ↔ Studio** (Knopf rechts in Werkstatt und Werft, `src/menue/stimmung.js`, `bild.setzeStimmung`).
+- **Nutzer-Urteile offen:** R19, R20 und R21. Offen aus R21: Rundung/Umschalt-Mehrfachwahl/Bauteile umsetzen nicht per
+  echter Maus geprüft; Kappenkanten bei Körpern mit eigenem Umriss p fehlen noch; pruefsumme nach zuruecksetzen (Kann).
+- **Vorher — Runde 20 Schiffsgenerator** (lokal committet). Form-Werkstatt links oben
   „🎲 Schiffsgenerator“: Klasse (Korvette/Fregatte/Träger), Seed + 🎲 Würfeln (Taste G bei offenem Generator), Regler Länge,
   Breite, Kantigkeit (höher = kantiger), Aufbauten, Geschütze (0 = keine), Triebwerke (Stück; schwere Schiffe bekommen
   automatisch mehr/größere), ★ Favoriten (localStorage, speichern Einstellung + GENERATOR_VERSION 2), Standard. Ergebnis
@@ -298,6 +312,8 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 21** (2026-11-28, mit Team): 6 Nutzerpunkte — Punkt in Ansichten klein, Neu anfangen, Form im Gefecht, Fase/Rundung
+  an Kanten + Seitenpfeile in gerader Ansicht, Verschieben per Ziehen (Push/Pull am Pfeil), Hintergrund Weltall/Studio.
 - **Runde 20** (2026-11-26, mit Team): Schiffsgenerator in der Form-Werkstatt (Seed, Würfeln, 6 Regler, 3 Klassen,
   Favoriten), v2 nach Spieltest mit Klassencharakter und Seed-Grundmustern; Kamera einpassen, Spiegelebenen mitwachsend.
 - **Runde 19** (2026-11-26, mit Team): Geschütze + Antriebe in der Werkstatt, Flugtauglichkeit, Probeflug im Freiflug.

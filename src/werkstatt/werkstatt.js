@@ -181,6 +181,8 @@ function sichtbarkeit() {
   // WARUM Minus-Körper immer sichtbar als roter Geist: sonst findet man Ausschnitte nicht wieder
   rohGruppe.traverse((o) => { if (o.isMesh) o.visible = !fertig || form.koerper.find((k) => k.id === o.userData.id)?.op === 'minus'; });
   ACHSEN.forEach((a, i) => { mittelebenen[i].visible = form.koerper.some((k) => k.spiegel.includes(a)); });
+  // R21: auf hellem Studio-Grund wirkte die blaue Ebene als grauer Balken — dort nur angedeutet
+  ebenenMat.opacity = document.body.classList.contains('studio') ? 0.025 : 0.05;
   passeEbenenAn();
 }
 /**
@@ -1035,7 +1037,7 @@ function kantenStart(art) {
 }
 
 // ---------------- Hintergrund Weltall ↔ Studio (Runde 21) ----------------
-const stimmung = stimmungsKnopf($('k-stimmung'), bild, baueRaster);
+const stimmung = stimmungsKnopf($('k-stimmung'), bild, (n) => { baueRaster(n); sichtbarkeit(); });
 
 // ---------------- Schiffsgenerator (Runde 20) ----------------
 // WARUM aendere statt eigener Weg: das Ergebnis ist eine ganz normale Form (Nutzer) — Rückgängig, Zwischenstand,

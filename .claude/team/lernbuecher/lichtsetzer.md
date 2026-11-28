@@ -13,3 +13,7 @@
 - 2026-11-15 Runde 6 (Frühwarnung Flak) — Dunkler Rauch vor dunklem All braucht Fake-Beleuchtung (Kugelnormale, Sonnenrichtung,
   Silberrand bei Gegenlicht); Kern additiv, Orange übertreiben (AgX). Labor: near 3 bei 2 km Kampfentfernung. Bildprüfer bestätigt:
   Wolken heben sich gut ab, 0 % Pixel über 245.
+- 2026-11-28 Runde 21 — Stimmung Weltall ↔ Studio. RoomEnvironment backen = neue Programme → Ruckler beim Umschalten. Studio als
+  Uniform-Zweig der schon übersetzten Himmelskugel, Umgebung mit gleicher PMREM-Größe (Cache-Treffer). Browser: 27 → 27
+  Programme, 9 ms erstes Bild. „Weiß“ braucht unter AgX linear ~3; Bloom-Schwelle über den Hintergrund. Helle Gründe
+  brauchen dunkle Unterleger für Schrift/Hilfslinien der Seiten.

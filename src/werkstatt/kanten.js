@@ -18,7 +18,7 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { kantenVon, fase, rundung } from '../sim/form/kanten.js';
 
-const PICK_PX = 7;
+const PICK_PX = 12; // R21 Spieltest (Muss): 7 px verfehlte der Tester zweimal — Kante traf er nicht, nichts passierte
 const FARBE = { normal: 0x8fb4d9, hover: 0x7fd3ff, gewaehlt: 0xffa040, vorschau: 0x9ad27a };
 const NAME = { fase: 'Fase', rundung: 'Rundung' };
 const zahl = (x) => (+x).toLocaleString('de-DE', { maximumFractionDigits: 3 });
@@ -39,7 +39,7 @@ export function erstelleKantenWerkzeug(ctx) {
   const vorGruppe = new THREE.Group(); scene.add(vorGruppe);
   // WARUM depthTest aus: die Kanten sollen auch auf der Rückseite zu sehen sein (blass) — gewählte/leuchtende kräftig
   const mat = (farbe, breite, opacity) => new LineMaterial({ color: farbe, linewidth: breite, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false });
-  const M = { normal: mat(FARBE.normal, 2, 0.55), hover: mat(FARBE.hover, 4, 1), gewaehlt: mat(FARBE.gewaehlt, 4, 1), vorschau: mat(FARBE.vorschau, 2, 0.8) };
+  const M = { normal: mat(FARBE.normal, 2.5, 0.75), hover: mat(FARBE.hover, 4, 1), gewaehlt: mat(FARBE.gewaehlt, 4, 1), vorschau: mat(FARBE.vorschau, 2, 0.8) };
   const strahl = new THREE.Raycaster(), ndc = new THREE.Vector2();
 
   let modus = null, kid = null, schluessel = '', linien = [], auswahl = new Set(), hover = null, unten = null, verbraucht = false, rAF = 0;
@@ -103,7 +103,9 @@ export function erstelleKantenWerkzeug(ctx) {
   function strahlZu(p) { strahl.set(camera.position, p.clone().sub(camera.position).normalize()); return strahl; }
   function verdeckt(p) {
     const d = p.distanceTo(camera.position), hit = strahlZu(p).intersectObjects(rohGruppe.children, true)[0];
-    return !!hit && hit.distance < d - (0.3 + 0.01 * d); // WARUM Spiel: die Kante liegt selbst auf der Oberfläche
+    // WARUM Spiel: die Kante liegt selbst auf der Oberfläche; mit 12 px Trefferzone liegt der Punkt auf der Kante oft leicht
+    // hinter der angrenzenden Fläche (streifender Blick) — 0,6 m + 2 % statt 0,3 m + 1 % (Spieltest R21)
+    return !!hit && hit.distance < d - (0.6 + 0.02 * d);
   }
   function naechste(cx, cy) {
     const r = leinwand.getBoundingClientRect(), mx = cx - r.left, my = cy - r.top, kand = [];

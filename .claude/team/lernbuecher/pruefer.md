@@ -47,3 +47,7 @@
   lassen: echte Fehler wurden rot, alle Gegenproben schlugen an. Gegen den echten Generator drei Annahmen im Test falsch
   („Heck = Hauptrumpf“, „Standard je Regler statt je Klasse“, „Anzahl immer genau“). Lehre: Bezugskörper aus der Geometrie
   bestimmen (hinterster Körper), nicht aus der Rolle; uncommitteten Stand schreibgeschützt über den Modulpfad prüfen.
+- 2026-11-28 Runde 21 (tests/kanten.mjs, tests/gefecht.mjs) — Anker auf dem Referenz-Commit messen (MESSEN=1), Fingerabdruck
+  aus Float64-Bits statt pruefsumme (zählt leere Plätze, Reset-Befund). Form-Zeilen an „Form wirklich genutzt“ koppeln,
+  zu jedem „0 Treffer“ eine Gegenprobe ohne Sperre. Rundungs-Soll aus dem Polygon mit N Sehnen. Eine Prüfung für eine
+  später gestrichene Funktion (kanteFlaechen) → bei Schnittstellen-Änderungen nachfragen.
