@@ -142,17 +142,25 @@ function eckenFeld(e) {
 }
 function kfFeld(k) {
   if (!k || typeof k !== 'object') return {};
-  const seiten = ['o', 'u', 'l', 'r'].filter((x) => Array.isArray(k.seiten) && k.seiten.includes(x));
+  // Seiten: o/u/l/r (Normprofil) oder P<j> (Runde 22: Umriss-Seite j → j+1), Reihenfolge fest
+  const l = Array.isArray(k.seiten) ? k.seiten : [];
+  const pj = [...new Set(l.filter((x) => /^P\d{1,2}$/.test(x)).map((x) => +x.slice(1)))].filter((j) => j < 64).sort((a, b) => a - b);
+  const seiten = [...['o', 'u', 'l', 'r'].filter((x) => l.includes(x)), ...pj.map((j) => 'P' + j)];
   const m = Number.isFinite(k.mass) && k.mass > 0 ? r3(Math.min(k.mass, GRENZEN.mass)) : 0, v = k.vorher;
   if (!seiten.length || !m || !v || !['b', 'h', 'x', 'y'].every((x) => Number.isFinite(v[x]))) return {};
-  return { kf: { seiten, art: k.art === 'rundung' ? 'rundung' : 'fase', mass: m, vorher: { b: r3(v.b), h: r3(v.h), x: r3(v.x), y: r3(v.y) } } };
+  const vp = umrissOk(v.p) ? { p: v.p.map(([u, w]) => [rp(klemme(u, -1, 1)), rp(klemme(w, -1, 1))]) } : {};
+  return { kf: { seiten, art: k.art === 'rundung' ? 'rundung' : 'fase', mass: m, vorher: { b: r3(v.b), h: r3(v.h), x: r3(v.x), y: r3(v.y), ...vp } } };
 }
 function umrisse(spanten) {
   const p0 = spanten[0]?.p;
   if (!umrissOk(p0)) return spanten.map(({ p, ...s }) => s);
   const n = p0.length, norm = (p) => p.map(([u, v]) => [rp(klemme(u, -1, 1)), rp(klemme(v, -1, 1))]);
-  // WARUM ecken/kf weg: mit eigenem Umriss gelten sie nicht (Kanten werden dort als Punkte geändert, Runde 21)
-  let liste = spanten.map(({ ecken, kf, ...s }) => ({ ...s, p: norm(umrissOk(s.p) && s.p.length === n ? s.p : p0) }));
+  // WARUM ecken weg: mit eigenem Umriss gelten sie nicht (Kanten werden dort als Punkte geändert, Runde 21). kf bleibt
+  // (Runde 22: Kappenkanten an Umriss-Seiten), aber nur mit Seiten P<j> und gleich langem gemerkten Umriss
+  let liste = spanten.map(({ ecken, kf, ...s }) => {
+    const kfOk = kf && kf.vorher?.p?.length === n && kf.seiten.every((x) => /^P\d+$/.test(x) && +x.slice(1) < n);
+    return { ...s, ...(kfOk && { kf }), p: norm(umrissOk(s.p) && s.p.length === n ? s.p : p0) };
+  });
   if (flaecheV(liste[0].p) < 0) liste = liste.map((s) => ({ ...s, p: [...s.p].reverse() }));
   return liste;
 }
@@ -389,12 +397,14 @@ export function setzePunkt(k, i, j, [x, y], alle = false) {
 export function fuegePunktEin(k, j) {
   if (!k.spanten[0]?.p || k.spanten[0].p.length >= 64) return k;
   return { ...k, spanten: k.spanten.map((s) => { const p = s.p, a = p[j], b = p[(j + 1) % p.length];
-    return { ...s, p: [...p.slice(0, j + 1), [rp((a[0] + b[0]) / 2), rp((a[1] + b[1]) / 2)], ...p.slice(j + 1)] }; }) };
+    // WARUM kf weg: Punktzahl ändert sich, der gemerkte Umriss passt nicht mehr (Fase bleibt als Form stehen)
+    const { kf, ...rest } = s;
+    return { ...rest, p: [...p.slice(0, j + 1), [rp((a[0] + b[0]) / 2), rp((a[1] + b[1]) / 2)], ...p.slice(j + 1)] }; }) };
 }
 /** Punkt j in allen Spanten löschen (mindestens 3 bleiben); Umrisse danach wieder auf b × h eingepasst. */
 export function loeschePunkt(k, j) {
   if (!k.spanten[0]?.p || k.spanten[0].p.length <= 3) return k;
-  return { ...k, spanten: k.spanten.map((s) => ({ ...s, ...umrissAusPunkten(profilPunkte(s).filter((_, l) => l !== j)) })) };
+  return { ...k, spanten: k.spanten.map(({ kf, ...s }) => ({ ...s, ...umrissAusPunkten(profilPunkte(s).filter((_, l) => l !== j)) })) };
 }
 
 /**
@@ -445,6 +455,12 @@ export function klappeKoerper(k, achse) {
  * Spiegelung ist keine Drehung. Darum wird der Körper in sich an seiner X-Achse gespiegelt (Profil x → −x, Punkt-
  * reihenfolge umgedreht = Umlauf bleibt gegen den Uhrzeigersinn) und dann gedreht: R' = S · R · Sx hat det +1.
  */
+/** kf einer Spiegelkopie: l ↔ r, Umriss-Seite j → n − 2 − j (Punkte gespiegelt und umgekehrt), gemerkter Umriss ebenso. */
+function spiegelKf(kf, n) {
+  const seite = (x) => (x === 'l' ? 'r' : x === 'r' ? 'l' : /^P\d+$/.test(x) && n ? 'P' + ((n - 2 - +x.slice(1) + 2 * n) % n) : x);
+  const v = kf.vorher;
+  return { ...kf, seiten: kf.seiten.map(seite), vorher: { ...v, x: r3(-v.x), ...(v.p && { p: v.p.map(([u, w]) => [rp(-u), w]).reverse() }) } };
+}
 export function spiegelKoerper(k, achse, id) {
   const a = ACHSEN.indexOf(achse), R = drehMatrix(k.dreh);
   const m = R.map((zeile, i) => zeile.map((v, j) => v * (i === a ? -1 : 1) * (j === 0 ? -1 : 1)));
@@ -452,7 +468,7 @@ export function spiegelKoerper(k, achse, id) {
     // Runde 21: x → −x tauscht die Ecken 0 ↔ 1, 2 ↔ 3 und die Kappenseiten l ↔ r
     spanten: k.spanten.map((s) => ({ ...s, x: r3(-(s.x ?? 0)), ...(s.p && { p: s.p.map(([u, v]) => [rp(-u), v]).reverse() }),
       ...(s.ecken && { ecken: [s.ecken[1], s.ecken[0], s.ecken[3], s.ecken[2]] }),
-      ...(s.kf && { kf: { ...s.kf, seiten: s.kf.seiten.map((x) => ({ l: 'r', r: 'l' })[x] ?? x), vorher: { ...s.kf.vorher, x: r3(-s.kf.vorher.x) } } }) })) };
+      ...(s.kf && { kf: spiegelKf(s.kf, s.p?.length ?? 0) }) })) };
 }
 
 // ---------------- Form → Werft-Modul ----------------

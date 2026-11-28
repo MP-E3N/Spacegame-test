@@ -16,6 +16,7 @@ import { BEISPIEL_FORMEN } from '../src/sim/form/beispiele.js';
 import { generiere, standardEinstellung } from '../src/sim/form/generator.js';
 import { zufall } from '../src/sim/zufall.js';
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
 const START = performance.now();
@@ -63,18 +64,20 @@ function zufallsFormen(n) {
 }
 const SAETZE = {
   beispiele: BEISPIEL_FORMEN,
-  generator: ['korvette', 'fregatte', 'traeger'].flatMap((k) => [1, 815, 4711, 99999].flatMap((seed) => [{}, { kantigkeit: 0 }, { kantigkeit: 1, aufbauten: 1 }].map((m) => generiere({ ...standardEinstellung(k), seed, ...m })))),
+  // WARUM gespeichert statt live erzeugt (R22): der Generator darf sich ändern (GENERATOR_VERSION), alte gespeicherte
+  // Generator-Formen der Nutzer müssen trotzdem bitgleich bleiben
+  generatorV2: JSON.parse(readFileSync(new URL('./daten/generator-v2.json', import.meta.url), 'utf8')).formen,
   zufall: zufallsFormen(60),
 };
 const satzAbdruck = (liste) => hash(liste.map(abdruck).join('\n'));
-const ANKER = { beispiele: 'a6d61f396305b271', generator: '43d78e8b49a24f91', zufall: '9e05538634e88df3' };
+const ANKER = { beispiele: 'a6d61f396305b271', generatorV2: '60c06f2c41658aad', zufall: '9e05538634e88df3' };
 if (process.env.MESSEN) { console.log(JSON.stringify(Object.fromEntries(Object.entries(SAETZE).map(([n, l]) => [n, satzAbdruck(l)])))); process.exit(0); }
 {
   const ist = Object.fromEntries(Object.entries(SAETZE).map(([n, l]) => [n, satzAbdruck(l)]));
   for (const n of Object.keys(SAETZE)) zeile(`Alte Formen bitgleich zu 19a5ed2: ${n} (${SAETZE[n].length} Formen)`, 'gleich', ist[n] === ANKER[n] ? 'gleich' : `${ist[n]} ≠ ${ANKER[n]}`, ist[n] === ANKER[n]);
   const g = kopie(SAETZE.beispiele[0]); g.koerper[0].spanten[0].b += 1e-9;
   zeile('Gegenprobe: 1e-9 m mehr Breite ändert den Fingerabdruck', 'anders', satzAbdruck([g]) !== satzAbdruck([SAETZE.beispiele[0]]) ? 'anders' : 'GLEICH', satzAbdruck([g]) !== satzAbdruck([SAETZE.beispiele[0]]));
-  const kein = [...SAETZE.generator, ...SAETZE.zufall].filter((f) => /"ecken"|"kf"/.test(J(normalisiere(f)))).length;
+  const kein = [...SAETZE.generatorV2, ...SAETZE.zufall].filter((f) => /"ecken"|"kf"/.test(J(normalisiere(f)))).length;
   zeile('normalisiere ergänzt bei alten Formen kein ecken/kf', '0', kein, kein === 0);
 }
 
@@ -164,9 +167,54 @@ else {
   const pIds = sicher(() => ids(PU), () => []);
   const pu = sicher(() => op(fase, PU, ['P1'], 0.5), (e) => ({ fehler: e.message }));
   const puOk = !pu.fehler && pu.k.spanten.every((s) => s.p && s.p.length === pu.k.spanten[0].p.length) && volumen(pu.k) < volumen(PU) - 1e-6 && !pruefe({ koerper: [pu.k], andock: [] }).some((m) => m.code === 'umriss_kreuzt');
-  zeile('Eigener Umriss (Fünfeck): ids P0–P4, keine K* | fase P1: alle Spanten gleiche Punktzahl, Volumen sinkt, Umriss ok', 'ja | ja',
-    `${['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => i.startsWith('K')) ? 'ja' : J(pIds)} | ${pu.fehler ?? (puOk ? 'ja' : 'NEIN')}`,
-    ['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => i.startsWith('K')) && puOk);
+  zeile('Eigener Umriss (Fünfeck): ids P0–P4, keine K0o…K1r (R22: K<e>P<j> erlaubt) | fase P1: alle Spanten gleiche Punktzahl, Volumen sinkt, Umriss ok', 'ja | ja',
+    `${['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => /^K[01][oulr]$/.test(i)) ? 'ja' : J(pIds)} | ${pu.fehler ?? (puOk ? 'ja' : 'NEIN')}`,
+    ['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => /^K[01][oulr]$/.test(i)) && puOk);
+  // Rückbau mit Maß 0 → bitgleich (Box-Kappe)
+  const rb = sicher(() => { const a = op(fase, Q, ['K0o'], 1); return J(op(fase, a.k, ['K0o'], 0).k) === J(Q); }, () => false);
+  zeile('Rückbau: fase K0o = 1, dann Maß 0 → bitgleich zum Quader', 'gleich', rb ? 'gleich' : 'ANDERS', rb);
+  // ---------- Runde 22: Kappenkanten am eigenen Umriss, ID K<e>P<j> (Kante zwischen Kappe e und Umriss-Seite j → j+1) ----------
+  {
+    const kIds = ['K0P0', 'K0P1', 'K0P2', 'K0P3', 'K0P4', 'K1P0', 'K1P1', 'K1P2', 'K1P3', 'K1P4'];
+    const fehltP = kIds.filter((i) => !pIds.includes(i));
+    zeile('R22 kantenVon(Fünfeck): Kappenkanten K0P0–K0P4, K1P0–K1P4 | keine K0o/K1o …', 'vollständig | ja', `${fehltP.join(',') || 'vollständig'} | ${pIds.some((i) => /^K[01][oulr]$/.test(i)) ? 'NEIN' : 'ja'}`, fehltP.length === 0 && !pIds.some((i) => /^K[01][oulr]$/.test(i)));
+    const flaeche = (P) => P.reduce((sum, [x, y], i) => { const [x2, y2] = P[(i + 1) % P.length]; return sum + x * y2 - x2 * y; }, 0) / 2;
+    /** Seite j um s nach innen versetzt; ihre Endpunkte wandern auf den Nachbarseiten (Punktzahl gleich). */
+    const versetzt = (P, j, s) => {
+      const n = P.length, a = P[j], b = P[(j + 1) % n], l = Math.hypot(b[0] - a[0], b[1] - a[1]), nin = [-(b[1] - a[1]) / l, (b[0] - a[0]) / l];
+      const zieh = (i, nach) => { const u = [P[nach][0] - P[i][0], P[nach][1] - P[i][1]], lu = Math.hypot(...u), c = (u[0] * nin[0] + u[1] * nin[1]) / lu; return [P[i][0] + (u[0] / lu) * s / c, P[i][1] + (u[1] / lu) * s / c]; };
+      const Q2 = P.map((q) => [...q]); Q2[j] = zieh(j, (j - 1 + n) % n); Q2[(j + 1) % n] = zieh((j + 1) % n, (j + 2) % n); return Q2;
+    };
+    const P0 = profilPunkte(PU.spanten[0]), j = 1, a = 0.3, Lj = Math.hypot(P0[2][0] - P0[1][0], P0[2][1] - P0[1][1]), A0 = flaeche(P0);
+    // exakt für linearen Loft zwischen versetztem und ursprünglichem Umriss über die Tiefe a (Fläche quadratisch → Simpson)
+    const sollExakt = a * A0 - (a / 6) * (flaeche(versetzt(P0, j, a)) + 4 * flaeche(versetzt(P0, j, a / 2)) + A0), sollNah = Lj * a * a / 2;
+    const r = sicher(() => op(fase, PU, ['K0P1'], a), (e) => ({ fehler: e.message }));
+    if (r.fehler) zeile('R22 fase(Fünfeck, [K0P1], 0,3)', 'wirft nicht', r.fehler, false);
+    else {
+      const dV = volumen(PU) - volumen(r.k), hz = (k) => { const q = huelle(k); return [q.min[2], q.max[2]]; };
+      const gleichN = r.k.spanten.every((sp) => sp.p && sp.p.length === PU.spanten[0].p.length), abst = r.k.spanten.every((sp, i, l) => i === 0 || sp.z - l[i - 1].z >= 0.05);
+      const kreuzt = pruefe({ koerper: [r.k], andock: [] }).some((m) => m.code === 'umriss_kreuzt');
+      zeile('R22 fase K0P1 = 0,3 m: mass | Volumen − ≈ Seitenlänge·a²/2', `0.3 | ${sollNah.toFixed(4)} ±10 %`, `${r.mass} | ${dV.toFixed(4)} m³`, r.mass === a && Math.abs(dV / sollNah - 1) <= 0.1);
+      zeile('R22 fase K0P1: Volumen = linearer Loft versetzter → ursprünglicher Umriss (exakt)', `${sollExakt.toFixed(6)} ±1e-6`, dV.toFixed(6), Math.abs(dV - sollExakt) < 1e-6 * volumen(PU) + 1e-6, false);
+      zeile('R22 fase K0P1: Punktzahl gleich | Spantabstand ≥ 0,05 | kein umriss_kreuzt | Länge gleich | übersteht normalisiere', 'ja', `${gleichN ? 'ja' : 'NEIN'} | ${abst ? 'ja' : 'NEIN'} | ${kreuzt ? 'NEIN' : 'ja'} | ${J(hz(r.k)) === J(hz(PU)) ? 'ja' : 'NEIN'} | ${dV > 1e-6 ? 'ja' : 'NEIN (Fase weg)'}`,
+        gleichN && abst && !kreuzt && J(hz(r.k)) === J(hz(PU)) && dV > 1e-6);
+      const zurueck = sicher(() => J(op(fase, r.k, ['K0P1'], 0).k) === J(PU), () => false);
+      // WARUM dV > 0 dazu: ohne wirksame Fase wäre der Rückbau trivial gleich
+      zeile('R22 Rückbau: K0P1 mit Maß 0 → bitgleich zum Fünfeck (nach wirksamer Fase)', 'gleich', zurueck && dV > 1e-6 ? 'gleich' : zurueck ? 'Fase war unwirksam' : 'ANDERS', zurueck && dV > 1e-6);
+      const zweimal = J(op(fase, PU, ['K0P1'], a).k) === J(r.k);
+      zeile('R22 Gleichlauf: fase K0P1 zweimal → gleiches JSON', 'gleich', zweimal ? 'gleich' : 'ANDERS', zweimal);
+    }
+    const gr = sicher(() => op(fase, PU, ['K1P3'], 100), (e) => ({ fehler: e.message }));
+    const grOk = !gr.fehler && gr.mass > 0 && gr.mass < 100 && !pruefe({ koerper: [gr.k], andock: [] }).some((m) => m.code === 'umriss_kreuzt') && volumen(gr.k) > 0 && Math.abs(huelle(gr.k).max[2] - huelle(gr.k).min[2] - L) < 1e-9 && !unendlich(gr.k);
+    zeile('R22 fase K1P3 = 100 m: geklemmt (0 < mass < 100) | Umriss ok | Volumen > 0 | Länge gleich', 'ja', gr.fehler ?? `${gr.mass} | ${volumen(gr.k).toFixed(1)} m³ | ${grOk ? 'ok' : 'NEIN'}`, grOk);
+    const ru = sicher(() => op(rundung, PU, ['K0P1'], a), (e) => ({ fehler: e.message })), fa = sicher(() => op(fase, PU, ['K0P1'], a), () => null);
+    const dR = ru.fehler ? NaN : volumen(PU) - volumen(ru.k), dF = fa ? volumen(PU) - volumen(fa.k) : NaN;
+    const ruOk = !ru.fehler && dR > 1e-6 && dR < dF && !pruefe({ koerper: [ru.k], andock: [] }).some((m) => m.code === 'umriss_kreuzt');
+    zeile('R22 rundung K0P1 = 0,3 m: 0 < Volumenverlust < Fase gleichen Maßes | Umriss ok', 'ja', ru.fehler ?? `${dR.toFixed(4)} < ${dF.toFixed(4)} | ${ruOk ? 'ok' : 'NEIN'}`, ruOk);
+    const zw = sicher(() => op(fase, PU, ['K0P1', 'K0P2', 'K1P1'], a), (e) => ({ fehler: e.message }));
+    const zwOk = !zw.fehler && volumen(PU) - volumen(zw.k) > dF + 1e-6 && !pruefe({ koerper: [zw.k], andock: [] }).some((m) => m.code === 'umriss_kreuzt');
+    zeile('R22 fase K0P1 + K0P2 (Nachbarn) + K1P1: mehr Verlust als K0P1 allein | Umriss ok', 'ja', zw.fehler ?? `${zw.k ? (volumen(PU) - volumen(zw.k)).toFixed(4) : '?'} > ${dF.toFixed(4)} | ${zwOk ? 'ok' : 'NEIN'}`, zwOk);
+  }
   // Spiegelkörper
   const SP = quader(undefined, { pos: [10, 0, 0], spiegel: ['x'] });
   const sp = sicher(() => op(fase, SP, ['L0', 'L3'], 1), (e) => ({ fehler: e.message }));
