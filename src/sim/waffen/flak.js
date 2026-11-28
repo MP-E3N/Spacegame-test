@@ -268,9 +268,15 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
     geschosse.gedeckelt = 0; geschosse.unterSperre = 0; geschosse.abstandVerlaengert = 0; geschosse.streu.fill(0);
+    // WARUM auch die inaktiven Plätze (Pflege R22): Neustart = frische Instanz bis ins letzte Feld (Koop: Host und Gast
+    // starten neu und vergleichen Zustände) — gelesen werden sie nur hinter `aktiv`, aber Prüfungen sehen sie.
+    geschosse.turm.fill(0); geschosse.sperr.fill(0); geschosse.alter.fill(0); geschosse.rest.fill(0); geschosse.bruch.fill(0);
+    geschosse.pos.fill(0); geschosse.vorPos.fill(0); geschosse.vel.fill(0);
     rahmen.aktiv = false; // die Gefecht-Welt setzt ihn im nächsten Schritt neu
+    for (const v of [rahmen.pos, rahmen.vel, rahmen.vorPos]) v.x = v.y = v.z = 0;
+    for (const q of [rahmen.rot, rahmen.vorRot]) { q.x = q.y = q.z = 0; q.w = 1; }
     einstellung.deckelQuer = FLAK.deckelQuer; einstellung.deckelTiefe = FLAK.deckelTiefe; // Umschalter mit zurücksetzen (Lehre R8)
-    splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0;
+    splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0; splitter.pos.fill(0); splitter.sorte.fill(0);
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
       t.leuchtZaehler = 0; t.v0 = FLAK.v0; // Umschalter mit zurücksetzen (Befund Prüfer R8)

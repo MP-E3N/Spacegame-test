@@ -309,8 +309,18 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
     statistik.maxJeZiel = 0; statistik.unloesbar = 0; statistik.alarmAn = 0; statistik.gruppenWechsel = 0;
-    for (const b of befehle) { b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; b.streuTiefe = 0; }
+    for (const b of befehle) {
+      b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; b.streuTiefe = 0;
+      // R22 (Pflege): Punkt, Toleranz, Zünder wie beim Erzeugen — Neustart = frische Instanz (Prüfer-Befund R21)
+      b.punkt.x = b.punkt.y = b.punkt.z = 0; b.toleranz = K.toleranzSperr; b.zuender = 1;
+    }
     lage.nahbereich = false; lage.schirme.length = 0; lage.eindringlinge.length = 0;
+    // Arbeitsfelder und je Takt gelesene Werte: werden vor dem Lesen neu geschrieben, aber ein Neustart soll keinen Rest
+    // tragen (Zustandsvergleich frisch ↔ Neustart, R22)
+    for (const a of [zaehl, bG, bN, bD, bW, bVx, bVy, bVz, bE, bQ, bH, bK, bX, bY, bZ, grp, gmX, gmY, gmZ, kOrd, kAnz, kBel, ord]) a.fill(0);
+    ab.t = ab.x = ab.y = ab.z = 0; abBest.t = abBest.x = abBest.y = abBest.z = 0;
+    for (const k in W) W[k] = 0;
+    W.faktor = 1; nahDt = 1 / 60; deckelDunkel = DECKEL.querDunkel;
   }
 
   /** Bewertung von Ziel z für Turm i; −1 = ungültig. Schreibt den Abfangpunkt nach `aus`. */
