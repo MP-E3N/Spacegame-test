@@ -54,3 +54,7 @@
 - 2026-11-28 Runde 22 — Darf sich ein Erzeuger ändern (Version), alte Formen als Datei unter tests/daten festhalten.
   CSG läuft in node schnell genug → Dichtheit messen (tests/dicht.mjs), nicht schätzen. Rückbau-Zeilen an „Operation war
   wirksam“ koppeln, sonst auf dem alten Stand trivial grün.
+- 2026-11-28 Runde 23 (Durchsicht Zentrale) — Wird ein Befehl per Object.assign in ein festes Objekt gemischt, eine Runde
+  mit TEILBEFEHLEN fahren ({ hebel }): Autopilot-Werte und stopp blieben kleben (Schiff drehte nach kursAus weiter).
+  Gleichlauf-Tests sehen das nicht (beide Läufe gleich falsch). Bei „von hinten abschalten“ prüfen, welche Typen hinten
+  stehen. Zielvorgabe über alle Takte messen (Anteil), nicht nur ob das Feld ankommt.

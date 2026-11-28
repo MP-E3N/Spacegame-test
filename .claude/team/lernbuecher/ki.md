@@ -49,3 +49,9 @@
   Bitgleichheit mit Prüfsummen-Anker VOR dem Umbau messen. Grenzen im Turm-Rahmen über Vorzeichen s (oben 1, unten −1).
   Killzone 900/1000 statt 500/600: Abschüsse vor dem Feuern. Scheinfahrt aus Lagedifferenzen im mitdrehenden Rahmen:
   −15 statt −9 %/min Schiffsschaden. Flak ohne setzeRahmen emulierbar (zwei Instanzen, unten gespiegelt).
+- 2026-11-28 Runde 23 — Hauptbatterie, Handsteuerung-Feld, CIC-Vorgabe, Panzerboote. Beobachtung: Gefecht-Anker brachen,
+  obwohl Panzerboote erst ab Takt 3676 kommen. Ursache: Fingerabdruck hasht auch LEERE Plätze (Vorrat 8 → 10). Änderung:
+  neue Zweige nur an neuen Feldern, Anker über die alten 8 Plätze als bitgleich belegt, dann erneuert. Messung: Gatlings
+  + 2 schwere = 4 Gatlings allein (Hash gleich); KI 12 µs je Takt. Lehre: Vorrat vergrößern ändert jeden Fingerabdruck über
+  feste Plätze — vorher über den alten Ausschnitt messen; Sprungprüfungen mit Gegenlauf ohne die Änderung.
+  Offen: Zielvorgabe auf dem Bollwerk nur 71 % der Takte bedient (Prüfer), schwere Türme alle oben.

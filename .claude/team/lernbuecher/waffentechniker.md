@@ -60,3 +60,9 @@
 - 2026-11-28 Runde 22 — Neustart ≠ frisch: Resets setzten nur verhaltensrelevante Felder zurück (6729 Restfelder).
   Grundzustand an einer Stelle für Erzeugen und Neustart (ST_GRUND), Pools vollständig füllen. Lehre: ganzen Objektgraphen
   vergleichen (frisch gegen Neustart) — die Prüfsumme sieht nur, was sie mitzählt.
+- 2026-11-28 Runde 23 — Beobachtung: mit Gatling blieb die Abschussrate gleich, der Rumpfverlust halbierte sich (5,9 → 3,0
+  %/min). Ursache: Abschüsse/min begrenzt der Nachschub an Angreifern; mehr Feuerkraft tötet Boote nur früher. Änderung:
+  Schadensfaktor auf den Rumpfverlust eingestellt (0,2), Vorräte vergrößert, Gatling-Wolken/Spuren per Zähler ausgedünnt.
+  Messung: 12,0/11,3 Abschüsse, −6,5/−7,7 %/min (R22 −5,9/−7,6); Panzerboot mit Panzergranaten 8,6 s, nur Flak 113 s.
+  Lehre: Balance an der empfindlichen Größe (Schaden am eigenen Schiff) messen; neue Mechanik hinter Schalter (amSchiff,
+  typ), dann bleibt der Prüfstand bitgleich.

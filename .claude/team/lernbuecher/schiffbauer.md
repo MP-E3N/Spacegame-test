@@ -48,3 +48,8 @@
 - 2026-11-28 Runde 22 — Splitter-Risse hängen an der Kombination der Schweißzugaben, nicht an einem Körper; erneutes
   Verschweißen mit anderer Zugaben-Reihenfolge (bis 3 Versuche) machte 675/675 dicht, Generator-Tricks nur 17 → 12.
   Kern-Suche: entfernte Körper durch ferne Mini-Würfel ersetzen (Listenplätze bleiben). Regex mit Backslash nie im Heredoc.
+- 2026-11-28 Runde 23 (Silberlanze, Gatling) — Beobachtung: PDC auf gerundeter Schulter `schraeg`, schwerer Zwilling bei
+  x ±9 `rohre_kreuzen`. Ursache: Rundung 0,6 lässt auf dem Achterschiff nur ±5 m flache Fläche; Schwenkkreis zweier schwerer
+  Türme braucht 23,8 m. Änderung: Rundung 0,45–0,5, schwere Türme x ±12, PDC x ±6,5, Höhen per punktInForm gemessen.
+  Messung: 0 Fehler/Warnungen, 0 stumm, dicht im 2. Versuch; Gatling 1 Netz je Bündel → 0 Draw-Calls mehr. Lehre: erst
+  Turmplätze/Abstände festlegen, dann Rundung; drehbare Teile mit Achse im Netz-Ursprung bauen.

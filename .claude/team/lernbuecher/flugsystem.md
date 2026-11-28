@@ -16,3 +16,7 @@
 - 2026-11-26 Runde 19 (flug.js) — Flugwerte aus Masse/Schub/Trägheit, geeicht an zwei Bezugsformen (Bollwerk/Ambos);
   K aus der Bezugsform rechnen statt eintippen. WERTE.bollwerk verletzt selbst aDaempfer ≥ vMax·gierMax → mit dem 5-s-Test
   aus tests/flug.mjs messen. Bezugs-Vorgaben können die Katalog-Stufung verbiegen (L ≈ M) → Stufung mitmessen.
+- 2026-11-28 Runde 23 — Richt-Rechnung (Vorhalt im Schiffsrahmen, Turm-Rahmen oben/unten) gebaut und getestet (2,7e-13 m
+  Fehlabstand), aber der Richtschützen-Platz wurde beim Schreiben des HUD von einem Sicherheitsfilter abgebrochen; der
+  Teil ist gestrichen, die Rechenhilfen wurden nicht übernommen. Lehre: Ziel-Geometrie aus derselben Formel wie die Waffe
+  ableiten und gegen die echte Waffe testen; eine Gegenprobe (Schiffstempo vergessen = 24 m daneben) belegt den Test.

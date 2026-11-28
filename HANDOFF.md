@@ -3,10 +3,32 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 22 gepusht**, 2026-11-28).
-> Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (12 Dateien, ~80 s).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 22 gepusht**, Runde 23 nur lokal committet, 2026-11-28).
+> Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (14 Dateien, ~60 s).
 
-## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 22) — hier einsteigen
+## Runde 23 (2026-11-28, Team) — hier einsteigen
+Nutzerliste mit 5 Punkten; Protokoll `.claude/team/protokolle/2026-11-28-runde23.md`. **Lokal committet, NICHT gepusht.**
+1. **Werkstatt:** Spiegelkopien zeigen jetzt auch Drahtgitter + Spant-Ring („nur die Punkte wurden gespiegelt“).
+2. **SL-01 Silberlanze** (Typ Aurora, eigener Entwurf nach E-005): 370 m, Nadelbug, vier X-Ausleger über das Heck, 6 schwere
+   Türme + 16 Gatlings, 4 Triebwerke M. `BEISPIEL_SCHIFFE` in `src/sim/form/beispiele.js`; wählbar im Gefecht (Schiff-Liste),
+   `freiflug.html?form=beispiel:SL-01 Silberlanze`, Werkstatt „Beispiele …“. Träger (aVor 3,25 m/s²). Test `tests/silberlanze.mjs`.
+3. **Alle Türme feuern:** `schiffsLafetten` liefert flak + schwer (Bollwerk 17, Silberlanze 22, 0 stumm).
+4. **Gatling** (typ flak, nur am Schiff): Anlauf 0,8 s, 36 Schuss/s, Schaden × 0,2, Bündel drehen (`turm().buendel`).
+   **Hauptbatterie** (typ schwer): Flak-Großgranate (v0 950, Salve/2 s) oder Panzergranate (v0 1600, 100 HP, Treffertest,
+   `ereignisse.einschlaege`), Wechsel 3 s. **Panzerung** `ziel.panzer` dämpft Flak. **Panzerboot** (`art 'panzer'`, r 16,
+   900 HP, panzer 0,85) ab Welle 2; KI wählt Munition selbst (`GEGNER_TYP` in angreifer.js).
+   **Richtschützen-Platz (selbst zielen, Vorhalte-HUD) GESTRICHEN:** beim Bau zweimal von einem Sicherheitsfilter
+   abgebrochen; nicht in derselben Form neu versuchen. `befehl.manuell` der KI existiert, ist ungenutzt.
+5. **Gefechtszentrale (CIC), Taste Tab im Gefecht:** Lageschirm in der Mitte + Posten Navigator (Kurs per Klick „AM
+   SCHIRM“, Fahrtstufen, Autopilot), Waffen & Sensorik (Kontakte, Zielvorgabe, Freigabe, Modus, Hauptbatterie-Munition,
+   Turmraster), Crew & Mechanik (6 Schadensbereiche, 3 Trupps, Energie), Kapitän (Alarm Grün/Gelb/Rot, Schnellbefehle,
+   Bordbuch). Befehle = Daten (`src/netz/stationsbefehle.js`, Koop-Grundlage), Sim `src/sim/zentrale.js`, UI `src/cic/*`.
+   Leertaste/1/2 gehen über den Waffen-Posten; Ruder/Fahrt von Hand schaltet den Navigator ab. Unbedient = bitgleich.
+- **Offen:** Nutzer-Urteil zu allem; Zielvorgabe auf dem Bollwerk nur 71 % bedient (schwere Türme alle oben); Kennung
+  „EF“ vor Silberlanze; CIC bei 1280×720 nicht eigens geprüft; Gatling-Bewegung/FPS beurteilt der Nutzer.
+- Debug Gefecht: `spiel.cic`, `spiel.zentrale` (zustand, wirkung, befehl({station, art, …})), `spiel.bilder(n)`.
+
+## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 22)
 - **Letzter Stand:** Runden 20–22 fertig und gepusht. Kein nächster Schritt beauftragt; der Nutzer testet nach jeder
   Runde selbst und schickt dann eine **nummerierte Befundliste**. Nutzer-Urteile zu R19–R22 stehen noch aus.
 - **Ideen für die nächste größere Runde (nicht beauftragt):** echtes Kanonenboot-/Drohnen-Modell + Spielziel im Gefecht

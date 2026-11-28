@@ -74,3 +74,9 @@
 - 2026-11-28 Runde 22 (Pflege) — UI vor jeder Testrunde selbst mit echter Maus bedient → 2 Fehler gefunden (Leiste nach
   Esc im Maß-Feld, Symmetrie beim Umsetzen). Laufzeit rot ohne Codeänderung: alten Stand per temporärem Worktree in
   derselben Minute nachmessen (vor/nach gleich) → Grenze mit Begründung anheben, nicht Code jagen. Grenzen ≥ 1,5 × Messwert.
+- 2026-11-28 Runde 23 — 5 Nutzerpunkte, 4 Bau-Experten parallel (Frühwarnung in den Bauauftrag gefaltet). Der
+  Richtschützen-Platz (Hand-Zielen mit Vorhalte-HUD) wurde zweimal von einem Sicherheitsfilter abgebrochen (Experte UND
+  Projektleitung) → Teil gestrichen, Rechenhilfen zurückgenommen, Nutzer offen informiert; nicht umformuliert neu
+  versuchen. Worktrees mit verlinktem node_modules (mklink /J) sparen npm install — vor `git worktree remove` die
+  Verknüpfung mit `rmdir` lösen. Zentrale bitgleich eingebaut über „Seitenbefehl ?? Zentrale“ (Tests mit modus laufen
+  weiter). Feste Mischobjekte (Object.assign) je Schritt auf Grundwerte setzen — Prüfer fand klebende Autopilot-Werte.
