@@ -1,7 +1,7 @@
 // ZWECK: Verschweißen einer Form (Runde 16): alle Plus-Körper vereinigen, alle Minus-Körper abziehen (three-bvh-csg),
 //        Knick-Normalen, Box-UVs → je Material EINE Geometrie in Form-Koordinaten.
 // LIEFERT: formGeometrie(form, { schweissen = true, zugabe = true, pruefen = true }) → { <mat>: BufferGeometry } mit
-//          nicht aufzählbarem Feld .info = { ms, msCsg, msPruefen, dreiecke, csg, gruppen, offeneKanten, offeneLaenge,
+//          nicht aufzählbarem Feld .info = { ms, msCsg, msPruefen, versuche (R22), dreiecke, csg, gruppen, offeneKanten, offeneLaenge,
 //          flaechenschluss } · offeneKanten(geos) · MATERIALIEN
 // REGEL (F6–F8): läuft ohne document.
 //   - Schweißzugabe ε = 1–3 mm je Körper (0,25-mm-Stufen nach Listenplatz). Befund R16: three-bvh-csg schließt bündige
@@ -32,7 +32,13 @@ const NAME = new Map(MATERIALIEN.map((n) => [PLATZ[n], n]));
 // Original und Kopie verschiedene Zugaben,
 // lagen ihre Stirnflächen 0,25 mm auseinander; die CSG schnitt das Deck darunter an beiden Linien und ließ 0,25 mm
 // breite Splitter stehen (offene Kanten, Generator-Träger 279: Kasten-Paar auf dem Deck).
-const zugabeVon = (i) => 0.001 + 0.00025 * (i % 9);
+const zugabeVon = (i, versuch = 0) => 0.001 + 0.0003 * versuch + 0.00025 * ((i + 4 * versuch) % 9);
+// Runde 22: bleibt das Netz undicht, wird mit anderen Zugaben (versuch 1…3: andere Reihenfolge, etwas mehr) neu
+// verschweißt. WARUM: die Risse sind 0,1–3 mm breite Splitter, die three-bvh-csg bei bestimmten Lagen der Schnittlinien
+// stehen lässt — welche Lage, hängt chaotisch an den Zugaben (Messung R22: Kern aus 5 Körpern, jeder einzeln weglassen
+// macht dicht). Eine andere Zugabe verschiebt die Schnittlinien um Bruchteile eines Millimeters, das Netz wird dicht.
+// Dichte Formen ändern sich dadurch nicht (es bleibt beim ersten Versuch).
+const VERSUCHE = 3;
 
 let evaluator = null;
 function ev() {
@@ -95,7 +101,22 @@ export function formGeometrie(roheForm, { schweissen = true, zugabe = true, prue
   const t0 = performance.now();
   const form = normalisiere(roheForm);
   form.koerper = form.koerper.filter((k) => k.spanten.length >= 2);
-  const liste = koerperListe(form).map(({ k, lage }, i) => ({ k, lage, h: huelle(k, lage), e: zugabe ? zugabeVon(i) : 0 }));
+  let geos = einmal(form, { schweissen, zugabe, pruefen }, 0, t0), versuche = 1, pruefZeit = geos.info.msPruefen ?? 0;
+  if (schweissen && zugabe && pruefen) {
+    for (let v = 1; v <= VERSUCHE && geos.info.offeneKanten > 0; v++) {
+      const neu = einmal(form, { schweissen, zugabe, pruefen }, v, t0); versuche++; pruefZeit += neu.info.msPruefen ?? 0;
+      if (neu.info.offeneKanten < geos.info.offeneKanten) { for (const g of Object.values(geos)) g.dispose(); geos = neu; }
+      else for (const g of Object.values(neu)) g.dispose();
+    }
+  }
+  // WARUM ms ohne Prüfzeit: wie bisher misst ms das Verschweißen (Ziel ≤ 150 ms); die Kantenprüfung steht in msPruefen
+  Object.assign(geos.info, { versuche, ms: performance.now() - t0 - pruefZeit, msPruefen: pruefen ? pruefZeit : undefined });
+  return geos;
+}
+
+/** Ein Durchgang des Verschweißens mit Zugaben-Versuch v (0 = wie bisher). */
+function einmal(form, { schweissen, zugabe, pruefen }, versuch, t0) {
+  const liste = koerperListe(form).map(({ k, lage }, i) => ({ k, lage, h: huelle(k, lage), e: zugabe ? zugabeVon(i, versuch) : 0 }));
   // Spiegelkopie, die ihr Original nicht berührt → Zugabe des Originals (Runde 20, siehe zugabeVon). WARUM nur dann:
   // berühren sie sich (Körper an der Spiegelebene), bräuchten sie wieder verschiedene Zugaben (Prüfform 30, R16)
   const erstes = new Map();
