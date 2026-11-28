@@ -204,13 +204,21 @@ function zeigeHilfen() {
   hilfsGruppe.clear();
   const k = koerper();
   if (k) {
-    // Auswahl: Drahtgitter des Körpers + Ring des aktuellen Spants
-    const draht = new THREE.Mesh(netze.get(k.id).geometry, auswahlMat); setzeLage(draht, k); hilfsGruppe.add(draht);
+    // Auswahl: Drahtgitter des Körpers + Ring des aktuellen Spants — an Original UND allen Spiegelkopien.
+    // WARUM je Netz mit dessen matrixWorld (Nutzer R23: „nur die Punkte werden gespiegelt, nicht die Konturlinien“):
+    // die Punkte (zeigePunkte) lagen schon an jeder Kopie, Drahtgitter und Ring nur am Original (setzeLage).
     const s = k.spanten[spantNr];
-    if (s) {
-      const pts = profilPunkte(s).map(([x, y]) => new THREE.Vector3(x, y, s.z));
-      const ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffd080, depthTest: false }));
-      ring.renderOrder = 20; setzeLage(ring, k); hilfsGruppe.add(ring);
+    const ringGeo = s ? new THREE.BufferGeometry().setFromPoints(profilPunkte(s).map(([x, y]) => new THREE.Vector3(x, y, s.z))) : null;
+    const ringMat = new THREE.LineBasicMaterial({ color: 0xffd080, depthTest: false });
+    const netzListe = alleNetze(k.id);
+    for (const netz of netzListe.length ? netzListe : [netze.get(k.id)]) {
+      netz.updateWorldMatrix(true, false);
+      const draht = new THREE.Mesh(netz.geometry, auswahlMat);
+      draht.matrixAutoUpdate = false; draht.matrix.copy(netz.matrixWorld); hilfsGruppe.add(draht);
+      if (ringGeo) {
+        const ring = new THREE.LineLoop(ringGeo, ringMat);
+        ring.matrixAutoUpdate = false; ring.matrix.copy(netz.matrixWorld); ring.renderOrder = 20; hilfsGruppe.add(ring);
+      }
     }
   }
   zeigePunkte();
