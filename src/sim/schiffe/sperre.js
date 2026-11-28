@@ -15,6 +15,10 @@
 //   - WARUM konservativ: Rumpf um RAND m aufgeblasen (Rohrdicke + Kisten der Aufbauten), Sektor = Maximum über 13
 //     Gier-Proben. Prüfung gegen die echten Lofts: tests/schiffe.mjs „Rumpftreffer“.
 //   - Ergebnis je (turm, teile, n) zwischengespeichert — die Rechnung dauert ~50 ms je Turm.
+//   - R21 (Form im Gefecht): statt teile geht auch eine Quelle { hoehe(x, z, oben) → y | null, huelle { x0, x1, z0, z1 },
+//     weite } (Schiffs-Koordinaten, Rand schon eingerechnet) — z. B. formHoehenfeld(form, versatz) aus
+//     src/sim/form/geschuetze.js. Gleiche Strahlen und Sektoren; Weite = max(300 m, quelle.weite). Zwischenspeicher je
+//     (Quelle, turm, n). Der Bollwerk-Weg (teile) bleibt unverändert.
 import { masse, alleTeile } from './rumpf.js';
 
 const RAND = 0.5;        // m, Aufblasen des Rumpfs
@@ -41,6 +45,8 @@ function kante(teil, x, z, oben, e) {
 }
 
 export function rumpfSperre(turm, teile, n = 32) {
+  // R21: Form-Schiffe haben keine Querschnitte — Höhenfeld-Quelle { hoehe(x, z, oben), huelle, weite } (Kopf)
+  if (teile && typeof teile.hoehe === 'function') return sperreAusFeld(turm, teile, n);
   const liste = Array.isArray(teile) ? teile : alleTeile(teile);
   let karte = ablage.get(turm);
   if (!karte) ablage.set(turm, karte = new Map());
@@ -97,5 +103,51 @@ export function rumpfSperre(turm, teile, n = 32) {
     w[i] = m;
   }
   karte.set(schluessel, w);
+  return w;
+}
+
+const ablageFeld = new WeakMap(); // quelle → WeakMap(turm → Map(n → Ergebnis))
+
+/** Rumpf-Sperre aus einer Höhenfeld-Quelle (R21) — gleiche Strahlen wie oben, Höhe je Schritt aus quelle.hoehe(). */
+function sperreAusFeld(turm, quelle, n) {
+  let jeTurm = ablageFeld.get(quelle);
+  if (!jeTurm) ablageFeld.set(quelle, jeTurm = new WeakMap());
+  let karte = jeTurm.get(turm);
+  if (!karte) jeTurm.set(turm, karte = new Map());
+  if (karte.has(n)) return karte.get(n);
+
+  const { x0: gx0, x1: gx1, z0: gz0, z1: gz1 } = quelle.huelle;
+  const weite = Math.max(WEITE, quelle.weite ?? 0);
+  const oben = turm.oben, vx = oben ? 1 : -1;
+  const y0 = turm.zapfen.y, zz = turm.zapfen.z;
+  const seiten = [0, turm.muendungen[0].x, -turm.muendungen[0].x];
+  function nickFrei(g) {
+    const sg = Math.sin(g), cg = Math.cos(g);
+    let best = -Math.PI / 2;
+    for (const q of seiten) {
+      const ox = sg * zz + cg * q, oz = cg * zz - sg * q;
+      for (let d = SCHRITT; d <= weite; d += SCHRITT) {
+        const sx = turm.x + vx * (ox + sg * d), sz = turm.z + oz + cg * d;
+        if (sx < gx0 || sx > gx1 || sz < gz0 || sz > gz1) {
+          if ((sx < gx0 && vx * sg <= 0) || (sx > gx1 && vx * sg >= 0) || (sz < gz0 && cg <= 0) || (sz > gz1 && cg >= 0)) break;
+          continue;
+        }
+        const y = quelle.hoehe(sx, sz, oben);
+        if (y === null) continue;
+        const h = oben ? y - turm.y : turm.y - y; // Höhe im Turm-Rahmen (vom Rumpf weg)
+        const w = Math.atan2(h - y0, d);
+        if (w > best) best = w;
+      }
+    }
+    return best;
+  }
+  const w = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI + i * ZWEI_PI / n;
+    let m = -Math.PI / 2;
+    for (let k = 0; k <= PROBEN; k++) m = Math.max(m, nickFrei(a + (ZWEI_PI / n) * k / PROBEN));
+    w[i] = m;
+  }
+  karte.set(n, w);
   return w;
 }

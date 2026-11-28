@@ -5,7 +5,7 @@
 //        anlauf (Schlangenlinie, Feuer 700 → 380 m) → abdrehen (nach außen, am Schiff vorbei) → ausholen bis 1500 m →
 //        nächste Peilung 110° weiter (WARUM: Angriffe aus wechselnden Richtungen, die Türme müssen sich verteilen).
 //        Lesbarkeit (Rolle KI): Rotten starten gemeinsam, Feuer nur mit der Nase zum Schiff, sichtbare Leuchtspur.
-// LIEFERT: erstelleAngreifer({ startwert }) → { ziele, geschosse, welle, statistik, schritt(dt, flakEreignisse, schiffZ,
+// LIEFERT: erstelleAngreifer({ startwert, abstand? }) (abstand: Felder aus ANGREIFER_ABSTAENDE, R21) → { ziele, geschosse, welle, statistik, schritt(dt, flakEreignisse, schiffZ,
 //          kugeln) → { abschuesse[{ id, pos }], treffer[{ pos, schaden }] }, zuruecksetzen() } · ANGREIFER (Werte)
 //          ziele[i] = { id, pos, vel, vorPos, r, hp, hpMax, aktiv, angriff, vorstoss (immer false), phase } — WELT, feste Slots
 //          geschosse = Pool { max, anzahlAktiv, aktiv (Uint8), pos/vorPos/vel (Float64 ×3), alter (Takte) } — WELT
@@ -52,8 +52,14 @@ export const ANGREIFER = {
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const MAXS = Math.max(...ANGREIFER.wellen);
 
-export function erstelleAngreifer({ startwert = 404 } = {}) {
-  const A = ANGREIFER, WF = A.waffe;
+/** R21 (Form im Gefecht): diese Abstände (m, Schiffsmitte) darf der Aufrufer je Schiffsgröße setzen. */
+export const ANGREIFER_ABSTAENDE = ['mindest', 'rumpfZiel', 'feuerAb', 'abdrehen', 'ausholen', 'sammeln', 'start'];
+
+export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
+  // WARUM eine Kopie nur mit abstand: ohne Angabe bleibt alles bitgleich (dasselbe ANGREIFER-Objekt)
+  let A = ANGREIFER;
+  if (abstand) { A = { ...ANGREIFER }; for (const k of ANGREIFER_ABSTAENDE) if (Number.isFinite(abstand[k])) A[k] = abstand[k]; }
+  const WF = A.waffe;
   let rnd = zufall(startwert);
   const ziele = [], st = [], abschussVorrat = [];
   for (let i = 0; i < MAXS; i++) {
