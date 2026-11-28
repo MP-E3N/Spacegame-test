@@ -154,15 +154,73 @@ export function fuegeZusammen(eimer, mats, gruppe, praefix = 'schiff') {
 
 const netz = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; m.name = name; return m; };
 
+/** Kegelstumpf längs Z von z0 (Radius r0) bis z1 (Radius r1), Achse bei (x, y). */
+const kegelZ = (r0, r1, z0, z1, x, y, seg = 10) =>
+  nur(new THREE.CylinderGeometry(r1, r0, z1 - z0, seg).rotateX(Math.PI / 2).translate(x, y, (z0 + z1) / 2));
+
+/**
+ * Gatling-Bündel (R23, Nutzer: „die Flak-Geschütze bitte zu Gatlings machen“) als EINE Geometrie, Achse = lokale Z-Achse
+ * bei x = y = 0, von z0 (Verschluss) bis z1 (Mündung): Rotortrommel, 6 Rohre im Kranz, Mittelspindel, zwei Rohrschellen.
+ * WARUM Achse im Ursprung: rotation.z des Netzes dreht das Bündel um die Rohrachse (Waffen-Grafik, t.spin).
+ */
+function gatlingBuendel(s, z0, z1) {
+  const teile = [], kranz = 0.3 * s, rr = 0.1 * s, L = z1 - z0;
+  teile.push(kegelZ(0.46 * s, 0.42 * s, z0, z0 + 0.13 * L, 0, 0, 10));                 // Rotortrommel (dreht mit)
+  teile.push(rohrZ(0.13 * s, 0.85 * L, 0, 0, z0 + 0.425 * L, 6));                       // Mittelspindel
+  for (let k = 0; k < 6; k++) {
+    const w = k / 6 * Math.PI * 2;
+    teile.push(rohrZ(rr, 0.9 * L, Math.cos(w) * kranz, Math.sin(w) * kranz, z0 + 0.55 * L, 6)); // Rohr k, endet an z1
+  }
+  for (const zs of [z0 + 0.55 * L, z1 - 0.05 * L]) teile.push(rohrZ(0.43 * s, 0.035 * L, 0, 0, zs, 10)); // Rohrschellen
+  return mergeGeometries(teile);
+}
+
+/**
+ * Schweres Rohr der Hauptbatterie (R23): Verschluss-Verstärkung, konisch verjüngter Lauf, Mündungsbremse mit Ringnut.
+ * z1 = Sim-Mündung (Spitze genau dort, wie bisher). Achse bei (x, 0).
+ */
+function schweresRohr(s, x, z0, z1) {
+  const L = z1 - z0, b = 0.11 * L; // b = Länge der Mündungsbremse
+  return mergeGeometries([
+    kegelZ(0.4 * s, 0.38 * s, z0, z0 + 0.25 * L, x, 0, 10),                 // Verschluss-Verstärkung
+    kegelZ(0.33 * s, 0.25 * s, z0 + 0.25 * L, z1 - b, x, 0, 10),             // Lauf, verjüngt
+    kegelZ(0.42 * s, 0.42 * s, z1 - b, z1 - 0.55 * b, x, 0, 8),               // Mündungsbremse hinten
+    kegelZ(0.3 * s, 0.3 * s, z1 - 0.55 * b, z1 - 0.4 * b, x, 0, 8),           // Ringnut (Gasaustritt)
+    kegelZ(0.42 * s, 0.4 * s, z1 - 0.4 * b, z1, x, 0, 8),                     // Mündungsbremse vorn
+  ]);
+}
+
+/**
+ * Gepanzerter Turmkasten der Hauptbatterie (R23) im Drehkranz-Rahmen: gefaster Kasten mit schräger Frontplatte und
+ * Hecküberhang, Entfernungsmesser quer über dem Dach, Kommandantenkuppel, Lüfterblöcke. Unterkante wie der alte Kranz
+ * (1,1 s), Front endet am Zapfen (z 2,3 s) — die Wiege mit dem Rohrschild sitzt davor.
+ */
+function turmKasten(s) {
+  return mergeGeometries([
+    nur(loft([{ z: -3.0 * s, w: 1.9 * s, h: 0.75 * s, y: 1.95 * s }, { z: -2.1 * s, w: 2.4 * s, h: 0.95 * s, y: 2.05 * s },
+      { z: 1.3 * s, w: 2.4 * s, h: 0.95 * s, y: 2.05 * s }, { z: 2.3 * s, w: 1.95 * s, h: 0.6 * s, y: 1.8 * s }], 0.35)),
+    kiste(5.6 * s, 0.32 * s, 0.5 * s, 0, 3.1 * s, -0.9 * s),                // Entfernungsmesser (Balken)
+    rohrX(0.3 * s, 0.4 * s, 2.95 * s, 3.1 * s, -0.9 * s, 8), rohrX(0.3 * s, 0.4 * s, -2.95 * s, 3.1 * s, -0.9 * s, 8), // Optik-Köpfe
+    rohrY(0.5 * s, 0.45 * s, 0.9 * s, 3.2 * s, 0.4 * s, 8),                 // Kommandantenkuppel
+    kiste(1.4 * s, 0.35 * s, 0.9 * s, -1.0 * s, 3.15 * s, -2.2 * s), kiste(1.4 * s, 0.35 * s, 0.9 * s, 1.0 * s, 3.15 * s, -2.2 * s), // Lüfter
+    kiste(5.0 * s, 0.25 * s, 0.3 * s, 0, 1.25 * s, 1.9 * s),                // Kantenleiste vorn unten
+  ]);
+}
+
 /**
  * Geschützturm aus einem Sim-Datensatz t (src/sim/schiffe/turm.js). Gliederung:
  *   gruppe (Fußpunkt, unten: rotation.z = π) → Sockel (fest: Schürze, Säule, Lagerring)
  *     → drehkranz (rotation.y = gier, auf Sockelhöhe) → wiege (Ursprung im Zapfen, rotation.x = −nick)
  *       → rohre (je ein Mesh, position.z verschiebbar für Rückstoß) · muendungen (Object3D an den Rohrspitzen)
- * @returns { gruppe, drehkranz, wiege, rohre: [Mesh], muendungen: [Object3D] }
+ * R23: typ 'flak' → je Mündung ein Gatling-Bündel aus 6 Rohren (EIN Netz, Achse genau auf der Sim-Mündungslage x/y,
+ *      Länge wie bisher); buendel[k] dreht per rotation.z, rohre === buendel (Rückstoß-Code läuft weiter).
+ *      typ 'schwer' → Hauptbatterie: gepanzerter Turmkasten, schwere Rohre mit Mündungsbremse, Rohrschild an der Wiege.
+ *      Sim-Maße (TURM, Datensatz) bleiben unverändert; Netze je Turm wie bisher (0 Draw-Calls mehr).
+ *      opt.gatling (Standard: t.typ === 'flak') — WARUM abschaltbar: der Flak-Prüfstand simuliert Zwillingsrohre (E2).
+ * @returns { gruppe, drehkranz, wiege, rohre: [Mesh], muendungen: [Object3D], buendel: [Mesh] (leer ohne Gatling) }
  */
-export function turm(gruppe, mats, t) {
-  const s = t.s, P = TURM, h = t.sockel;
+export function turm(gruppe, mats, t, { gatling = t.typ === 'flak' } = {}) {
+  const s = t.s, P = TURM, h = t.sockel, schwer = t.typ === 'schwer';
   // R14: kleine Türme (PDC, s ≤ 0,7) werfen mit Rohren und Wiege keinen Schatten. WARUM: jedes Netz kostet einen
   // zweiten Draw-Call im Schattendurchgang (+10 PDC = +100 Draw-Calls); 0,2-m-Rohrschatten sieht man kaum.
   const schatten = s > 0.7;
@@ -175,25 +233,41 @@ export function turm(gruppe, mats, t) {
   g.add(netz(boxUv(mergeGeometries(fest)), mats.dunkel, 'sockel'));
 
   const drehkranz = new THREE.Group(); drehkranz.name = 'drehkranz'; drehkranz.position.y = h; g.add(drehkranz);
-  drehkranz.add(netz(boxUv(mergeGeometries([kiste(4 * s, 1.8 * s, 4.6 * s, 0, 2.0 * s, 0.3 * s), kiste(3 * s, 0.6 * s, 2 * s, 0, 3.1 * s, -0.6 * s)])),
-    mats.rumpf, 'kranz'));
+  const kasten = schwer ? turmKasten(s)
+    : mergeGeometries([kiste(4 * s, 1.8 * s, 4.6 * s, 0, 2.0 * s, 0.3 * s), kiste(3 * s, 0.6 * s, 2 * s, 0, 3.1 * s, -0.6 * s)]);
+  drehkranz.add(netz(boxUv(kasten), mats.rumpf, 'kranz'));
 
   const wiege = new THREE.Group(); wiege.name = 'wiege'; wiege.position.set(0, t.zapfen.y - h, t.zapfen.z); drehkranz.add(wiege);
-  const mantel = [], rohre = [], muendungen = [];
+  const mantel = [], rohre = [], muendungen = [], buendel = [];
+  const z0 = (P.rohrZ - P.rohrL / 2) * s; // Rohr-Anfang in Wiege-Koord. (wie bisher: Mitte rohrZ, Länge rohrL)
+  if (schwer) { // Rohrschild: gepanzerter Block über beiden Rohren, dreht mit der Wiege
+    const xs = t.muendungen.map((m) => Math.abs(m.x)), b = 2 * (Math.max(0, ...xs) + 0.75 * s);
+    mantel.push(kiste(b, 1.5 * s, 0.9 * s, 0, 0, 0.15 * s), kiste(b * 0.8, 0.3 * s, 0.7 * s, 0, 0.85 * s, 0.05 * s));
+  }
   for (const m of t.muendungen) {
-    mantel.push(rohrZ(P.mantelR * s, P.mantelL * s, m.x, 0, P.mantelZ * s, 8));
-    const r = netz(boxUv(rohrZ(P.rohrR * s, P.rohrL * s, m.x, 0, P.rohrZ * s, 8)), mats.metall, 'rohr' + rohre.length);
+    const z1 = m.z; // Sim-Mündung (= (rohrZ + rohrL/2) · s) — Spitze bleibt genau dort
+    let r;
+    if (gatling) {
+      // Gehäuse hinter der Rotortrommel (fest an der Wiege) + Munitionszuführung
+      mantel.push(kiste(0.95 * s, 0.95 * s, 1.1 * s, m.x, m.y, z0 - 0.55 * s), kiste(0.35 * s, 0.6 * s, 0.8 * s, m.x + Math.sign(m.x || 1) * 0.62 * s, m.y - 0.15 * s, z0 - 0.5 * s));
+      r = netz(boxUv(gatlingBuendel(s, z0, z1)), mats.metall, 'buendel' + buendel.length);
+      r.position.set(m.x, m.y, 0); // WARUM Lage am Netz statt in der Geometrie: rotation.z dreht dann um die Rohrachse
+      buendel.push(r);
+    } else {
+      mantel.push(rohrZ(P.mantelR * s * (schwer ? 1.2 : 1), P.mantelL * s, m.x, 0, P.mantelZ * s, 8));
+      r = netz(boxUv(schwer ? schweresRohr(s, m.x, z0, z1) : rohrZ(P.rohrR * s, P.rohrL * s, m.x, 0, P.rohrZ * s, 8)), mats.metall, 'rohr' + rohre.length);
+    }
     r.castShadow = schatten;
     wiege.add(r); rohre.push(r);
     const o = new THREE.Object3D(); o.name = 'muendung' + muendungen.length; o.position.set(m.x, m.y, m.z);
     wiege.add(o); muendungen.push(o);
   }
-  const w = netz(boxUv(mergeGeometries(mantel)), mats.metall, 'wiege'); w.castShadow = schatten; wiege.add(w);
+  const w = netz(boxUv(mergeGeometries(mantel)), schwer ? mats.dunkel : mats.metall, 'wiege'); w.castShadow = schatten; wiege.add(w);
 
   g.position.set(t.x, t.y, t.z);
   if (!t.oben) g.rotation.z = Math.PI;
   gruppe.add(g);
-  return { gruppe: g, drehkranz, wiege, rohre, muendungen };
+  return { gruppe: g, drehkranz, wiege, rohre, muendungen, buendel };
 }
 
 /** Triebwerksdüse (Glocke) mit Gehäuse und Stellzylindern; seg = 8 → achteckig. Liefert die Düsenbeschreibung. */
