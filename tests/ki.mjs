@@ -22,7 +22,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { erstelleZieldrohnen, DROHNEN } from '../src/sim/ki/zieldrohnen.js';
 import { erstelleTurmKi, abfangen, TURMKI, querDeckel, STREU_REGLER, streuWert, waffeWert, grenzenOk } from '../src/sim/ki/turmziel.js';
-import { erstelleAngreifer, ANGREIFER } from '../src/sim/ki/angreifer.js';
+import { erstelleAngreifer, ANGREIFER, GEGNER_TYP } from '../src/sim/ki/angreifer.js';
 import { inSchiffsrahmen, zuWelt } from '../src/sim/ki/schiffsrahmen.js';
 import { erstelleFlakLabor } from '../src/sim/flaklabor.js';
 import { SCHIFFSDATEN, rumpfSperre, sperrSektor } from '../src/sim/schiffe/index.js';
@@ -876,8 +876,9 @@ const KUGELN = SCHIFFSDATEN.bollwerk.kugeln;
   zeile('O Rechenzeit Angreifer je Takt (4 Boote + Geschosse)', '< 100 µs', `${f1(us)} µs`, us < 100);
   // Wellen: jeder erscheinende Angreifer stirbt sofort → Wellen laufen durch
   const w = erstelleAngreifer({ startwert: 404 }), wl = lauf(w, 150 * 60, true);
-  zeile('O Wellen 4 → 6 → 8 (alle sofort abgeschossen, 150 s): Welle · gleichzeitig · höchstens aktiv · Abschüsse', '≥ 4 · 8 · ≤ 8',
-    `${w.welle.nr} · ${w.welle.gleichzeitig} · ${wl.maxAktiv} · ${w.statistik.abschuesse}`, w.welle.nr >= 4 && w.welle.gleichzeitig === 8 && wl.maxAktiv <= 8 && w.statistik.abschuesse > 0);
+  // R23: gleichzeitig = belegte Plätze (Boote + Panzerboote) — ab Welle 3: 8 + 2 = 10 (Vorrat 10)
+  zeile('O Wellen 4 → 6 → 8 Boote + 0/1/2 Panzerboote (alle sofort abgeschossen, 150 s): Welle · Boote + Panzer · höchstens aktiv · Abschüsse', '≥ 4 · 8 + 2 · ≤ 10',
+    `${w.welle.nr} · ${w.welle.boote} + ${w.welle.panzer} · ${wl.maxAktiv} · ${w.statistik.abschuesse}`, w.welle.nr >= 4 && w.welle.boote === 8 && w.welle.panzer === 2 && w.welle.gleichzeitig === 10 && wl.maxAktiv <= 10 && w.statistik.abschuesse > 0);
 }
 
 // ---------- P) Gefecht-Messung (R14): Angreifer + Turm-KI (Schiffsrahmen, Bollwerk-Flak) + echte Flak ----------
@@ -915,7 +916,7 @@ function gefecht(modus, flug, sek, startwert = 1) {
     for (const d of fB.ereignisse.detonationen) ev.detonationen.push({ pos: { x: sz.pos.x - d.pos.x, y: sz.pos.y - d.pos.y, z: d.pos.z + sz.pos.z } });
     for (const t of ang.schritt(DT, ev, sz, B.kugeln).treffer) schaden += t.schaden;
     ang.ziele.forEach((z, i) => {
-      const a = ziA[i], b = ziB[i]; a.id = b.id = z.id; a.aktiv = b.aktiv = z.aktiv;
+      const a = ziA[i], b = ziB[i]; a.id = b.id = z.id; a.aktiv = b.aktiv = z.aktiv; a.r = b.r = z.r; // R23: Panzerboot r 16
       a.pos.x = z.pos.x - sz.pos.x; a.pos.y = z.pos.y - sz.pos.y; a.pos.z = z.pos.z - sz.pos.z;
       a.vel.x = z.vel.x - sz.vel.x; a.vel.y = z.vel.y - sz.vel.y; a.vel.z = z.vel.z - sz.vel.z;
       b.pos.x = -a.pos.x; b.pos.y = -a.pos.y; b.pos.z = a.pos.z; b.vel.x = -a.vel.x; b.vel.y = -a.vel.y; b.vel.z = a.vel.z;
@@ -947,7 +948,235 @@ function gefecht(modus, flug, sek, startwert = 1) {
   const flakHilft = ['sperr', 'ziel', 'sperrM', 'zielM'].every((k) => r[k].hpMin < r.halt.hpMin && r[k].abMin >= 4);
   zeile('P Flak schützt: jeder Lauf mit Feuer weniger Schiffsschaden als Feuer halt und ≥ 4 Abschüsse/min', 'ja', flakHilft ? 'ja' : 'nein', flakHilft);
   const kiMax = Math.max(...Object.values(r).map((x) => x.kiUs));
-  zeile('P Rechenzeit Turm-KI (14 Türme, bis 8 Angreifer) je Takt', '< 1000 µs', `${f1(kiMax)} µs`, kiMax < 1000);
+  zeile('P Rechenzeit Turm-KI (14 Türme, bis 10 Angreifer) je Takt', '< 1000 µs', `${f1(kiMax)} µs`, kiMax < 1000);
+}
+
+// ---------- Q) R23: Panzerboote, Hauptbatterie (typ 'schwer'), Handsteuerung, CIC-Vorgabe — gegen die Schnittstelle E2/E3 ----------
+// Ersatz-Waffe für schwere Türme (WARUM eigene: der Waffentechniker baut flak.js parallel um; geprüft wird gegen E2):
+// v0 je geladener Munition (flak 1100, panzer 900 m/s), Munitionswechsel 1 s, Richttempo 30/25°/s, Nachladen 2 s,
+// Streuung 0,1°, Panzergranate fliegt gerade (Segment-Kugel-Test gegen r), Schaden 80 je Treffer (ANNAHME, Wunsch an
+// den Waffentechniker) — Flak der Hauptbatterie wird hier nicht ausgewertet.
+{
+  const lafQ = (id, x, y, z, oben, typ = 'flak', nick = [-0.05, 1.45]) => ({ id, x, y, z, oben, typ, s: 1, sockel: 0,
+    zapfen: { y: 2.1, z: 2.4 }, muendungen: [{ x: 0.8, y: 0, z: 6.7 }, { x: -0.8, y: 0, z: 6.7 }], gier: [0, Math.PI], nick });
+  const GAT = [lafQ(0, -14, 5, 0, true), lafQ(1, 14, 5, 0, true), lafQ(2, -14, 5, 20, true), lafQ(3, 14, 5, 20, true)];
+  const SCHWER = [lafQ(4, 0, 6, 40, true, 'schwer', [-0.1, 0.8]), lafQ(5, 0, 6, -40, true, 'schwer', [-0.1, 0.8])];
+  const V0M = { flak: 1100, panzer: 900 };
+  // Ziele: zwei Boote und ein Panzerboot auf Kreisen (1200–1600 m, 400–600 m hoch), ein Boot kreist in der Killzone (420 m)
+  const bahn = [[1, 'boot', 1400, 500, 0.08, 0], [2, 'boot', 1300, 420, -0.09, 2], [3, 'panzer', 1500, 600, 0.07, 4], [4, 'boot', 420, 150, 0.3, 1]];
+  const zieleQ = (mitPanzer = true, mitNah = true) => bahn.filter((b) => (mitPanzer || b[1] !== 'panzer') && (mitNah || b[2] > 600)).map(([id, art]) => ({ id, art, panzer: art === 'panzer' ? GEGNER_TYP.panzer.panzer : 0,
+    r: GEGNER_TYP[art].r, hp: 100, hpMax: 100, aktiv: true, angriff: false, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } }));
+  const bewege = (zz, t) => { for (const z of zz) { const [, , R, h, w, ph] = bahn.find((b) => b[0] === z.id), a = w * t + ph;
+    z.pos.x = R * Math.sin(a); z.pos.y = h; z.pos.z = R * Math.cos(a); z.vel.x = R * w * Math.cos(a); z.vel.y = 0; z.vel.z = -R * w * Math.sin(a); } };
+  const tzQ = (laf) => laf.map((l) => ({ muendung: { x: l.x, y: l.y + l.zapfen.y, z: l.z }, v0: 1100, reichweite: 3000, gesperrt: false, gier: 0, nick: 0.3, munition: 'flak', laden: 0 }));
+  /** Lauf: plan(k) → Befehl; pruefe(k, befehle, ki, ziele) je Takt. Türme richten sofort, v0 folgt der Munition nach 1 s. */
+  const laufQ = (laf, plan, pruefe, { mitPanzer = true, mitNah = true, takte = 1800 } = {}) => {
+    const ki = erstelleTurmKi({ startwert: 7, lafetten: laf, mitte: { x: 0, y: 0, z: 0 } }), zz = zieleQ(mitPanzer, mitNah), tz = tzQ(laf);
+    let h = 0;
+    for (let k = 0; k < takte; k++) {
+      bewege(zz, k * DT);
+      const bf = ki.schritt(DT, plan(k), zz, tz);
+      for (let i = 0; i < laf.length; i++) {
+        const t = tz[i], b = bf[i], m = t.muendung, dx = b.punkt.x - m.x, dy = b.punkt.y - m.y, dz = b.punkt.z - m.z;
+        t.gier = Math.atan2(dx, dz); t.nick = Math.asin(dy / (L(dx, dy, dz) || 1));
+        if (laf[i].typ === 'schwer') { if ((b.munition ?? 'flak') !== t.munition) { t.laden += DT; if (t.laden >= 1) { t.munition = b.munition; t.v0 = V0M[t.munition]; t.laden = 0; } } else t.laden = 0; }
+      }
+      pruefe?.(k, bf, ki, zz);
+      for (let i = 0; i < GAT.length; i++) { /* Hash nur über die Gatlings (Q1) */ const b = bf[i]; h = (h * 31 + Math.round(b.punkt.x * 1e3) + Math.round(b.punkt.y * 1e3) * 7 + (b.feuer ? 1 : 0) + (b.zielId ?? -1) * 13) >>> 0; }
+    }
+    return h;
+  };
+  const PLAN = (k) => (k < 900 ? { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800 } : { modus: 'zielfeuer', feuerFrei: true });
+
+  // Q1 Bitgleich: dieselben 4 Gatlings mit/ohne 2 schwere Türme dahinter, mit/ohne ausdrückliche Standardfelder
+  {
+    // WARUM ohne Panzerboot: die Gatling-Bewertung eines gepanzerten Ziels ist R23 bewusst neu (× (1 − 0,6·panzer))
+    const h0 = laufQ(GAT, PLAN, null, { mitPanzer: false });
+    const h1 = laufQ([...GAT, ...SCHWER], PLAN, null, { mitPanzer: false });
+    const h2 = laufQ(GAT, (k) => ({ ...PLAN(k), manuell: -1, zielVorgabe: null, hauptMunition: 'auto' }), null, { mitPanzer: false });
+    zeile('Q Gatling-Befehle: + 2 schwere Türme | + manuell −1, zielVorgabe null, hauptMunition auto = ohne (1800 Takte)', 'gleich | gleich',
+      `${h1 === h0 ? 'gleich' : 'ANDERS'} | ${h2 === h0 ? 'gleich' : 'ANDERS'}`, h0 === h1 && h0 === h2);
+  }
+  // Q2 Hauptbatterie: Zielwahl (gepanzertes Ziel), Munition je Zielart, Raumfeuer ohne großes Ziel
+  {
+    const LQ = [...GAT, ...SCHWER];
+    let aufPanzer = 0, schwerProben = 0, munFalsch = 0, gatMun = 0, schwerFeuer = 0, apFeuer = 0;
+    laufQ(LQ, PLAN, (k, bf, ki, zz) => {
+      for (let i = 0; i < GAT.length; i++) if (bf[i].munition !== 'flak') gatMun++;
+      if (k < 60) return;
+      for (const i of [4, 5]) {
+        const b = bf[i], z = zz.find((q) => q.id === b.zielId); schwerProben++;
+        if (b.zielId === 3) aufPanzer++;
+        if (z && b.munition !== (z.panzer >= 0.5 ? 'panzer' : 'flak')) munFalsch++;
+        if (b.feuer) { schwerFeuer++; if (b.munition === 'panzer') apFeuer++; }
+      }
+    });
+    zeile('Q Hauptbatterie wählt das Panzerboot (Sperr- + Zielfeuer, 2 Türme) · Gatlings munition immer flak', '≥ 90 % · 0',
+      `${f1(100 * aufPanzer / schwerProben)} % · ${gatMun}`, aufPanzer / schwerProben >= 0.9 && gatMun === 0);
+    zeile('Q munition je Zielart (panzer ≥ 0,5 → panzer, sonst flak): falsche Befehle · Feuer davon mit Panzergranate', '0 · > 0',
+      `${munFalsch} · ${apFeuer} von ${schwerFeuer}`, munFalsch === 0 && apFeuer > 0);
+    // ohne Panzerboot: Sperrfeuer → Raumfeuer (Flak, kein Ziel, vor der vorderen Lage); Zielfeuer → Flak-Zielfeuer
+    let raum = 0, raumWeiter = 0, ziel = 0, apOhne = 0;
+    laufQ(LQ, PLAN, (k, bf, ki) => {
+      if (k < 120) return;
+      for (const i of [4, 5]) {
+        const b = bf[i]; if (b.munition === 'panzer') apOhne++;
+        if (k < 900 && b.zielId === null && b.feuer) {
+          raum++;
+          // „weiter draußen“: Befehlspunkt liegt in Flugrichtung vor der vorderen Lage eines Raums (≥ halber Lagenabstand)
+          if (ki.lage.schirme.some((s) => ((b.punkt.x - s.lagen[0].x) * s.laengs.x + (b.punkt.y - s.lagen[0].y) * s.laengs.y + (b.punkt.z - s.lagen[0].z) * s.laengs.z) >= 0.5 * s.lagenAbstand)) raumWeiter++;
+        }
+        if (k >= 960 && b.zielId !== null && b.feuer) ziel++;
+      }
+    }, { mitPanzer: false });
+    zeile('Q ohne Panzerboot: Raumfeuer der Hauptbatterie (Takte) · davon vor der vorderen Lage · Flak-Zielfeuer · Panzergranaten', '> 0 · ≥ 95 % · > 0 · 0',
+      `${raum} · ${f1(100 * raumWeiter / Math.max(1, raum))} % · ${ziel} · ${apOhne}`, raum > 0 && raumWeiter / Math.max(1, raum) >= 0.95 && ziel > 0 && apOhne === 0);
+    // hauptMunition überschreibt
+    const zaehleMun = (haupt) => { const c = { flak: 0, panzer: 0, raumAp: 0 };
+      laufQ(LQ, (k) => ({ ...PLAN(k), hauptMunition: haupt }), (k, bf) => { for (const i of [4, 5]) if (bf[i].feuer) { c[bf[i].munition]++; if (bf[i].zielId === null && bf[i].munition === 'panzer') c.raumAp++; } }); return c; };
+    const mf = zaehleMun('flak'), mp = zaehleMun('panzer');
+    zeile('Q hauptMunition flak → nie panzer | panzer → nur panzer, kein Raumfeuer mit Panzergranaten', '0 | 0 · 0',
+      `${mf.panzer} (flak ${mf.flak}) | ${mp.flak} · ${mp.raumAp} (panzer ${mp.panzer})`, mf.panzer === 0 && mf.flak > 0 && mp.flak === 0 && mp.raumAp === 0 && mp.panzer > 0);
+  }
+  // Q3 Handsteuerung: Gatling 1 (Takt 300–1200), dann schwerer Turm 4 — nie Feuer, nie Ziel, in keinem Raum; Killzone ohne ihn
+  {
+    const plan = (k) => ({ ...PLAN(k), manuell: k >= 300 && k < 1200 ? 1 : k >= 1200 ? 4 : -1 });
+    let feuer = 0, zielGesetzt = 0, imRaum = 0, proben = 0, andereFeuer = 0, kzOhne = 0, kzProben = 0;
+    laufQ([...GAT, ...SCHWER], plan, (k, bf, ki) => {
+      const m = plan(k).manuell; if (m < 0) return;
+      proben++;
+      if (bf[m].feuer) feuer++; if (bf[m].zielId !== null) zielGesetzt++;
+      if (ki.lage.schirme.some((s) => s.tuerme.includes(m))) imRaum++;
+      for (let i = 0; i < bf.length; i++) if (i !== m && bf[i].feuer) { andereFeuer++; break; }
+      if (ki.lage.eindringlinge.length) { kzProben++; if (bf.some((b, i) => i !== m && b.zielId === 4)) kzOhne++; }
+    });
+    zeile('Q manuell (Gatling, dann schwer): feuer:true · zielId gesetzt · in einem Raum (Takte)', '0 · 0 · 0',
+      `${feuer} · ${zielGesetzt} · ${imRaum} (von ${proben})`, feuer === 0 && zielGesetzt === 0 && imRaum === 0 && proben > 0);
+    zeile('Q manuell: übrige Türme feuern weiter · Killzone-Eindringling von anderen Türmen bedient', '> 90 % · > 90 %',
+      `${f1(100 * andereFeuer / proben)} % · ${f1(100 * kzOhne / Math.max(1, kzProben))} %`, andereFeuer / proben > 0.9 && kzProben > 0 && kzOhne / kzProben > 0.9);
+    // Rückkehr aus der Handsteuerung ohne Befehlssprung über das Übergangstempo (Sperrfeuer, Takt 600 zurück).
+    // WARUM ohne Killzone-Boot: frisch zugeteilte Killzone-Türme springen gewollt aufs Ziel (R7) — das wäre kein Befund
+    const sprungMax = (mitHand) => { let sprung = 0, vor = null;
+      laufQ([...GAT, ...SCHWER], (k) => ({ ...PLAN(0), manuell: mitHand && k >= 300 && k < 600 ? 1 : -1 }), (k, bf) => {
+        const t = { x: 14, y: 7.1, z: 0 }, p = bf[1].punkt, g = Math.atan2(p.x - t.x, p.z - t.z);
+        if (vor !== null && k >= 600 && k < 700) sprung = Math.max(sprung, Math.abs(Math.atan2(Math.sin(g - vor), Math.cos(g - vor))) / DT / GRAD);
+        vor = g;
+      }, { takte: 700, mitNah: false });
+      return sprung; };
+    const sH = sprungMax(true), s0 = sprungMax(false);
+    zeile('Q Rückkehr aus der Handsteuerung (Sperrfeuer, Takt 600–700): größter Gier-Sprung des Befehls | ohne Handsteuerung', '≤ 60°/s', `${f1(sH)} | ${f1(s0)}°/s`, sH <= 60);
+  }
+  // Q4 CIC-Vorgabe (Boot 2): Türme auf dem Vorgabeziel (Sperrfeuer: Hauptbatterie, Zielfeuer: + Gatlings)
+  {
+    let ab2 = [0, 0], proben = [0, 0], summe = [0, 0], wechselTakte = -1;
+    laufQ([...GAT, ...SCHWER], (k) => ({ ...PLAN(k), zielVorgabe: k >= 200 ? 2 : null }), (k, bf) => {
+      const n = bf.filter((b) => b.zielId === 2).length;
+      if (k >= 200 && wechselTakte < 0 && n >= 2) wechselTakte = k - 200;
+      const s = k < 900 ? 0 : 1;
+      if ((k >= 230 && k < 900) || k >= 960) { proben[s]++; summe[s] += n; if (n >= 2) ab2[s]++; }
+    });
+    zeile('Q zielVorgabe: Takte mit ≥ 2 Türmen auf dem Vorgabeziel (Sperr | Ziel) · Mittel · erst nach', '≥ 95 % | ≥ 95 % · ≤ 6 Takte',
+      `${f1(100 * ab2[0] / proben[0])} % | ${f1(100 * ab2[1] / proben[1])} % · ${f1(summe[0] / proben[0])} | ${f1(summe[1] / proben[1])} Türme · ${wechselTakte} Takte`,
+      ab2[0] / proben[0] >= 0.95 && ab2[1] / proben[1] >= 0.95 && wechselTakte >= 0 && wechselTakte <= 6);
+  }
+  // Q5 Panzerboote der Angreifer: je Welle (alle sofort abgeschossen), Werte, kein Neustart, Typentabelle
+  {
+    const ang = erstelleAngreifer({ startwert: 404 }), sz = SCHIFF_GERADE(), ev = { treffer: [], detonationen: [] };
+    const jeWelle = new Map(), gesehen = new Set(); let falsch = 0;
+    for (let k = 0; k < 200 * 60; k++) {
+      sz.pos.z += 60 * DT; ev.treffer.length = 0;
+      for (const z of ang.ziele) if (z.aktiv) ev.treffer.push({ zielId: z.id, schaden: 1e4 });
+      ang.schritt(DT, ev, sz, KUGELN);
+      for (const z of ang.ziele) if (z.aktiv && !gesehen.has(z.id)) {
+        gesehen.add(z.id);
+        const e = jeWelle.get(ang.welle.nr) ?? { boot: 0, panzer: 0 }; e[z.art]++; jeWelle.set(ang.welle.nr, e);
+        const T = GEGNER_TYP[z.art]; if (!T || z.r !== T.r || z.hpMax !== T.hpMax || z.hp !== T.hpMax || z.panzer !== T.panzer) falsch++;
+      }
+    }
+    const w = (nr) => jeWelle.get(nr) ?? { boot: 0, panzer: 0 }, s = [1, 2, 3, 4].map((nr) => `${w(nr).boot}+${w(nr).panzer}`).join(' / ');
+    const ok = w(1).panzer === 0 && w(1).boot === 8 && w(2).panzer === 1 && w(2).boot === 12 && w(3).panzer === 2 && w(3).boot === 16 && w(4).panzer === 2;
+    zeile('Q Angreifer je Welle 1–4 (Boote + Panzerboote, Boote mit 1 Neustart je Platz, Panzerboote ohne) · Werte = GEGNER_TYP', '8+0 / 12+1 / 16+2 / 16+2 · 0',
+      `${s} · ${falsch}`, ok && falsch === 0);
+    const T = GEGNER_TYP;
+    zeile('Q GEGNER_TYP: Namen · Panzerboot r / HP / panzer / Tempo', 'Kanonenboot, Panzerboot · 16 / 900 / 0,85 / 110',
+      `${T.boot.name}, ${T.panzer.name} · ${T.panzer.r} / ${T.panzer.hpMax} / ${T.panzer.panzer} / ${T.panzer.tempo}`, T.boot.name === 'Kanonenboot' && T.panzer.name === 'Panzerboot' && T.panzer.panzer >= 0.5 && T.boot.panzer === 0);
+  }
+  // Q6 Panzerboot fliegt (nur Boote sofort abgeschossen): Tempo, Läufe, Schaden je Treffer, Mindestabstand
+  {
+    const ang = erstelleAngreifer({ startwert: 404 }), sz = SCHIFF_GERADE(), ev = { treffer: [], detonationen: [] };
+    let tMax = 0, eng = Infinity, trefferP = 0, schadenP = 0, laeufe = 0; const phase = new Map(), tempi = [];
+    for (let k = 0; k < 180 * 60; k++) {
+      sz.pos.z += 60 * DT; ev.treffer.length = 0;
+      for (const z of ang.ziele) if (z.aktiv && z.art === 'boot') ev.treffer.push({ zielId: z.id, schaden: 1e4 });
+      const e = ang.schritt(DT, ev, sz, KUGELN);
+      const nurPanzer = ang.ziele.every((z) => !z.aktiv || z.art === 'panzer');
+      if (nurPanzer) for (const t of e.treffer) { trefferP++; schadenP += t.schaden; }
+      for (const z of ang.ziele) {
+        if (!z.aktiv || z.art !== 'panzer') continue;
+        const tr = L(z.vel.x - sz.vel.x, z.vel.y - sz.vel.y, z.vel.z - sz.vel.z); tMax = Math.max(tMax, tr); if (k % 30 === 0) tempi.push(tr);
+        eng = Math.min(eng, L(z.pos.x - sz.pos.x, z.pos.y - sz.pos.y, z.pos.z - sz.pos.z));
+        if (z.phase === 'anlauf' && phase.get(z.id) !== 'anlauf') laeufe++; phase.set(z.id, z.phase);
+      }
+    }
+    const P = ANGREIFER.panzer, tMed = tempi.sort((a, b) => a - b)[Math.floor(tempi.length / 2)];
+    // WARUM Median als Grenze: die weiche Abstandskraft (trenn) zur Rotte addiert sich zur Wunschrichtung (Spitzen wie bei Booten)
+    zeile('Q Panzerboot: Tempo relativ Median / Spitze · Angriffsläufe (180 s) · Schaden je Treffer · engster Abstand', `≤ ${P.tempoAb} / ≤ ${ANGREIFER.tempo} · ≥ 2 · ${P.waffe.schaden} · ≥ ${ANGREIFER.mindest - 5} m`,
+      `${f1(tMed)} / ${f1(tMax)} m/s · ${laeufe} · ${trefferP ? f1(schadenP / trefferP) : '–'} (${trefferP} Treffer) · ${f1(eng)} m`,
+      tMed <= P.tempoAb && tMax <= ANGREIFER.tempo && laeufe >= 2 && trefferP > 0 && Math.abs(schadenP / trefferP - P.waffe.schaden) < 1e-9 && eng >= ANGREIFER.mindest - 5);
+  }
+  // Q7 Ersatz-Hauptbatterie gegen Panzerboote (Bollwerk, alle 17 Lafetten, Schiff ruht): Boote sofort abgeschossen,
+  // nur die schweren Türme feuern (Panzergranaten). Info: Zeit erster Schuss → Abschuss, Trefferquote; Rechenzeit hart.
+  {
+    const B = SCHIFFSDATEN.bollwerk, LB = B.tuerme, ki = erstelleTurmKi({ startwert: 202, lafetten: LB, mitte: { x: 0, y: 0, z: 0 }, killzone: { ...TURMKI.killzone, ein: 900, aus: 1000 } });
+    const ang = erstelleAngreifer({ startwert: 404 }), sz = { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, rot: { x: 0, y: 0, z: 0, w: 1 }, zerstoert: false };
+    const tz = LB.map((l) => ({ muendung: { x: l.x, y: l.y + (l.oben === false ? -1 : 1) * l.zapfen.y, z: l.z }, v0: 1100, reichweite: 3000, gesperrt: false, gier: l.gier[0], nick: 0.2, munition: 'flak', laden: 0, nach: 0 }));
+    const rnd = zufall(9), granaten = [], ev = { treffer: [], detonationen: [] }, lokal = [];
+    const pb = new Map(); let schuesse = 0, treffer = 0, kiMs = 0;
+    const W = 30 * GRAD, WN = 25 * GRAD, D = 80, befehl = { modus: 'sperrfeuer', feuerFrei: true, folgen: true, schirmAbstand: 800 };
+    for (let k = 0; k < 150 * 60; k++) {
+      ev.treffer.length = 0;
+      for (const z of ang.ziele) if (z.aktiv && z.art === 'boot') ev.treffer.push({ zielId: z.id, schaden: 1e4 });
+      // Panzergranaten fliegen (Schiff ruht → Welt = Schiffsrahmen)
+      for (let q = granaten.length - 1; q >= 0; q--) {
+        const g = granaten[q], ax = g.x, ay = g.y, az = g.z; g.x += g.vx * DT; g.y += g.vy * DT; g.z += g.vz * DT; g.t -= DT;
+        let weg = g.t <= 0;
+        for (const z of ang.ziele) {
+          if (weg || !z.aktiv || z.art !== 'panzer') continue;
+          const sx = g.x - ax, sy = g.y - ay, sz2 = g.z - az, s2 = sx * sx + sy * sy + sz2 * sz2;
+          let u = ((z.pos.x - ax) * sx + (z.pos.y - ay) * sy + (z.pos.z - az) * sz2) / s2; u = u < 0 ? 0 : u > 1 ? 1 : u;
+          if (L(ax + sx * u - z.pos.x, ay + sy * u - z.pos.y, az + sz2 * u - z.pos.z) < z.r) { ev.treffer.push({ zielId: z.id, schaden: D }); treffer++; weg = true; const p = pb.get(z.id); if (p) p.treffer++; }
+        }
+        if (weg) { granaten[q] = granaten[granaten.length - 1]; granaten.pop(); }
+      }
+      ang.schritt(DT, ev, sz, B.kugeln);
+      for (const z of ang.ziele) if (z.aktiv && z.art === 'panzer' && !pb.has(z.id)) pb.set(z.id, { erster: -1, tot: -1, treffer: 0, schuesse: 0 });
+      for (const [id, p] of pb) if (p.tot < 0 && !ang.ziele.some((z) => z.aktiv && z.id === id)) p.tot = k * DT;
+      inSchiffsrahmen(ang.ziele, sz, lokal);
+      const t0 = performance.now(), bf = ki.schritt(DT, befehl, lokal, tz); kiMs += performance.now() - t0;
+      for (let i = 0; i < LB.length; i++) {
+        if (LB[i].typ !== 'schwer') continue;
+        const t = tz[i], b = bf[i], m = t.muendung, dx = b.punkt.x - m.x, dy = b.punkt.y - m.y, dz = b.punkt.z - m.z;
+        const sg = Math.atan2(dx, dz), sn = Math.asin(dy / (L(dx, dy, dz) || 1));
+        const fg = Math.atan2(Math.sin(sg - t.gier), Math.cos(sg - t.gier)), fn = sn - t.nick;
+        t.gier += Math.max(-W * DT, Math.min(W * DT, fg)); t.nick += Math.max(-WN * DT, Math.min(WN * DT, fn));
+        if (b.munition !== t.munition) { t.laden += DT; if (t.laden >= 1) { t.munition = b.munition; t.v0 = V0M[t.munition]; t.laden = 0; } continue; }
+        t.nach -= DT;
+        const rest = Math.hypot(Math.atan2(Math.sin(sg - t.gier), Math.cos(sg - t.gier)), sn - t.nick);
+        if (b.feuer && t.munition === 'panzer' && t.nach <= 0 && rest <= b.toleranz) {
+          t.nach = 2; schuesse++;
+          const p = pb.get(b.zielId); if (p) { p.schuesse++; if (p.erster < 0) p.erster = k * DT; }
+          const g = t.gier + (rnd() + rnd() - 1) * 0.1 * GRAD, n = t.nick + (rnd() + rnd() - 1) * 0.1 * GRAD, v = t.v0;
+          granaten.push({ x: m.x, y: m.y, z: m.z, vx: Math.sin(g) * Math.cos(n) * v, vy: Math.sin(n) * v, vz: Math.cos(g) * Math.cos(n) * v, t: 4 });
+        }
+      }
+    }
+    const zeiten = [...pb.values()].filter((p) => p.tot >= 0 && p.erster >= 0).map((p) => p.tot - p.erster);
+    const med = zeiten.length ? zeiten.slice().sort((a, b) => a - b)[Math.floor(zeiten.length / 2)] : NaN;
+    zeile('Q Ersatz-Hauptbatterie (3 schwere Türme, Panzergranate 900 m/s, 1 Schuss/2 s, 80 Schaden ANNAHME): erster Schuss → Abschuss',
+      'Info ~10–20 s', `${zeiten.map(f1).join(', ') || '–'} s (Median ${f1(med)}) · Trefferquote ${f1(100 * treffer / Math.max(1, schuesse))} % (${treffer}/${schuesse}) · ${pb.size} Panzerboote`, zeiten.length > 0, false);
+    const us = kiMs / (150 * 60) * 1000;
+    zeile('Q Rechenzeit Turm-KI Bollwerk alle 17 Lafetten (14 Gatlings + 3 schwere), bis 10 Angreifer', '< 1000 µs', `${f1(us)} µs`, us < 1000);
+  }
 }
 
 // ---------- D) Gleichlauf ----------
