@@ -167,9 +167,9 @@ else {
   const pIds = sicher(() => ids(PU), () => []);
   const pu = sicher(() => op(fase, PU, ['P1'], 0.5), (e) => ({ fehler: e.message }));
   const puOk = !pu.fehler && pu.k.spanten.every((s) => s.p && s.p.length === pu.k.spanten[0].p.length) && volumen(pu.k) < volumen(PU) - 1e-6 && !pruefe({ koerper: [pu.k], andock: [] }).some((m) => m.code === 'umriss_kreuzt');
-  zeile('Eigener Umriss (Fünfeck): ids P0–P4, keine K* | fase P1: alle Spanten gleiche Punktzahl, Volumen sinkt, Umriss ok', 'ja | ja',
-    `${['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => i.startsWith('K')) ? 'ja' : J(pIds)} | ${pu.fehler ?? (puOk ? 'ja' : 'NEIN')}`,
-    ['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => i.startsWith('K')) && puOk);
+  zeile('Eigener Umriss (Fünfeck): ids P0–P4, keine K0o…K1r (R22: K<e>P<j> erlaubt) | fase P1: alle Spanten gleiche Punktzahl, Volumen sinkt, Umriss ok', 'ja | ja',
+    `${['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => /^K[01][oulr]$/.test(i)) ? 'ja' : J(pIds)} | ${pu.fehler ?? (puOk ? 'ja' : 'NEIN')}`,
+    ['P0', 'P1', 'P2', 'P3', 'P4'].every((i) => pIds.includes(i)) && !pIds.some((i) => /^K[01][oulr]$/.test(i)) && puOk);
   // Rückbau mit Maß 0 → bitgleich (Box-Kappe)
   const rb = sicher(() => { const a = op(fase, Q, ['K0o'], 1); return J(op(fase, a.k, ['K0o'], 0).k) === J(Q); }, () => false);
   zeile('Rückbau: fase K0o = 1, dann Maß 0 → bitgleich zum Quader', 'gleich', rb ? 'gleich' : 'ANDERS', rb);
