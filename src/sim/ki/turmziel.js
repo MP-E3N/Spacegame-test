@@ -19,7 +19,7 @@
 // LIEFERT: erstelleTurmKi({ startwert }) → { befehle, lage, schritt(dt, befehl, ziele, turmZustand) → befehle,
 //          zuruecksetzen(), statistik } · TURMKI (Werte) · STREU_REGLER · streuWert(streu, feld) · waffeWert(waffe, feld) · abfangen(m, pos, vel, v0, aus) (für Tests)
 //          befehle[i] = { turmId, zielId|null, punkt{x,y,z} (Welt bzw. Schiffsrahmen, mit Vorhalt), feuer, toleranz (rad), zuender (s), leuchtspur,
-//          streuKugel (m, 0 = aus), streuTiefe (m) }
+//          streuKugel (m, 0 = aus), streuTiefe (m), munition ('flak' | 'panzer', R23; Gatlings immer 'flak') }
 //        · streuKugel / streuTiefe (R8/R10, Nutzer: „jedes Ziel hat eine unsichtbare Kugel um sich“, R10: „das Areal um
 //          ein Ziel noch viel weiter gestreut sättigen“): Ellipsoid um `punkt` — streuKugel quer zur Schusslinie,
 //          streuTiefe längs (über den Zünder). Die Waffe schießt jede Granate auf einen eigenen Punkt darin und deckelt
@@ -42,6 +42,20 @@
 //          Grenzen je Turm im TURM-RAHMEN (oben: Schiff = Turm, verschoben; unten: Turm (x,y,z) → Schiff (−x,−y,z),
 //          turm.js): Zielwahl, Zenit-Bremse und Raumzuteilung prüfen die Erreichbarkeit; erreichbar(i, gier, nick) der
 //          Waffe (Grenzen + Nachbar- + Rumpf-Sperre) ersetzt die eigene Grenzprüfung, sobald übergeben.
+//        · R23 (Nutzer: „mach die Türme alle funktionsfähig“, „die großen Batteriegeschütze mit zwei Munitionstypen“, CIC
+//          mit Waffenoffizier, Richtschützen; Schnittstelle E3 im Protokoll R23): lafetten enthalten auch `typ: 'schwer'`
+//          (Hauptbatterie). Schwere Türme nehmen NICHT an Räumen/Killzone/Gatling-Zielwahl teil, sondern haben eine eigene
+//          Zielwahl (schwerSchritt): Zielfeuer auf große/gepanzerte Ziele (r ≥ 12 oder panzer ≥ 0,5) bzw. die
+//          zielVorgabe — gewichtet nach Bedrohung, Abstand, Erreichbarkeit, mit Trägheit; sonst Flak-Großgranaten in die
+//          Sättigungsräume, eine Lagenbreite VOR der vorderen Lage („weiter draußen als die Gatlings“); ohne Räume
+//          (Zielfeuer-Betrieb) Flak-Zielfeuer auf das beste erreichbare Ziel. befehle[i].munition: Ziel panzer ≥ 0,5 →
+//          'panzer', sonst 'flak'; befehl.hauptMunition ('auto' | fehlt | 'flak' | 'panzer') überschreibt (bei
+//          'panzer' jedes Ziel, kein Raumfeuer). Panzergranate: streuKugel 0, toleranz aus dem Zielradius.
+//          befehl.manuell = Turm-Index unter Handsteuerung (−1/fehlt = keiner): feuer false, zielId null, nicht in
+//          Raum-Zuteilung/Killzone (punkt bleibt — den setzt der Richtschütze). befehl.zielVorgabe = zielId (CIC):
+//          Gatling-Zielfeuer (+1,0) und schwere Türme (+3,0) bevorzugen es, Wechsel sofort (ohne Haltezeit).
+//          Gatlings bewerten gepanzerte Ziele schwächer (× (1 − 0,6·panzer)), in der Killzone kommen sie zuletzt dran.
+//          Ohne schwere Türme, manuell und zielVorgabe: bitgleich R22 (alle neuen Zweige hängen an diesen Feldern).
 // REGEL: Die KI ENTSCHEIDET, die Waffen (flak.js) FÜHREN AUS (Richten mit Grenzen, Feuern bei `ausgerichtet`).
 //        Simulation: kein DOM, kein Math.random, fester Schritt; keine neuen Objekte im Schritt.
 //        Abschuss-Zeitpunkt = aktuelle Drohnen-Lage (Schrittfolge Drohnen → Turm-KI → Waffen).
@@ -146,6 +160,22 @@ export const TURMKI = {
   },
   // Killzone (R7, Entscheidung 3): Hysterese ein < 500 m, aus > 600 m um BATTERIE_MITTE, Alarm-Nachlauf 0,5 s
   killzone: { ein: 500, aus: 600, nachlauf: 0.5, tuermeEiner: 3, tuermeJe: 2 },
+  // R23 Hauptbatterie (typ 'schwer') und CIC-Vorgaben
+  schwer: {
+    grossR: 12, panzerAb: 0.5,           // m, 0..1: ab hier „groß“ bzw. „gepanzert“ (Zielfeuer, Panzergranate)
+    // Gewichte zusätzlich zu `gewichte` (Nähe, Annäherung, Angriff). WARUM vorgabe 3: höher als alle anderen zusammen
+    // (≤ 1 + 0,8 + 0,5 + 1,3 = 3,6 ohne Winkel) → der Waffenoffizier setzt sich durch, solange das Ziel erreichbar ist
+    gewichte: { panzer: 1.0, gross: 0.3, vorgabe: 3.0 },
+    flugMax: 6,                          // s: längste Flugzeit, auf die die Hauptbatterie Zielfeuer gibt
+    // Panzergranate trifft nur direkt: Feuer-Spielraum = anteil · r / d (mind. min) — WARUM 0,5·r: die Rohrstreuung
+    // (0,25° ≈ 4,4 mrad) kommt dazu; mit voller r läge jeder zweite Schuss am Rand vorbei
+    apToleranz: 0.5, apToleranzMin: 0.0015,
+    raumVorlauf: 1,                      // × lagenAbstand vor der vorderen Lage (Raumfeuer der Hauptbatterie)
+    // CIC (zielVorgabe) für Gatling-Zielfeuer. WARUM nur +1: die Gatlings sollen Boote jagen, nicht alle aufs Vorgabeziel
+    vorgabeGatling: 1.0,
+    gatlingPanzer: 0.6,                  // Gatling-Bewertung × (1 − 0,6 · panzer): Flak wirkt dort nur × 0,15
+    kzPanzer: 2000,                      // m Strafabstand je panzer in der Killzone-Reihenfolge (gepanzerte zuletzt)
+  },
 };
 
 /** Regler der Streuung (R11): m bzw. Faktor; Standard = TURMKI (R10). Die Seite baut ihre Schieberegler hieraus. */
@@ -241,7 +271,22 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     const s = sgn[i], d = L(dx, dy, dz) || 1, g = Math.atan2(s * dx, dz), nk = Math.asin(klemme(s * dy / d, -1, 1));
     return erreichbar ? erreichbar(i, g, nk) : grenzenOk(LAF[i], g, nk);
   };
-  const befehle = LAF.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0, streuTiefe: 0 }));
+  const befehle = LAF.map((l) => ({ turmId: l.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: false, toleranz: K.toleranzSperr, zuender: 1, leuchtspur: false, streuKugel: 0, streuTiefe: 0, munition: 'flak' }));
+  // R23: Hauptbatterie und Handsteuerung. teil[i] = 1 → Turm i nimmt an Räumen, Killzone und Gatling-Zielwahl teil
+  // (Gatling, nicht manuell); nTeil = Anzahl. WARUM ein Merkfeld statt eigener Listen: ohne schwere/manuelle Türme
+  // sind alle Schleifen und Zählungen exakt die alten (bitgleich R22).
+  const KS = K.schwer;
+  const istSchwer = Uint8Array.from(LAF, (l) => (l.typ === 'schwer' ? 1 : 0));
+  const teil = new Uint8Array(n);
+  let nTeil = n, manuellVor = -1, teilNeu = false, vorgabeVor = null, vorgabe = null;
+  const vorgabeOffen = new Uint8Array(n); // Gatling darf beim nächsten Bewertungstakt sofort aufs neue Vorgabeziel
+  const ersteFlak = Math.max(0, istSchwer.indexOf(0)); // Bezugs-v0 der Räume: erster Gatling-Turm (Prüfstand: 0)
+  const schwerSlot = new Int32Array(n).fill(-1), schwerId = new Float64Array(n).fill(-1), schwerHalt = new Float64Array(n);
+  /** teil/nTeil aus manuell neu bilden. */
+  function setzeTeil(manuell) {
+    nTeil = 0;
+    for (let i = 0; i < n; i++) { teil[i] = !istSchwer[i] && i !== manuell ? 1 : 0; nTeil += teil[i]; }
+  }
   // Ersatz-Mündung (Drehpunkt der Wiege), falls turmZustand noch keine liefert; unten montiert: Zapfen unter dem Fuß
   const ersatzM = LAF.map((l, i) => ({ x: l.x, y: l.y + sgn[i] * l.zapfen.y, z: l.z }));
   const halt = new Float64Array(n);           // Haltezeit des aktuellen Ziels je Turm
@@ -309,8 +354,10 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     halt.fill(0); zielSlot.fill(-1); gesperrtZeit.fill(0); nahSlot.fill(0); nahId.fill(-1); nahTurm.fill(-1); gruppeTurm.fill(0);
     statistik.wechsel.fill(0); statistik.zwang.fill(0); statistik.flackern = 0; vorZiel.fill(-1); wechselZeit.fill(-1e9);
     statistik.maxJeZiel = 0; statistik.unloesbar = 0; statistik.alarmAn = 0; statistik.gruppenWechsel = 0;
+    setzeTeil(-1); manuellVor = -1; teilNeu = false; vorgabeVor = null; vorgabe = null; vorgabeOffen.fill(0);
+    schwerSlot.fill(-1); schwerId.fill(-1); schwerHalt.fill(0);
     for (const b of befehle) {
-      b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; b.streuTiefe = 0;
+      b.zielId = null; b.feuer = false; b.leuchtspur = false; b.streuKugel = 0; b.streuTiefe = 0; b.munition = 'flak';
       // R22 (Pflege): Punkt, Toleranz, Zünder wie beim Erzeugen — Neustart = frische Instanz (Prüfer-Befund R21)
       b.punkt.x = b.punkt.y = b.punkt.z = 0; b.toleranz = K.toleranzSperr; b.zuender = 1;
     }
@@ -336,10 +383,33 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     const ex = z.pos.x - M.x, ey = z.pos.y - M.y, ez = z.pos.z - M.z, e = L(ex, ey, ez) || 1;
     const nah = -(z.vel.x * ex + z.vel.y * ey + z.vel.z * ez) / e / K.tempoBezug;
     const cosw = (dx * rx + dy * ry + dz * rz) / d;
-    return G.naehe * (1 - L(z.pos.x - m.x, z.pos.y - m.y, z.pos.z - m.z) / rw)
+    let w = G.naehe * (1 - L(z.pos.x - m.x, z.pos.y - m.y, z.pos.z - m.z) / rw)
       + G.annaeherung * Math.min(Math.max(nah, 0), 1)
       + G.angriff * (z.angriff ? 1 : 0)
       + G.winkel * (1 - Math.acos(Math.min(Math.max(cosw, -1), 1)) / Math.PI);
+    // R23 (nur mit den neuen Feldern — sonst bitgleich): Gatling-Flak wirkt auf Panzer × (1 − panzer) → schwächer
+    // bewerten (die Hauptbatterie übernimmt); CIC-Vorgabe bevorzugen
+    if (z.panzer > 0) w *= 1 - KS.gatlingPanzer * Math.min(z.panzer, 1);
+    if (vorgabe !== null && z.id === vorgabe) w += KS.vorgabeGatling;
+    return w;
+  }
+
+  /** R23: Bewertung von Ziel z für den SCHWEREN Turm i; −1 = ungültig. alle = auch kleine, ungepanzerte Ziele
+   *  (Zielfeuer-Betrieb ohne Räume bzw. hauptMunition 'panzer'). Schreibt den Abfangpunkt (mit v0 des Turms) nach aus. */
+  function bewerteSchwer(i, z, m, v0, rw, alle, aus) {
+    if (!z.aktiv) return -1;
+    const vorg = vorgabe !== null && z.id === vorgabe, pz = z.panzer > 0 ? Math.min(z.panzer, 1) : 0, gross = (z.r ?? 0) >= KS.grossR;
+    if (!alle && !vorg && pz < KS.panzerAb && !gross) return -1;
+    if (!abfangen(m, z.pos, z.vel, v0, aus)) return -1;
+    if (aus.t * v0 < K.zuenderStrecke || aus.t > KS.flugMax || aus.t * v0 > rw) return -1;
+    const dx = aus.x - m.x, dy = aus.y - m.y, dz = aus.z - m.z;
+    if (!reicht(i, dx, dy, dz)) return -1;
+    const G = K.gewichte, H = KS.gewichte;
+    const ex = z.pos.x - M.x, ey = z.pos.y - M.y, ez = z.pos.z - M.z, e = L(ex, ey, ez) || 1;
+    const nah = -(z.vel.x * ex + z.vel.y * ey + z.vel.z * ez) / e / K.tempoBezug;
+    return G.naehe * (1 - L(z.pos.x - m.x, z.pos.y - m.y, z.pos.z - m.z) / rw)
+      + G.annaeherung * klemme(nah, 0, 1) + G.angriff * (z.angriff ? 1 : 0)
+      + H.panzer * pz + (gross ? H.gross : 0) + (vorg ? H.vorgabe : 0);
   }
 
   function setzeAufSchale(b, m, v0, gier, nick, R) {
@@ -412,13 +482,15 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     nahTurm.fill(-1);
     if (!E.length) return;
     const je = E.length === 1 ? KZ.tuermeEiner : KZ.tuermeJe;
-    let frei = n;
+    let frei = nTeil; // R23: nur Gatlings, die nicht von Hand gesteuert werden
     for (let r = 0; r < E.length && frei > 0; r++) {
       // r-nächster Eindringling (kleine Liste → Auswahl ohne Sortier-Objekte)
       let best = -1, bestD = Infinity;
       for (let j = 0; j < ziele.length && j < MAXZ; j++) {
         if (!nahSlot[j] || !ziele[j].aktiv || zaehl[j] === -1) continue;
-        const z = ziele[j], d = L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z);
+        const z = ziele[j];
+        let d = L(z.pos.x - M.x, z.pos.y - M.y, z.pos.z - M.z);
+        if (z.panzer > 0) d += KS.kzPanzer * z.panzer; // R23: gepanzerte zuletzt (Gatling-Flak wirkt dort kaum)
         if (d < bestD) { bestD = d; best = j; }
       }
       if (best < 0) break;
@@ -426,7 +498,7 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
       for (let k = 0; k < je && frei > 0; k++) {
         let bt = -1, btD = Infinity;
         for (let i = 0; i < n; i++) {
-          if (nahTurm[i] >= 0) continue;
+          if (nahTurm[i] >= 0 || !teil[i]) continue;
           const tz = turmZustand?.[i], m = tz?.muendung ?? ersatzM[i];
           // gesperrt (Nachbar-Sperre) zählt als 400 m weiter weg → anderer Turm übernimmt, wenn es einen gibt.
           // R14: außerhalb der Grenzen (Turm-Rahmen) gar nicht — WARUM: am Schiff sieht die Hälfte der Türme (oben/unten)
@@ -593,7 +665,7 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     seitUmgruppiert += dt;
     if (nb > 0) {
       // 2) Anzahl der Kästen mit Hysterese: mehr erst über den hohen, weniger erst unter den tiefen Lücken; ≤ alle 2 s
-      const LG = F.luecke, maxK = Math.min(F.maxKaesten, MAXK, Math.floor(n / F.minTuerme));
+      const LG = F.luecke, maxK = Math.min(F.maxKaesten, MAXK, Math.floor(nTeil / F.minTuerme));
       const nHoch = teile(nb, LG[0], maxK), nTief = teile(nb, LG[1], maxK);
       const wunsch = nHoch > anzahlGruppen ? nHoch : nTief < anzahlGruppen ? Math.max(1, nTief) : anzahlGruppen;
       if (wunsch !== anzahlGruppen && seitUmgruppiert >= F.umgruppieren) {
@@ -644,7 +716,8 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
       //    WARUM nicht mehr alle 2 s (Befund Prüfer R9): jeder Wechsel eines Rohrs ließ seinen Befehl springen — nur noch
       //    beim Umgruppieren oder wenn ein Kasten weniger als minTuerme Rohre hat; bestehende Zuordnung bleibt bevorzugt
       // R14: zusätzlich alle 0,5 s, wenn ein Turm seinen Raum nicht mehr erreicht (am Prüfstand nie)
-      if (seitUmgruppiert === 0 || zuWenigTuerme() || (takt % 30 === 0 && falschZugeteilt())) verteileTuerme();
+      // R23: auch sofort, wenn ein Turm in Handsteuerung geht oder zurückkommt (teilNeu)
+      if (teilNeu || seitUmgruppiert === 0 || zuWenigTuerme() || (takt % 30 === 0 && falschZugeteilt())) verteileTuerme();
     }
     // 5) träge nachführen: Glättung τ, Drehtempo ≤ maxDreh, Abstand ≤ maxAbstandTempo, Größe τ 1 s
     const al = 1 - Math.exp(-dt / F.tau), a1 = 1 - Math.exp(-dt / F.tauGroesse);
@@ -666,7 +739,12 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
       s.tuerme.length = 0;
       lage.schirme.push(s);
     }
-    for (let i = 0; i < n; i++) { if (gruppeTurm[i] >= anzahlGruppen) gruppeTurm[i] = anzahlGruppen - 1; schirmVorrat[gruppeTurm[i]].tuerme.push(i); }
+    for (let i = 0; i < n; i++) {
+      if (!teil[i]) continue; // R23: schwere und manuelle Türme stehen in keinem Raum
+      // WARUM < 0 → 0: ein Turm, der ohne Bedrohung (nb 0) aus der Handsteuerung kommt, hat noch keinen Raum
+      if (gruppeTurm[i] >= anzahlGruppen) gruppeTurm[i] = anzahlGruppen - 1; else if (gruppeTurm[i] < 0) gruppeTurm[i] = 0;
+      schirmVorrat[gruppeTurm[i]].tuerme.push(i);
+    }
   }
 
   /** Einheitsrichtung von der Raummitte (s.gier, s.nick) zur Batterie nach `aus`. */
@@ -726,12 +804,12 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     return reicht(i, M.x + Math.sin(s.sollGier) * c * A - m.x, M.y + Math.sin(s.sollNick) * A - m.y, M.z + Math.cos(s.sollGier) * c * A - m.z);
   }
   /** Anzahl der Türme, die Raum k erreichen (R14). */
-  function reichAnzahl(k) { let a = 0; for (let i = 0; i < n; i++) if (raumReicht(i, k)) a++; return a; }
+  function reichAnzahl(k) { let a = 0; for (let i = 0; i < n; i++) if (teil[i] && raumReicht(i, k)) a++; return a; }
 
   function zuWenigTuerme() {
     if (anzahlGruppen < 2) return false;
     kBel.fill(0);
-    for (let i = 0; i < n; i++) if (gruppeTurm[i] < anzahlGruppen) kBel[gruppeTurm[i]]++;
+    for (let i = 0; i < n; i++) if (teil[i] && gruppeTurm[i] >= 0 && gruppeTurm[i] < anzahlGruppen) kBel[gruppeTurm[i]]++;
     // R14: ein Raum, den weniger als minTuerme Türme erreichen, gilt mit allen erreichenden als voll — WARUM: sonst
     // verteilte die KI am Schiff jeden Takt neu (unter dem Schiff sieht nur die untere Hälfte hin)
     for (let k = 0; k < anzahlGruppen; k++) if (kBel[k] < F.minTuerme && kBel[k] < reichAnzahl(k)) return true;
@@ -739,20 +817,22 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
   }
   /** R14: sitzt ein Turm in einem Raum, den er nicht erreicht (Raum gewandert, Schiff gedreht)? */
   function falschZugeteilt() {
-    for (let i = 0; i < n; i++) { const g = gruppeTurm[i]; if (g >= 0 && g < anzahlGruppen && !raumReicht(i, g)) return true; }
+    for (let i = 0; i < n; i++) { const g = gruppeTurm[i]; if (teil[i] && g >= 0 && g < anzahlGruppen && !raumReicht(i, g)) return true; }
     return false;
   }
 
   function verteileTuerme() {
+    // R23: nur die teilnehmenden Gatlings (nTeil statt n; ohne schwere/manuelle Türme identisch)
+    teilNeu = false;
     const nK = anzahlGruppen;
-    for (let k = 0; k < nK; k++) { kOrd[k] = k; kAnz[k] = nK > 1 ? F.minTuerme : n; }
+    for (let k = 0; k < nK; k++) { kOrd[k] = k; kAnz[k] = nK > 1 ? F.minTuerme : nTeil; }
     if (nK > 1) {
-      let rest = n - nK * F.minTuerme, W = 0;
+      let rest = nTeil - nK * F.minTuerme, W = 0;
       for (let k = 0; k < nK; k++) W += schirmVorrat[k].gewicht;
       // Rest nach Gewicht (größter Anteil zuerst, gleich → kleinere Nummer), deterministisch
       while (rest > 0) {
         let best = 0, bestV = -Infinity;
-        for (let k = 0; k < nK; k++) { const v = (W > 0 ? schirmVorrat[k].gewicht / W * n : 1) - kAnz[k]; if (v > bestV) { bestV = v; best = k; } }
+        for (let k = 0; k < nK; k++) { const v = (W > 0 ? schirmVorrat[k].gewicht / W * nTeil : 1) - kAnz[k]; if (v > bestV) { bestV = v; best = k; } }
         kAnz[best]++; rest--;
       }
       // Kästen nach Gier sortieren (Einfügen)
@@ -762,18 +842,19 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     kBel.fill(0);
     for (let a = 0; a < n; a++) {
       const i = turmNachX[a], g = gruppeTurm[i];
+      if (!teil[i]) { gruppeTurm[i] = -1; continue; }
       if (g >= 0 && g < nK && kBel[g] < kAnz[g] && raumReicht(i, g)) kBel[g]++; else gruppeTurm[i] = -1;
     }
     // R14: nur in Räume, die der Turm erreicht (Prüfstand: alle → wie R13)
     for (let q = 0; q < nK; q++) {
       const k = kOrd[q];
-      for (let a = 0; a < n && kBel[k] < kAnz[k]; a++) { const i = turmNachX[a]; if (gruppeTurm[i] === -1 && raumReicht(i, k)) { gruppeTurm[i] = k; kBel[k]++; } }
+      for (let a = 0; a < n && kBel[k] < kAnz[k]; a++) { const i = turmNachX[a]; if (teil[i] && gruppeTurm[i] === -1 && raumReicht(i, k)) { gruppeTurm[i] = k; kBel[k]++; } }
     }
     // Rest (Kontingent voll oder kein erreichbarer Raum mit Platz): erreichbarer Raum mit dem größten Gewicht je Turm,
     // sonst der schwerste Raum (der Turm wartet am Anschlag, bis sich die Lage dreht)
     for (let a = 0; a < n; a++) {
       const i = turmNachX[a];
-      if (gruppeTurm[i] !== -1) continue;
+      if (!teil[i] || gruppeTurm[i] !== -1) continue;
       let best = -1, bestV = -Infinity, schwer = 0;
       for (let k = 0; k < nK; k++) {
         const w = schirmVorrat[k].gewicht;
@@ -809,17 +890,109 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
     s.mitte.x = M.x + Math.sin(s.gier) * c * A; s.mitte.y = M.y + Math.sin(s.nick) * A; s.mitte.z = M.z + Math.cos(s.gier) * c * A;
     // feste Wand = eine Lage (die mittlere) auf der Schale; beim Zurückschalten führt lagenNachfuehren weiter
     s.lagen[1].x = s.mitte.x; s.lagen[1].y = s.mitte.y; s.lagen[1].z = s.mitte.z;
-    s.tuerme.length = 0; for (let i = 0; i < n; i++) s.tuerme.push(i);
+    s.tuerme.length = 0; for (let i = 0; i < n; i++) if (teil[i]) s.tuerme.push(i);
     lage.schirme.length = 0; lage.schirme.push(s);
     // Kasten 0 bleibt gültig → beim Zurückschalten auf Folgen gleitet er von hier aus weiter (kein Rücksprung)
     schirmeBereit = true; anzahlGruppen = 1; gruppeTurm.fill(0);
   }
 
+  // ---------- R23: Handsteuerung und Hauptbatterie ----------
+  /** Turm unter Handsteuerung: KI schweigt (kein Feuer, kein Ziel); punkt bleibt, damit die Rückkehr mit einem
+   *  Übergang vom zuletzt befohlenen Punkt beginnt (kastenVor −1 → Übergang wie aus Killzone/Zielfeuer). */
+  function manuellBefehl(i) {
+    const b = befehle[i];
+    b.feuer = false; b.zielId = null;
+    if (kastenVor[i] !== -2) kastenVor[i] = -1;
+    zielSlot[i] = -1; halt[i] = 0; schwerSlot[i] = -1; schwerId[i] = -1; schwerHalt[i] = 0;
+  }
+
+  /** Munition für ein Ziel nach hauptMunition (R23, E3): 'flak' | 'panzer' fest, sonst panzer ≥ 0,5 → 'panzer'. */
+  const waehleMunition = (haupt, z) => (haupt === 'flak' || haupt === 'panzer' ? haupt
+    : (z && z.panzer >= KS.panzerAb ? 'panzer' : 'flak'));
+
+  /** Schwerer Turm i (Hauptbatterie): Zielwahl mit Trägheit, Munition, sonst Raumfeuer bzw. Ruhe. */
+  function schwerSchritt(i, ziele, turmZustand, frei, leucht, haupt, vorgabeNeu, S, R, folgen) {
+    const b = befehle[i], tz = turmZustand?.[i], m = tz?.muendung ?? ersatzM[i];
+    const v0 = tz?.v0 ?? K.v0, rw = tz?.reichweite ?? K.reichweite;
+    b.leuchtspur = leucht;
+    // Zielfeuer auf jedes Ziel, wenn kein Raum da ist (Zielfeuer-Betrieb) oder nur Panzergranaten erlaubt sind
+    const alle = haupt === 'panzer' || lage.schirme.length === 0;
+    gesperrtZeit[i] = tz?.gesperrt ? gesperrtZeit[i] + nahDt : 0;
+    let cur = schwerSlot[i], curWert = -1;
+    if (cur >= 0 && (cur >= ziele.length || ziele[cur].id !== schwerId[i])) cur = -1;
+    if (cur >= 0) curWert = gesperrtZeit[i] > K.gesperrtFrei ? -1 : bewerteSchwer(i, ziele[cur], m, v0, rw, alle, ab);
+    if (curWert < 0) { cur = -1; gesperrtZeit[i] = 0; }
+    schwerHalt[i] += nahDt;
+    const dran = cur < 0 || vorgabeNeu || (takt % K.takteJeBewertung === i % K.takteJeBewertung && schwerHalt[i] >= K.haltezeit);
+    if (dran) {
+      let best = -1, bestWert = -1;
+      for (let j = 0; j < ziele.length; j++) {
+        if (j === cur) continue;
+        const w = bewerteSchwer(i, ziele[j], m, v0, rw, alle, abBest);
+        if (w > bestWert) { bestWert = w; best = j; }
+      }
+      // WARUM ohne Trägheit bei neuer Vorgabe: der Waffenoffizier soll sofort sehen, dass die Batterie umschwenkt
+      const vorgabeBest = vorgabeNeu && best >= 0 && ziele[best].id === vorgabe;
+      if (best >= 0 && (cur < 0 || vorgabeBest || bestWert > curWert * K.wechselFaktor)) {
+        cur = best; schwerHalt[i] = 0;
+        curWert = bewerteSchwer(i, ziele[cur], m, v0, rw, alle, ab);
+      }
+    }
+    schwerSlot[i] = cur; schwerId[i] = cur >= 0 ? ziele[cur].id : -1;
+    if (cur >= 0) {
+      const z = ziele[cur], d = ab.t * v0;
+      b.zielId = z.id; b.munition = waehleMunition(haupt, z);
+      b.punkt.x = ab.x; b.punkt.y = ab.y; b.punkt.z = ab.z; b.zuender = Math.max(ab.t, K.zuenderStrecke / v0);
+      if (b.munition === 'panzer') {
+        // Panzergranate: kein Zünder, Treffer nur direkt → keine Streukugel, Spielraum aus dem Zielradius
+        b.streuKugel = 0; b.streuTiefe = 0;
+        b.toleranz = Math.max(KS.apToleranz * (z.r ?? 6) / d, KS.apToleranzMin);
+      } else {
+        b.streuKugel = leucht ? spurKugel(W.ziel, d) : W.ziel; b.streuTiefe = W.ziel;
+        b.toleranz = kugelToleranz(b.streuKugel, d, leucht, deckelDunkel);
+      }
+      b.feuer = frei;
+      return;
+    }
+    b.zielId = null;
+    // Raumfeuer (Flak-Großgranate): Raum mit dem größten Gewicht, den der Turm erreicht; Punkt eine Lagenbreite vor
+    // der vorderen Lage — WARUM: die Gatlings bestreichen vor/auf/hinter, die Hauptbatterie fängt die Gruppe davor ab
+    let q = null;
+    for (let g = 0; g < lage.schirme.length; g++) {
+      const s = lage.schirme[g];
+      if ((q === null || s.gewicht > q.gewicht) && raumReicht(i, schirmVorrat.indexOf(s))) q = s;
+    }
+    if (q !== null && haupt !== 'panzer') {
+      const folgt = folgen; // feste Wand: nur die mittlere Lage ist gültig (festerSchirm)
+      const c = folgt ? q.lagen[0] : q.mitte, vor = folgt ? KS.raumVorlauf * q.lagenAbstand : 0;
+      b.punkt.x = c.x + q.laengs.x * vor; b.punkt.y = c.y + q.laengs.y * vor; b.punkt.z = c.z + q.laengs.z * vor;
+      const px = b.punkt.x - m.x, py = b.punkt.y - m.y, pz = b.punkt.z - m.z, d = L(px, py, pz) || 1;
+      b.zuender = Math.min(Math.max(d / v0, K.zuenderStrecke / v0), K.zuender[1]);
+      b.munition = 'flak';
+      b.streuKugel = leucht ? spurKugel(W.sperrQuer, d) : W.sperrQuer; b.streuTiefe = W.sperrTiefe;
+      b.toleranz = klemme(0.5 * Math.min(q.breite, q.hoehe) / q.abstand, 0.015, K.toleranzSperr);
+      b.feuer = frei && reicht(i, px, py, pz);
+      return;
+    }
+    // Ruhe: Sektormitte, Munition bleibt geladen (kein unnötiges Nachladen)
+    b.feuer = false; b.toleranz = K.toleranzSperr; b.streuKugel = 0; b.streuTiefe = 0;
+    setzeAufSchale(b, m, v0, S.gierMitte, (S.nickMin + S.nickMax) / 2, R);
+  }
+
   function schritt(dt, befehl, ziele, turmZustand) {
     const modus = befehl?.modus ?? 'sperrfeuer', frei = !!befehl?.feuerFrei;
+    // R23: Handsteuerung, CIC-Vorgabe, Hauptbatterie-Munition (fehlen → bitgleich R22)
+    const manuell = Number.isInteger(befehl?.manuell) && befehl.manuell >= 0 && befehl.manuell < n ? befehl.manuell : -1;
+    if (manuell !== manuellVor) { setzeTeil(manuell); manuellVor = manuell; teilNeu = true; }
+    vorgabe = befehl?.zielVorgabe ?? null;
+    const vorgabeNeu = vorgabe !== vorgabeVor && vorgabe !== null;
+    // Gatlings: beim nächsten eigenen Bewertungstakt sofort wechseln dürfen (ohne Haltezeit und ohne 1,4-fach-Hürde)
+    if (vorgabeNeu) for (let i = 0; i < n; i++) vorgabeOffen[i] = 1;
+    vorgabeVor = vorgabe;
+    const haupt = befehl?.hauptMunition ?? 'auto';
     const R = befehl?.schirmAbstand ?? 800, folgen = befehl?.folgen !== false, S = befehl?.sektor ?? fest;
     if (modus !== letzterModus) { zielSlot.fill(-1); halt.fill(0); letzterModus = modus; }
-    const v0Std = turmZustand?.[0]?.v0 ?? K.v0;
+    const v0Std = turmZustand?.[ersteFlak]?.v0 ?? K.v0; // R23: v0 eines Gatling-Turms (Prüfstand: Turm 0)
     leseStreu(befehl?.streu); deckelDunkel = waffeWert(befehl?.waffe, 'deckelQuer'); nahDt = dt;
 
     zaehl.fill(0);
@@ -862,12 +1035,13 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
       lage.schirme.length = 0;
       for (let i = 0; i < n; i++) if (kastenVor[i] !== -2) kastenVor[i] = -1;
       for (let i = 0; i < n; i++) {
-        if (nahTurm[i] >= 0) { zielSlot[i] = -1; continue; } // Killzone hat Vorrang
+        if (nahTurm[i] >= 0 || !teil[i]) { zielSlot[i] = -1; continue; } // Killzone hat Vorrang; R23: schwer/manuell eigene Wege
         const s = zielSlot[i];
         if (s >= 0 && (s >= ziele.length || !ziele[s].aktiv || ziele[s].id !== befehle[i].zielId || nahSlot[s])) zielSlot[i] = -1; // aktiv=false → sofort frei
         if (zielSlot[i] >= 0) zaehl[zielSlot[i]]++;
       }
       for (let i = 0; i < n; i++) {
+        if (!teil[i]) continue;
         const b = befehle[i], tz = turmZustand?.[i], m = tz?.muendung ?? ersatzM[i];
         const v0 = tz?.v0 ?? K.v0, rw = tz?.reichweite ?? K.reichweite;
         b.leuchtspur = leucht;
@@ -885,15 +1059,17 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
           if (curWert < 0) { zaehl[cur]--; cur = -1; zielSlot[i] = -1; gesperrtZeit[i] = 0; }
         }
         halt[i] += dt;
-        const dran = cur < 0 || (takt % K.takteJeBewertung === i % K.takteJeBewertung && halt[i] >= K.haltezeit);
+        const eigenerTakt = takt % K.takteJeBewertung === i % K.takteJeBewertung;
+        const dran = cur < 0 || (eigenerTakt && (halt[i] >= K.haltezeit || vorgabeOffen[i]));
         if (dran) {
+          const offen = vorgabeOffen[i]; vorgabeOffen[i] = 0;
           let best = -1, bestWert = -1;
           for (let j = 0; j < ziele.length; j++) {
             if (j === cur || (j < MAXZ && (zaehl[j] >= K.maxJeZiel || nahSlot[j]))) continue;
             const w = bewerte(i, ziele[j], m, v0, rw, rx, ry, rz, abBest);
             if (w > bestWert) { bestWert = w; best = j; }
           }
-          if (best >= 0 && (cur < 0 || bestWert > curWert * K.wechselFaktor)) {
+          if (best >= 0 && (cur < 0 || bestWert > curWert * K.wechselFaktor || (offen && ziele[best].id === vorgabe))) {
             if (cur >= 0) { zaehl[cur]--; statistik.wechsel[i]++; } else if (b.zielId !== null) statistik.zwang[i]++;
             if (ziele[best].id === vorZiel[i] && zeit - wechselZeit[i] < 5) statistik.flackern++;
             vorZiel[i] = b.zielId ?? -1; wechselZeit[i] = zeit;
@@ -919,6 +1095,11 @@ export function erstelleTurmKi({ startwert = 202, lafetten = LAFETTEN, mitte = B
           setzeAufSchale(b, m, v0, S.gierMitte, (S.nickMin + S.nickMax) / 2, R);
         }
       }
+    }
+    // R23: Handsteuerung und Hauptbatterie (beide Betriebsarten; Räume dieses Takts stehen in lage.schirme)
+    if (nTeil < n) for (let i = 0; i < n; i++) {
+      if (teil[i]) continue;
+      if (i === manuell) manuellBefehl(i); else schwerSchritt(i, ziele, turmZustand, frei, leucht, haupt, vorgabeNeu, S, R, modus === 'sperrfeuer' && folgen);
     }
     // Zenit-Bremse frei, sobald ein Rohr kein Ziel mehr hat (Sperr/Ruhe) → nächstes Ziel beginnt frisch
     for (let i = 0; i < n; i++) if (befehle[i].zielId === null) nOk[i] = 0;

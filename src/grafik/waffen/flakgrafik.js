@@ -413,7 +413,9 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
       const echt = gs.leucht[i] === 1, so = gs.sorte ? gs.sorte[i] : 0, panzer = so === 5;
       if (!gs.aktiv[i] || (!echt && !panzer && !regler.spurImmer)) continue;
       // R23: Gatling-Granaten ohne Leuchtspur-Befehl nur jede 3. als Dauerspur (Vorrat 640 bei ~1000 Granaten im Flug)
-      if (!echt && !panzer && (so === 2 || so === 3) && i % GATLING.spurJeder !== 0) continue;
+      // Echte Leuchtspur der Gatling (KI im Nahbereich: alle Türme) jede 2. — WARUM: sonst 563 von 640 Spuren belegt
+      // (Messung R23 nach KI-Merge); auch echte Gatlings tragen Leuchtspur nur in jeder n-ten Patrone.
+      if (!panzer && (so === 2 || so === 3) && i % (echt ? 2 : GATLING.spurJeder) !== 0) continue;
       const j = i * 3;
       const vx = gs.vel[j] - sx, vy = gs.vel[j + 1] - sy, vz = gs.vel[j + 2] - sz, v = Math.hypot(vx, vy, vz) || 1;
       const strecke = (gs.alter[i] + alpha) * v * SIM_DT;

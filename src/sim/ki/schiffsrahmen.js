@@ -2,7 +2,8 @@
 //        mit gleichen ids — Welt für Flak und Schaden, Schiffsrahmen für die KI).
 // LIEFERT: inSchiffsrahmen(zieleWelt, schiffZ, aus) → aus (Liste, gleich lang, feste Objekte) ·
 //          zuSchiff(schiffZ, v, aus) / zuWelt(schiffZ, v, aus) (Richtungen drehen, ohne Verschieben)
-//          aus[i] = { id, aktiv, angriff, r, hp, hpMax, pos{x,y,z}, vel{x,y,z} } — pos = R⁻¹(p − s), vel = R⁻¹(v − vs)
+//          aus[i] = { id, aktiv, angriff, r, hp, hpMax, art, panzer, pos{x,y,z}, vel{x,y,z} } — pos = R⁻¹(p − s), vel = R⁻¹(v − vs)
+//          (R23: art fehlt → 'boot', panzer fehlt → 0)
 //          schiffZ = { pos, vel, rot (Quaternion {x,y,z,w}) } (Zustand aus schiff.js)
 // REGEL: MOMENTAUFNAHME je Takt. vel NIE aus Lagedifferenzen im Schiffsrahmen — WARUM: der Rahmen dreht sich mit;
 //        die Differenz enthielte die Scheinfahrt −ω×r (0,18 rad/s · 1000 m = 180 m/s). Messung Frühwarnung R14:
@@ -28,11 +29,12 @@ export const zuWelt = (schiffZ, v, aus) => drehe(schiffZ.rot, 1, v.x, v.y, v.z, 
 
 export function inSchiffsrahmen(zieleWelt, schiffZ, aus = []) {
   const s = schiffZ.pos, vs = schiffZ.vel ?? NULL, q = schiffZ.rot;
-  while (aus.length < zieleWelt.length) aus.push({ id: 0, aktiv: false, angriff: false, r: 0, hp: 0, hpMax: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } });
+  while (aus.length < zieleWelt.length) aus.push({ id: 0, aktiv: false, angriff: false, r: 0, hp: 0, hpMax: 0, art: 'boot', panzer: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } });
   aus.length = zieleWelt.length;
   for (let i = 0; i < zieleWelt.length; i++) {
     const z = zieleWelt[i], o = aus[i];
     o.id = z.id; o.aktiv = z.aktiv; o.angriff = !!z.angriff; o.r = z.r; o.hp = z.hp; o.hpMax = z.hpMax;
+    o.art = z.art ?? 'boot'; o.panzer = z.panzer ?? 0;
     drehe(q, -1, z.pos.x - s.x, z.pos.y - s.y, z.pos.z - s.z, o.pos);
     drehe(q, -1, z.vel.x - vs.x, z.vel.y - vs.y, z.vel.z - vs.z, o.vel);
   }

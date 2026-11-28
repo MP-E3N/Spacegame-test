@@ -168,12 +168,13 @@ export const WAFFEN_TYP = {
     // Gatlings — die Gesamtbalance bleibt bei den Gatlings.
     flak: { v0: 950, salve: 2.0, reichweite: 3000,
       sorte: { wirkRadius: 60, vollRadius: 10, schaden: 30, splitterRadius: 90, splitterDauer: 72, splitterDps: 70 } },
-    // Panzergranate: v0 1600 (flach, kurze Flugzeit → trifft mit Vorhalt), Salve alle 2,5 s, 220 HP je Treffer ohne
-    // Panzer-Abzug. WARUM 220: Panzerboot (KI, hp ≈ 900, panzer 0,85) fällt nach 4–5 Treffern ≈ 10–15 s bei einem
-    // Turm (Protokoll R23: „AP ~10–15 s“); ein Kanonenboot (100 HP) fällt mit einem Treffer.
+    // Panzergranate: v0 1600 (flach, kurze Flugzeit → trifft mit Vorhalt), Salve alle 2,5 s, 100 HP je Treffer ohne
+    // Panzer-Abzug. WARUM 100 (erst 220; Wunsch KI R23: 80–120): Panzerboot (hp 900, panzer 0,85) fällt nach 9 Treffern —
+    // gemessen 18,6 s mit EINEM Turm (Treffer 10 von 14 Schuss auf 1000 m), 8,6 s mit allen Türmen; nur Flak 113 s.
+    // Ein Kanonenboot (100 HP) fällt mit einem Treffer.
     // Reichweite 3000 m: danach endet die Granate still (kein Zünder). toleranz: höchstens 0,004 rad Richtfehler beim
     // Abfeuern (4 m auf 1000 m) — WARUM: die KI gibt Flak-Toleranzen (bis 0,08 rad) für Streufeuer.
-    panzer: { v0: 1600, salve: 2.5, reichweite: 3000, schaden: 220, toleranz: 0.004 },
+    panzer: { v0: 1600, salve: 2.5, reichweite: 3000, schaden: 100, toleranz: 0.004 },
   },
 };
 
