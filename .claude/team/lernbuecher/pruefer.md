@@ -51,3 +51,6 @@
   aus Float64-Bits statt pruefsumme (zählt leere Plätze, Reset-Befund). Form-Zeilen an „Form wirklich genutzt“ koppeln,
   zu jedem „0 Treffer“ eine Gegenprobe ohne Sperre. Rundungs-Soll aus dem Polygon mit N Sehnen. Eine Prüfung für eine
   später gestrichene Funktion (kanteFlaechen) → bei Schnittstellen-Änderungen nachfragen.
+- 2026-11-28 Runde 22 — Darf sich ein Erzeuger ändern (Version), alte Formen als Datei unter tests/daten festhalten.
+  CSG läuft in node schnell genug → Dichtheit messen (tests/dicht.mjs), nicht schätzen. Rückbau-Zeilen an „Operation war
+  wirksam“ koppeln, sonst auf dem alten Stand trivial grün.

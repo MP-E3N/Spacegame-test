@@ -45,3 +45,6 @@
 - 2026-11-28 Runde 21 (Kanten) — Kanten-Maß in Metern je Ecke als optionales Spant-Feld (ecken), Kappenkanten als echte
   Spanten mit kf-Marker am End-Spant; PROFIL_N bleibt 32. Jede Funktion, die Spanten kopiert/spiegelt, muss neue Felder
   kennen. Im Browser: Pick-Zone 7 px wurde verfehlt → 12 px (Projektleitung); Bildraum-Picking vor Abgabe mit echter Maus.
+- 2026-11-28 Runde 22 — Splitter-Risse hängen an der Kombination der Schweißzugaben, nicht an einem Körper; erneutes
+  Verschweißen mit anderer Zugaben-Reihenfolge (bis 3 Versuche) machte 675/675 dicht, Generator-Tricks nur 17 → 12.
+  Kern-Suche: entfernte Körper durch ferne Mini-Würfel ersetzen (Listenplätze bleiben). Regex mit Backslash nie im Heredoc.

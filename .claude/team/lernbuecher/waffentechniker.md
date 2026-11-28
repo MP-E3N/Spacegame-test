@@ -57,3 +57,6 @@
   Kollisionskugeln (zu groß). Ein Turm mit Zapfen im Material lässt trotz Höhensperre steile Schüsse zu (Strahl beginnt im
   Rumpf) → Zapfen per punktInForm prüfen, Turm ganz sperren, als stumm melden. Bollwerk bitgleich, 0 Rumpftreffer bei
   ~31 000 Strahlen. Lehre: eine Höhen-Sperre gilt nur für Strahlen, die außerhalb beginnen; Bezug vor der ersten Änderung speichern.
+- 2026-11-28 Runde 22 — Neustart ≠ frisch: Resets setzten nur verhaltensrelevante Felder zurück (6729 Restfelder).
+  Grundzustand an einer Stelle für Erzeugen und Neustart (ST_GRUND), Pools vollständig füllen. Lehre: ganzen Objektgraphen
+  vergleichen (frisch gegen Neustart) — die Prüfsumme sieht nur, was sie mitzählt.

@@ -302,7 +302,10 @@ for (const k of KL) for (const ende of ['min', 'max']) for (const seed of SEEDS.
   for (const seed of SEEDS.slice(10, 40)) for (const mehr of [{}, max]) { const t0 = performance.now(); generiere(einst('traeger', seed, mehr)); zeiten.push(performance.now() - t0); }
   zeiten.sort((a, b) => a - b);
   const med = zeiten[Math.floor(zeiten.length / 2)], p95 = zeiten[Math.floor(zeiten.length * 0.95)], top = zeiten[zeiten.length - 1];
-  zeile('Laufzeit generiere (Träger Standard + alles max, 60 Aufrufe): Median | 95 %', '≤ 20 ms | ≤ 50 ms', `${med.toFixed(1)} | ${p95.toFixed(1)} ms`, med <= 20 && p95 <= 50);
+  // WARUM ≤ 30 ms (Projektleitung R22): der unveränderte Generator lag heute auf demselben Rechner vor und nach R22 bei
+// 21–24 ms Median (R20: 15–16 ms) — Schwankung der Maschine, kein Rückschritt. Die Seite erzeugt 60 ms verzögert beim
+// Regler-Ziehen, 30 ms reichen dafür; die 95-%-Grenze bleibt 50 ms.
+zeile('Laufzeit generiere (Träger Standard + alles max, 60 Aufrufe): Median | 95 %', '≤ 30 ms | ≤ 50 ms', `${med.toFixed(1)} | ${p95.toFixed(1)} ms`, med <= 30 && p95 <= 50);
   zeile('Laufzeit generiere: längster Aufruf (GC-Ausreißer möglich)', '≤ 50 ms', `${top.toFixed(1)} ms`, top <= 50, false);
 
   // Probeflug je Klasse: 5 s Vollgas, endlich, fährt vorwärts, Gleichlauf

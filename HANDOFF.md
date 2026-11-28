@@ -6,6 +6,18 @@
 > Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 19 gepusht**, Runde 20
 > + 21 nur lokal committet, 2026-11-28). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (10 Dateien, ~40 s).
 
+## Nachtrag Runde 22 (2026-11-28, Pflege „Reste aufräumen“, lokal committet)
+- Stirnkanten (Fase/Rundung) jetzt auch an Körpern mit eigenem Umriss: IDs `K<e>P<j>` (Kappe e, Umriss-Seite j → j+1).
+- Generator-Träger dicht: `schweissen.js` verschweißt bei offenen Kanten bis zu 3× mit anderer Zugaben-Reihenfolge
+  (`info.versuche`); 675 Prüfformen 17 → 0 undicht. GENERATOR_VERSION bleibt 2.
+- Gefecht: Neustart (N) = frische Instanz, auch im ganzen Zustand (Koop-Grundlage).
+- Werkstatt: Leiste nach Esc im Kanten-Maßfeld korrekt; umgesetzte Bauteile folgen dem Symmetrie-Schalter.
+- Tests: 12 Dateien (neu `tests/dicht.mjs`, echtes CSG in node; `tests/daten/generator-v2.json` = gespeicherte v2-Formen),
+  `npm test` ~80 s. generiere-Grenze Median ≤ 30 ms. Protokoll `.claude/team/protokolle/2026-11-28-runde22.md`.
+- Offen (Kann): Kappenfase nach Punkt einfügen/löschen nicht mehr bearbeitbar; Rundung 4-Stufen-Näherung; Verschweißen-
+  Ausreißer bis ~270 ms. Nutzer-Urteile zu R19–R22 offen. Nächster Schritt nicht beauftragt (Ideen: Gegner-Modell +
+  Spielziel im Gefecht, Stationen fürs Koop, Geschütze an Seitenflächen).
+
 ## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 21)
 - **Letzter Stand:** Runde 21 = sechs Nutzerpunkte nach seinem R20-Test, alle umgesetzt, lokal committet (nicht gepusht),
   Protokoll `.claude/team/protokolle/2026-11-28-runde21.md`:
@@ -312,6 +324,7 @@ Asteroiden abprallen + Schaden (✅ R5) · Ambos nur Turm-/Nummernhöhe korrigie
   SendMessage an denselben Agenten (Kontext bleibt).
 
 ## Verlauf
+- **Runde 22** (2026-11-28, mit Team, Pflege): Stirnkanten am Umriss, dichte Träger, Neustart = frisch, Maus-Prüfung R21.
 - **Runde 21** (2026-11-28, mit Team): 6 Nutzerpunkte — Punkt in Ansichten klein, Neu anfangen, Form im Gefecht, Fase/Rundung
   an Kanten + Seitenpfeile in gerader Ansicht, Verschieben per Ziehen (Push/Pull am Pfeil), Hintergrund Weltall/Studio.
 - **Runde 20** (2026-11-26, mit Team): Schiffsgenerator in der Form-Werkstatt (Seed, Würfeln, 6 Regler, 3 Klassen,

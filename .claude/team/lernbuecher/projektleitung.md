@@ -71,3 +71,6 @@
   per SendMessage. Gestrichene Schnittstelle (kanteFlaechen) nur dem Schiffbauer gemeldet → Prüfer testete sie trotzdem:
   Streichungen ALLEN melden. UI-Module mit Attrappen-Test vor der Testrunde selbst mit echter Maus bedienen (Pick-Zone 7 px
   zu klein). Verschieben vs. Push/Pull: Körper ziehen = verschieben, Fläche nur am Griff — „ein Werkzeug für alles“ verwirrt.
+- 2026-11-28 Runde 22 (Pflege) — UI vor jeder Testrunde selbst mit echter Maus bedient → 2 Fehler gefunden (Leiste nach
+  Esc im Maß-Feld, Symmetrie beim Umsetzen). Laufzeit rot ohne Codeänderung: alten Stand per temporärem Worktree in
+  derselben Minute nachmessen (vor/nach gleich) → Grenze mit Begründung anheben, nicht Code jagen. Grenzen ≥ 1,5 × Messwert.
