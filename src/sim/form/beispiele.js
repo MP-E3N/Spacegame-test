@@ -1,5 +1,7 @@
 // ZWECK: Drei Beispielformen der Form-Werkstatt (Runde 16) — Startinhalt der Werkstatt und Testvorlage.
 // LIEFERT: BEISPIEL_FORMEN = [Brückenturm, Rumpfstück eckig → rund, Triebwerksgondel] (Formen wie form.js)
+//          · BEISPIEL_SCHIFFE = [SL-01 Silberlanze] (Runde 23: ganzes Schiff mit Bauteilen, für formZuSchiff/Gefecht;
+//            NICHT im Werkstatt-Startinhalt — BEISPIEL_FORMEN bleibt unverändert, tests/silberlanze.mjs)
 // REGEL: ohne three. Jede Form zeigt etwas anderes: Spiegel, Plus/Minus, Drehung, mehrere Vorlagen, Rundung ↔ Fase.
 //        Jede Form dockt über formZuModul() in der Werft an (Andockpunkte nach Werft E1/E2/E9). Stil: industriell,
 //        kantig, gepanzert, keine Fenster (Brücke ohne Glas), eigene Entwürfe.
@@ -69,3 +71,60 @@ const GONDEL = {
 };
 
 export const BEISPIEL_FORMEN = [BRUECKENTURM, RUMPFSTUECK, GONDEL];
+
+// ---------- 4) SL-01 Silberlanze (Runde 23, Nutzer: „ein Schiff, welches stark an der Aurora-Klasse ist“) ----------
+// TYP übernommen (E1/E-005), NICHT nachgebaut: lange Nadel mit spitzem Bug, flache breite Vordersektion, ab der Mitte
+// vier lange Ausleger im X (2 oben, 2 unten, gespreizt), die weit über das Heck ragen; glatte gerundete Flächen.
+// EIGEN: 370 m (Bug z 180 … Auslegerspitzen z −190), Rumpf 295 m mit stumpfem Triebwerksheck (Kragen + 4 Triebwerke im
+// X wie die Ausleger), Rückengrat mit gepanzertem Kommandobuckel (keine Fenster), Stege Rumpf → Ausleger nur bis z −100,
+// Ringbänder an den Auslegern, Flankenpanzer am Achterschiff, Segmentnähte (Minus) quer über die Vordersektion.
+// WARUM alles oben/unten gespiegelt (y): Schwerpunkt auf der Rumpfachse → Schub ohne Hebel (flugtauglich per Bau).
+// Ausleger/Stege: Körper um Z gedreht (dreh [0, 0, 38]) — Körper-X zeigt radial nach außen, Spiegel x/y → vier Kopien.
+nr = 0;
+const R = (z, b, h, rundung, mehr = {}) => S(z, b, h, { rundung, ...mehr });
+const X38 = [0, 0, 38];
+const XY = ['x', 'y'];
+const AUSLEGER = [R(28, 4, 3, 1, { x: 5 }), R(5, 6.5, 4.2, 1, { x: 8 }), R(-40, 7.5, 4.8, 1, { x: 14 }), R(-110, 7, 4.5, 1, { x: 21 }),
+  R(-170, 5, 3.2, 1, { x: 23 }), R(-190, 1.2, 0.8, 1, { x: 23.4 })];
+/** Spant des Auslegers bei z (linear zwischen den Stützstellen) — für die Ringbänder. */
+const auslegerBei = (z) => {
+  const a = [...AUSLEGER].sort((p, q) => p.z - q.z);
+  let i = 0; while (i < a.length - 2 && z > a[i + 1].z) i++;
+  const t = (z - a[i].z) / (a[i + 1].z - a[i].z), m = (f) => a[i][f] + (a[i + 1][f] - a[i][f]) * t;
+  return { b: m('b'), h: m('h'), x: m('x') };
+};
+const BAND = (z) => { const s = auslegerBei(z);
+  return K('platte', [R(z - 1.2, s.b + 0.7, s.h + 0.7, 1, { x: s.x }), R(z + 1.2, s.b + 0.7, s.h + 0.7, 1, { x: s.x })], { mat: 'dunkel', dreh: X38, spiegel: XY }); };
+const NAHT = (z, y) => K('quader', [S(z - 0.3, 40, 0.7, { y }), S(z + 0.3, 40, 0.7, { y })], { op: 'minus', mat: 'schacht', spiegel: ['y'] });
+let bt = 0;
+const T = (typ, p, n, spiegel) => ({ id: bt++, typ, p, n, spiegel });
+const OBEN = [0, 1, 0], HECK = [0, 0, -1];
+const SILBERLANZE = {
+  name: 'SL-01 Silberlanze', version: 1, art: 'rumpf',
+  koerper: [
+    // Hauptrumpf: stumpfes Heck mit Kragen → runder Hals → flache breite Vordersektion → Nadelbug
+    K('rumpf', [R(-115, 22, 20, 0.3), R(-110, 24, 22, 0.45), R(-95, 21, 18, 0.45), R(-30, 17, 14.5, 0.5), R(10, 17, 13, 0.8),
+      R(40, 22, 10.5, 0.8), R(70, 34, 9, 0.75), R(110, 36, 8, 0.75), R(140, 24, 6, 0.8), R(165, 9, 3.2, 0.9), R(180, 1.2, 0.8, 1)]),
+    // Rückengrat mit Kommandobuckel (gepanzert, ohne Fenster), oben und unten
+    K('platte', [S(28, 6, 1.4, { fase: 0.5, y: 5.7 }), S(45, 9, 2.8, { fase: 0.5, y: 5.6 }), S(62, 7, 1.8, { fase: 0.5, y: 4.8 }),
+      S(100, 6, 1.6, { fase: 0.5, y: 4.3 }), S(140, 4, 1.2, { fase: 0.5, y: 3.1 }), S(165, 2, 0.8, { fase: 0.5, y: 1.7 })], { mat: 'dunkel', spiegel: ['y'] }),
+    K('platte', [S(-113, 25, 23, { rundung: 0.45 }), S(-107, 25, 23, { rundung: 0.45 })], { mat: 'dunkel' }),                   // Heckkragen
+    K('zylinder', AUSLEGER, { dreh: X38, spiegel: XY }),                                                                         // vier Ausleger
+    K('quader', [S(26, 4, 1.4, { fase: 0.3, x: 5 }), S(5, 7, 1.4, { fase: 0.3, x: 7 }), S(-40, 11, 1.4, { fase: 0.3, x: 9.5 }),
+      S(-100, 15, 1.4, { fase: 0.3, x: 12.5 })].sort((a, b) => a.z - b.z), { mat: 'dunkel', dreh: X38, spiegel: XY }),          // Stege Rumpf → Ausleger
+    BAND(-60), BAND(-150),                                                                                                       // Ringbänder
+    K('platte', [S(-90, 1.6, 9, { fase: 0.4, x: 10.4 }), S(-45, 1.6, 8, { fase: 0.4, x: 9.1 })], { mat: 'dunkel', spiegel: ['x'] }), // Flankenpanzer
+    NAHT(84, 4.45), NAHT(132, 3.6),                                                                                              // Segmentnähte
+  ],
+  andock: [],
+  bauteile: [
+    T('schwer', [12, 4.18, 95], OBEN, XY),                       // Hauptbatterie vorn: 2 oben + 2 unten
+    T('schwer', [0, 8.04, -60], OBEN, ['y']),                   // Hauptbatterie achtern: oben + unten
+    T('flak', [0, 6.58, 5], OBEN, ['y']), T('flak', [0, 7.06, -20], OBEN, ['y']),
+    T('pdc', [12.5, 4.42, 75], OBEN, XY), T('pdc', [11, 3.66, 120], OBEN, XY), T('pdc', [6.5, 8.6, -82], OBEN, XY),
+    T('triebwerk_m', [5.2, 4.8, -115], HECK, XY),
+    T('steuer', [5, 2.44, 150], OBEN, XY), T('steuer', [4, 9.66, -100], OBEN, XY),
+  ],
+};
+
+export const BEISPIEL_SCHIFFE = [SILBERLANZE];
