@@ -34,11 +34,12 @@ function abdruck() {
   const m = (x) => { dv.setFloat64(0, +x); for (const i of [0, 4]) { const u = dv.getUint32(i); h1 = Math.imul(h1 ^ u, 16777619) >>> 0; h2 = (Math.imul(h2 ^ (u >>> 3), 2246822519) + u) >>> 0; } };
   const v = (o) => { if (o) { m(o.x); m(o.y); m(o.z); if ('w' in o) m(o.w); } };
   return {
-    zustand(g) {
+    zustand(g, streng = false) {
       const z = g.schiff.z; v(z.pos); v(z.vel); v(z.rot); v(z.dreh); m(z.hp); m(z.hebel ?? 0); m(z.zerstoert ? 1 : 0);
       // WARUM nur aktive Angreifer: angreifer.zuruecksetzen() lässt Lage/HP leerer Plätze stehen (Befund R21) — die
       // Simulation hängt nicht davon ab; dafür gibt es eine eigene Zeile zur pruefsumme
-      for (const a of g.angreifer.ziele) { m(a.aktiv ? 1 : 0); if (a.aktiv) { v(a.pos); v(a.vel); m(a.hp); } }
+      for (const a of g.angreifer.ziele) { m(a.aktiv ? 1 : 0); if (a.aktiv || streng) { v(a.pos); v(a.vel); m(a.hp); } }
+      if (streng) m(g.pruefsumme()); // R22: streng = auch leere Plätze + pruefsumme (Neustart = frische Instanz)
       for (const t of g.flak.tuerme) { m(t.gier); m(t.nick); m(t.schuesse ?? 0); }
       for (const k of Object.keys(g.zaehler).sort()) m(g.zaehler[k]);
       m(g.flak.geschosse?.anzahlAktiv ?? 0); // pruefsumme() bewusst nicht: enthält leere Angreifer-Plätze (eigene Zeile)
@@ -49,12 +50,12 @@ function abdruck() {
 const steuer = (k, flug) => ({ hebel: k < 120 ? 1 : 0, gieren: flug === 'manoever' ? (Math.floor(k / 1200) % 2 ? -0.5 : 0.5) : 0 });
 const flakBefehl = (modus) => ({ modus: modus === 'halt' ? 'sperrfeuer' : modus, feuerFrei: modus !== 'halt', folgen: true, schirmAbstand: 800, v0: 1100 });
 /** Lauf über T Takte; beobachte(g, k) nach jedem Schritt (Schuss-Prüfung). */
-function lauf(g, modus, flug, T, beobachte = null, ab = 0) {
+function lauf(g, modus, flug, T, beobachte = null, ab = 0, streng = false) {
   const f = abdruck(), b = flakBefehl(modus);
   for (let k = ab; k < ab + T; k++) {
     g.schritt(DT, steuer(k, flug), b);
     beobachte?.(g, k);
-    if (k % 60 === 59) f.zustand(g);
+    if (k % 60 === 59) f.zustand(g, streng);
   }
   return { fp: f.wert(), schuesse: g.zaehler.schuesse, abschuesse: g.zaehler.abschuesse };
 }
@@ -135,7 +136,15 @@ const NG = ' (Form nicht genutzt → nicht prüfbar)';
   const gR = gefechtForm(A); lauf(gR, 'zielfeuer', 'gerade', 700); gR.zuruecksetzen();
   const p0 = gR.pruefsumme(), a4 = lauf(gR, 'sperrfeuer', 'manoever', 1800).fp, p1 = gefechtForm(A).pruefsumme();
   zeile('Form-Gefecht: zuruecksetzen() → wie frisch (Sim-Zustand)', 'gleich', a4 === a1 ? 'gleich' : 'ANDERS', a4 === a1);
-  zeile('pruefsumme() direkt nach zuruecksetzen() = frische Instanz (Koop-Vergleich)', 'gleich', p0 === p1 ? 'gleich' : `${p0.toFixed(3)} ≠ ${p1.toFixed(3)} (leere Angreifer-Plätze behalten Lage)`, p0 === p1, false);
+  // R22 (Waffentechniker 3): Neustart = frische Instanz — jetzt HART, streng (leere Plätze + pruefsumme alle 60 Takte)
+  const neustart = (neu) => { const g = neu(); lauf(g, 'zielfeuer', 'gerade', 700); g.zuruecksetzen(); const p = g.pruefsumme();
+    const f = neu(), pf = f.pruefsumme(); return { p, pf, a: lauf(g, 'sperrfeuer', 'manoever', 1800, null, 0, true).fp, b: lauf(f, 'sperrfeuer', 'manoever', 1800, null, 0, true).fp }; };
+  for (const [name, neu] of [['Bollwerk', () => erstelleGefecht()], ['Form ' + A.typ, () => gefechtForm(A)]]) {
+    const r = neustart(neu);
+    zeile(`R22 Neustart ${name}: pruefsumme direkt nach zuruecksetzen() | streng weitere 1800 Takte = frische Instanz`, 'gleich | gleich',
+      `${r.p === r.pf ? 'gleich' : `${r.p.toFixed(3)} ≠ ${r.pf.toFixed(3)}`} | ${r.a === r.b ? 'gleich' : 'ANDERS'}`, r.p === r.pf && r.a === r.b);
+  }
+  void p0; void p1;
   // Andere Form mitten im Lauf registriert (Werkstatt speichert weiter) — der laufende Kampf darf das nicht merken
   // WARUM auch derselbe Typ: welt.js liest SCHIFFSDATEN[typ] in jedem Schritt neu (Frühwarnung R21, Stolperfalle 1)
   const restNach = (stoeren) => { const g = gefechtForm(A); lauf(g, 'sperrfeuer', 'manoever', 900); stoeren(); return lauf(g, 'sperrfeuer', 'manoever', 900, null, 900).fp; };
