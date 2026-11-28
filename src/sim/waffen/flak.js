@@ -26,6 +26,20 @@
 //        Die Flak schadet nur `ziele` — das eigene Schiff gehört nicht hinein (Gefecht-Welt).
 //        Ohne schiff/Rahmen läuft der Prüfstand-Zweig bitgleich zu R13 (gleiche Werte vorausgesetzt).
 //        erreichbar(turmIndex, gier, nick) (Turm-Rahmen): Grenzen + Nachbar- + Rumpf-Sperre — für die Turm-KI.
+// R23 (E2, Nutzer: „die Türme alle funktionsfähig“, „Flak zu Gatlings, große Batteriegeschütze mit zwei Munitionstypen“):
+//        lafetten enthalten jetzt auch typ 'schwer'. Je Turm zusätzlich t.typ ('flak' | 'schwer'), t.munition (geladen:
+//        'flak' | 'panzer'), t.v0 + t.reichweite (zur geladenen Munition), t.nachladen (0 = geladen, 1 = Wechsel beginnt
+//        gerade — verbleibender Anteil), t.spin (0..1 Gatling-Drehzahl, Grafik). Zahlen + WARUM in WAFFEN_TYP.
+//        · typ 'flak' AM SCHIFF = Zwillings-Gatling: spin steigt bei befehl.feuer, fällt in der Pause; Kadenz
+//          kadenzMax · spin (ab spinMin), Bündel abwechselnd; Schaden/Splitter je Granate × schadenFaktor (Sorten 2/3).
+//          OHNE schiff (Prüfstand/Labor) bleibt der alte Zwilling (10 Schuss/s, Sorten 0/1) — bitgleich zu R22.
+//        · typ 'schwer' = Hauptbatterie: befehle[i].munition 'flak' (fehlt) | 'panzer'. Wechsel → Nachladen (kein Feuer).
+//          Salve beider Rohre im selben Schritt. 'flak' = Großgranate mit Zeitzünder (Sorte 4, großer Wirk-/Splitterradius),
+//          'panzer' = Panzergranate (Sorte 5): kein Zünder, keine Streukugel, Strecke-Kugel-Test gegen ziele (r) je
+//          Schritt, voller Schaden über treffe(), Ereignis ereignisse.einschlaege { pos, zielId, richtung }; endet still
+//          nach WAFFEN_TYP.schwer.panzer.reichweite.
+//        · Panzerung ziel.panzer (0..1, fehlt = 0): Detonations- und Splitterschaden × (1 − panzer); Panzergranate voll.
+//        · Ereignisse tragen zusätzlich `sorte` (Schuss, Detonation) und `gewicht` (Detonation: Größe für die Grafik).
 import { zufall } from '../zufall.js';
 import { LAFETTEN } from './lafetten.js';
 import { TURM } from '../schiffe/turm.js';
@@ -93,7 +107,10 @@ export const FLAK = {
     { wirkRadius: 30, vollRadius: 4, schaden: 5.5, splitterRadius: 42, splitterDauer: 30, splitterDps: 18 },
     { wirkRadius: 25, vollRadius: 6, schaden: 1.5, splitterRadius: 60, splitterDauer: 54, splitterDps: 115 },
   ],
-  poolSplitter: 96, poolSplitterSchiff: 256, poolGeschosseSchiff: 640, // am Schiff (R14, 14 Flaktürme)
+  // am Schiff (R14: 256 / 640 für 14 Zwillinge à 10 Schuss/s). R23: Gatling bis 36 Schuss/s je Turm → 14 × 36 × ~1,5 s
+  // Flug ≈ 760 Granaten, Splitter 504 Det./s × 0,9 s ≈ 450 — Vorräte mit Reserve (ein voller Ring ersetzte lebende
+  // Splitter = stiller Schadensverlust).
+  poolSplitter: 96, poolSplitterSchiff: 1024, poolGeschosseSchiff: 2048,
   // Nachbar-Sperre: Rohre dürfen nicht flach über den Nachbarturm schießen (Turmhülle ~3,7 m, Oberkante ~5,2 m — Werte
   // für Größe s = 1 auf Sockel 1,4 m; am Schiff mit Größe/Sockel/Fußhöhe des Nachbarn umgerechnet, R14)
   nachbarHuelle: 3.7, nachbarHoehe: 5.2, nachbarWeite: 40,
@@ -116,6 +133,62 @@ export const WAFFEN_REGLER = {
   deckelQuer:  { min: 0.10, max: 1.00, standard: FLAK.deckelQuer,  schritt: 0.01, text: 'Deckel quer ohne Leuchtspur (× Entfernung)' },
   deckelTiefe: { min: 0.10, max: 0.90, standard: FLAK.deckelTiefe, schritt: 0.01, text: 'Deckel längs (× Entfernung)' },
 };
+
+/**
+ * Waffentypen am Schiff (R23, E2). Der Prüfstand (ohne schiff) nutzt nur FLAK (alter Zwilling).
+ * Sorten-Nummern je Granate (geschosse.sorte): 0/1 Ziel-/Sperrgranate (Prüfstand), 2/3 dieselben als Gatling-Granate
+ * (Schaden × schadenFaktor), 4 Großgranate der Hauptbatterie, 5 Panzergranate (kein Zünder).
+ */
+export const WAFFEN_TYP = {
+  flak: {
+    // Zwillings-Gatling (PDC / Flak-Gatling). WARUM v0 = FLAK.v0: die Turm-KI rechnet Vorhalt und Sättigungsräume mit
+    // 1100 m/s (R9, Nutzer „die höchste“) — die Gatling ändert die Kadenz, nicht die Ballistik.
+    v0: FLAK.v0,
+    // 36 Schuss/s je Turm bei voller Drehzahl (18 je Bündel, abwechselnd). WARUM nicht mehr: ≤ 1 Schuss je Schritt
+    // (60 Hz) hält die Rechnung schlicht; 36/s ist das 3,6-Fache des alten Zwillings (10/s) und hörbar „Säge“.
+    kadenzMax: 36,
+    // Anlauf 0 → 1 in 0,8 s, Auslauf 1 → 0 in 1,5 s; unter spinMin 0,25 kein Schuss. WARUM: echte Gatlings brauchen
+    // einige Zehntel bis zur Nenndrehzahl — der erste Feuerstoß beginnt mit ~9 Schuss/s und „sägt“ dann hoch; kurze
+    // Feuerpausen (Raumwechsel ~0,2 s) kosten so kaum Drehzahl.
+    anlauf: 0.8, auslauf: 1.5, spinMin: 0.25,
+    // Schaden und Splitter-Dps je Granate × 0,2 (Sorten 2/3). WARUM: dieselbe Wirkung wie R22 bei ~3,8× Granaten.
+    // Bollwerk 3 min (KI R22), Sperr / Ziel: R22 12,0 / 10,3 Abschüsse/min, Rumpf −5,9 / −7,6 %/min.
+    // Faktor 0,34: 12,0 / 11,3 und −3,0 / −2,3 (zu stark: Boote sterben vor dem Schuss) · 0,25: −5,7 / −5,9 ·
+    // 0,22: −5,3 / −7,2 · 0,2: 12,0 / 11,3 und −6,5 / −7,7 (gewählt) · 0,16: 9,7 / 11,7. Streuung zwischen Läufen ≈ ±1 %/min.
+    // Mit der KI R23 (Panzerboote) bei 0,2: Rumpf −9,8 / −8,0 gegen −10,5 / −12,0 mit den alten Waffen.
+    schadenFaktor: 0.2,
+  },
+  schwer: {
+    // Hauptbatterie (s 1,1–1,3). WARUM langsamer richten (35°/25° statt 60°/50° s⁻¹): schwerer Turm, und die
+    // Panzergranate trifft nur, wenn der Turm wirklich auf dem Ziel liegt — Feuern erst „ausgerichtet“ (wie bisher).
+    richtGeschw: [35 * Math.PI / 180, 25 * Math.PI / 180],
+    // Munitionswechsel 3 s (beide Rohre entladen/laden). WARUM spürbar: sonst wechselte die KI je Ziel frei hin und her.
+    nachladen: 3.0,
+    // Großgranate (Zeitzünder): Salve beider Rohre alle 2 s. WARUM v0 950: großes Kaliber, langsamer als die Gatling —
+    // die KI nimmt t.v0 für den Vorhalt. Reichweite 3000 m (Zünder höchstens FLAK.zuenderMax = 4 s ≈ 3800 m).
+    // Wirkung: Wirkradius 60 m (voll bis 10 m) 30 HP; Splitterwolke 90 m · 1,2 s · 70 HP/s. WARUM so groß: eine Salve
+    // je 2 s muss sichtbar „ein Loch in den Schwarm reißen“; 2 Granaten/2 s × 3 Türme ≈ 3 Granaten/s gegen ~500/s der
+    // Gatlings — die Gesamtbalance bleibt bei den Gatlings.
+    flak: { v0: 950, salve: 2.0, reichweite: 3000,
+      sorte: { wirkRadius: 60, vollRadius: 10, schaden: 30, splitterRadius: 90, splitterDauer: 72, splitterDps: 70 } },
+    // Panzergranate: v0 1600 (flach, kurze Flugzeit → trifft mit Vorhalt), Salve alle 2,5 s, 100 HP je Treffer ohne
+    // Panzer-Abzug. WARUM 100 (erst 220; Wunsch KI R23: 80–120): Panzerboot (hp 900, panzer 0,85) fällt nach 9 Treffern —
+    // gemessen 18,6 s mit EINEM Turm (Treffer 10 von 14 Schuss auf 1000 m), 8,6 s mit allen Türmen; nur Flak 113 s.
+    // Ein Kanonenboot (100 HP) fällt mit einem Treffer.
+    // Reichweite 3000 m: danach endet die Granate still (kein Zünder). toleranz: höchstens 0,004 rad Richtfehler beim
+    // Abfeuern (4 m auf 1000 m) — WARUM: die KI gibt Flak-Toleranzen (bis 0,08 rad) für Streufeuer.
+    panzer: { v0: 1600, salve: 2.5, reichweite: 3000, schaden: 100, toleranz: 0.004 },
+  },
+};
+
+/** Wirkwerte der Sorte k (0..4). WARUM live aus FLAK/WAFFEN_TYP gelesen: Tests und Labor stellen Werte zur Laufzeit um. */
+const sorteVon = (k) => (k < 2 ? FLAK.sorte[k] : k < 4 ? FLAK.sorte[k - 2] : WAFFEN_TYP.schwer.flak.sorte);
+/** Schadensfaktor der Sorte: Gatling-Granaten (2/3) schwächer, sonst 1 (× 1 ist in Gleitkomma exakt → Prüfstand bitgleich). */
+const faktorVon = (k) => (k === 2 || k === 3 ? WAFFEN_TYP.flak.schadenFaktor : 1);
+/** Größe der Detonation für die Grafik (Ereignisfeld gewicht): Gatling klein, Großgranate groß. WARUM: ~3× mehr
+ *  Detonationen dürfen das Rauch-/Glut-Budget der Grafik nicht sprengen (Wolken je Detonation ∝ gewicht). */
+const gewichtVon = (k) => (k === 2 || k === 3 ? 0.35 : k === 4 ? 2.2 : 1);
+const PANZER = 5;
 
 const ZWEI_PI = Math.PI * 2;
 const umbruch = (w) => w - ZWEI_PI * Math.floor((w + Math.PI) / ZWEI_PI); // → [−π, π)
@@ -162,9 +235,11 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     max: N, anzahlAktiv: 0, verworfen: 0,
     abstandVerlaengert: 0, // Granaten, deren Zünder der Mindestabstand zur Schiffsmitte verlängert hat (R14, nur Zähler)
     unterSperre: 0, // Granaten, die der Sperr-Schutz auf den Mindest-Nick angehoben hat (R12, nur Zähler)
+    einschlaege: 0, // Panzergranaten-Treffer seit dem Start (R23, nur Zähler)
     gedeckelt: 0, // Schüsse, deren Streuung (quer oder längs) der Deckel gekürzt hat (R10: stumme Kürzung sichtbar machen)
     streu: new Float32Array(N), // benutzte Streuung je Granate (m), geht ans Detonations-Ereignis
-    aktiv: new Uint8Array(N), turm: new Uint8Array(N), sperr: new Uint8Array(N), // sperr 1 = Sperrgranate
+    // sorte (R23; bis R22 „sperr“ 0/1): 0 Ziel, 1 Sperr, 2/3 Gatling Ziel/Sperr, 4 Großgranate, 5 Panzergranate
+    aktiv: new Uint8Array(N), turm: new Uint8Array(N), sorte: new Uint8Array(N),
     leucht: new Uint8Array(N), // 1 = Leuchtspur-Granate (beim Abschuss festgelegt)
     anzahlLeucht: 0,
     pos: new Float64Array(N * 3), vorPos: new Float64Array(N * 3), vel: new Float64Array(N * 3),
@@ -174,21 +249,36 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     // so bleibt der Zähler ganzzahlig (Gleichlauf) und der Detonationsort trotzdem genau.
     bruch: new Float64Array(N),
   };
+  geschosse.sperr = geschosse.sorte; // alter Name (R22), gleiche Werte 0/1 auf dem Prüfstand
   const ereignisse = {
     // turmIndex = Platz in tuerme[] (Grafik-Felder), turmId = Schiffs-Turm-id. vorPos = Mündung im vorigen Rahmen
     // (= pos ohne Rahmen), richtung = Rohrrichtung in Welt (ohne Schiffstempo), vel = Schiffstempo (Blitz/Rauch treiben mit).
-    schuesse: ereignisListe(FLAK.vorratEreignisse, () => ({ turmId: 0, turmIndex: 0, rohr: 0, pos: v3(), vorPos: v3(), richtung: v3(), vel: v3() })),
-    detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.sorte[1].wirkRadius, art: 'zeit', streu: 0 })),
+    // sorte (R23) = Granatsorte (siehe WAFFEN_TYP) — die Grafik wählt danach Blitz und Wolke
+    schuesse: ereignisListe(FLAK.vorratEreignisse, () => ({ turmId: 0, turmIndex: 0, rohr: 0, sorte: 0, pos: v3(), vorPos: v3(), richtung: v3(), vel: v3() })),
+    detonationen: ereignisListe(FLAK.vorratEreignisse, () => ({ pos: v3(), radius: FLAK.sorte[1].wirkRadius, art: 'zeit', streu: 0, sorte: 1, gewicht: 1 })),
     treffer: ereignisListe(FLAK.vorratEreignisse, () => ({ zielId: 0, schaden: 0, pos: v3() })),
+    // Panzergranaten-Treffer (R23, E2): pos = Einschlagort (Welt), richtung = Flugrichtung (Einheit, Welt)
+    einschlaege: ereignisListe(32, () => ({ zielId: 0, pos: v3(), richtung: v3() })),
   };
+  const gatlingAn = amSchiff; // WARUM eigener Name: Gatling NUR am Schiff (E2) — der Prüfstand bleibt der alte Zwilling
   const tuerme = lafetten.map((l, index) => ({
-    id: l.id, index, lafette: l,
+    id: l.id, index, lafette: l, typ: l.typ === 'schwer' ? 'schwer' : 'flak',
     gier: 0, nick: 0, vorGier: 0, vorNick: 0, sollGier: 0, sollNick: 0,
     imBereich: false, ausgerichtet: false, bereit: true, gesperrt: false,
     v0: FLAK.v0, reichweite: FLAK.reichweite, muendung: v3(), muendungWelt: v3(),
     richtGeschw: FLAK.richtGeschw.slice(), streuung: FLAK.streuung, leuchtZaehler: 0,
     abklingen: 0, rohr: 0, schuesse: 0, rnd: null, rumpf: null,
+    // R23: geladene Munition, Nachladen (Rest in Schritten, Ziel, Anteil 0..1), Gatling-Drehzahl + Schusskonto
+    munition: 'flak', nachladeRest: 0, nachladeZiel: 'flak', nachladen: 0, spin: 0, konto: 0,
   }));
+  /** v0/Reichweite/Richttempo zur geladenen Munition (R23). Prüfstand-Zwilling: FLAK-Werte wie bisher. */
+  function ladeWerte(t) {
+    if (t.typ === 'schwer') {
+      const M = WAFFEN_TYP.schwer[t.munition];
+      t.v0 = M.v0; t.reichweite = M.reichweite;
+      t.richtGeschw[0] = WAFFEN_TYP.schwer.richtGeschw[0]; t.richtGeschw[1] = WAFFEN_TYP.schwer.richtGeschw[1];
+    } else { t.v0 = gatlingAn ? WAFFEN_TYP.flak.v0 : FLAK.v0; t.reichweite = FLAK.reichweite; }
+  }
   let zeiger = 0, schrittNr = 0;
   const NS = amSchiff ? (schiff.poolSplitter ?? FLAK.poolSplitterSchiff) : FLAK.poolSplitter;
   const splitter = { max: NS, anzahlAktiv: 0, pos: new Float64Array(NS * 3), rest: new Uint16Array(NS), sorte: new Uint8Array(NS), zeiger: 0 };
@@ -267,10 +357,10 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
 
   function zuruecksetzen() {
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0; geschosse.leucht.fill(0); geschosse.anzahlLeucht = 0;
-    geschosse.gedeckelt = 0; geschosse.unterSperre = 0; geschosse.abstandVerlaengert = 0; geschosse.streu.fill(0);
+    geschosse.gedeckelt = 0; geschosse.einschlaege = 0; geschosse.unterSperre = 0; geschosse.abstandVerlaengert = 0; geschosse.streu.fill(0);
     // WARUM auch die inaktiven Plätze (Pflege R22): Neustart = frische Instanz bis ins letzte Feld (Koop: Host und Gast
     // starten neu und vergleichen Zustände) — gelesen werden sie nur hinter `aktiv`, aber Prüfungen sehen sie.
-    geschosse.turm.fill(0); geschosse.sperr.fill(0); geschosse.alter.fill(0); geschosse.rest.fill(0); geschosse.bruch.fill(0);
+    geschosse.turm.fill(0); geschosse.sorte.fill(0); geschosse.alter.fill(0); geschosse.rest.fill(0); geschosse.bruch.fill(0);
     geschosse.pos.fill(0); geschosse.vorPos.fill(0); geschosse.vel.fill(0);
     rahmen.aktiv = false; // die Gefecht-Welt setzt ihn im nächsten Schritt neu
     for (const v of [rahmen.pos, rahmen.vel, rahmen.vorPos]) v.x = v.y = v.z = 0;
@@ -279,7 +369,9 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     splitter.rest.fill(0); splitter.anzahlAktiv = 0; splitter.zeiger = 0; splitter.pos.fill(0); splitter.sorte.fill(0);
     zeiger = 0; schrittNr = 0;
     for (const t of tuerme) {
-      t.leuchtZaehler = 0; t.v0 = FLAK.v0; // Umschalter mit zurücksetzen (Befund Prüfer R8)
+      t.leuchtZaehler = 0; // Umschalter mit zurücksetzen (Befund Prüfer R8)
+      t.munition = t.nachladeZiel = 'flak'; t.nachladeRest = 0; t.nachladen = 0; t.spin = 0; t.konto = 0; // R23
+      ladeWerte(t); // v0 (Prüfstand: FLAK.v0 wie bisher), Reichweite, Richttempo der Hauptbatterie
       t.gier = t.vorGier = t.sollGier = t.lafette.gier[0];
       t.nick = t.vorNick = t.sollNick = 0.2;
       t.imBereich = t.ausgerichtet = t.gesperrt = false; t.bereit = true;
@@ -287,7 +379,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
       t.rnd = zufall((startwert + t.id * 7919) >>> 0);
       muendungLokal(t, -1, t.muendung); weltMuendung(t);
     }
-    ereignisse.schuesse.leeren(); ereignisse.detonationen.leeren(); ereignisse.treffer.leeren();
+    ereignisse.schuesse.leeren(); ereignisse.detonationen.leeren(); ereignisse.treffer.leeren(); ereignisse.einschlaege.leeren();
   }
 
   /** Mündung in Montage-Koord. (Prüfstand = Welt, am Schiff = Schiffs-Lokal; rohr −1 = Mitte zwischen beiden Rohren).
@@ -305,23 +397,25 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
   }
 
   // ---------- Detonation: Schaden mit Abfall auf alle aktiven Ziele ----------
-  function detoniere(x, y, z, art, ziele, sperr, streu) {
-    const S = FLAK.sorte[sperr], W = S.wirkRadius, V = S.vollRadius;
+  /** Panzerung (R23, E2): ziel.panzer 0..1 mindert Detonations- und Splitterschaden. Fehlt/0 → Wert unverändert. */
+  const gepanzert = (ziel, schaden) => (ziel.panzer > 0 ? schaden * (1 - Math.min(1, ziel.panzer)) : schaden);
+  function detoniere(x, y, z, art, ziele, sorte, streu) {
+    const S = sorteVon(sorte), W = S.wirkRadius, V = S.vollRadius, fk = faktorVon(sorte);
     const d = ereignisse.detonationen.neu();
-    d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = W; d.art = art; d.streu = streu;
+    d.pos.x = x; d.pos.y = y; d.pos.z = z; d.radius = W; d.art = art; d.streu = streu; d.sorte = sorte; d.gewicht = gewichtVon(sorte);
     for (let k = 0; k < ziele.length; k++) {
       const ziel = ziele[k];
       if (!ziel.aktiv) continue;
       const ab = Math.max(0, Math.hypot(ziel.pos.x - x, ziel.pos.y - y, ziel.pos.z - z) - ziel.r);
       if (ab >= W) continue;
       const f = ab <= V ? 1 : (1 - (ab - V) / (W - V)) ** 2; // voll bis V, dann quadratisch auf 0 am Wirkradius
-      treffe(ziel, S.schaden * f);
+      treffe(ziel, gepanzert(ziel, S.schaden * fk * f));
     }
     // Splitterwolke: Ring fester Größe, ist er voll, wird die älteste ersetzt (deterministisch)
     const i = splitter.zeiger; splitter.zeiger = (i + 1) % NS;
     if (splitter.rest[i] === 0) splitter.anzahlAktiv++;
     splitter.pos[i * 3] = x; splitter.pos[i * 3 + 1] = y; splitter.pos[i * 3 + 2] = z;
-    splitter.sorte[i] = sperr; splitter.rest[i] = S.splitterDauer;
+    splitter.sorte[i] = sorte; splitter.rest[i] = S.splitterDauer;
   }
 
   /** Höchstens EIN Treffer-Ereignis je Ziel und Schritt (Schaden summiert). */
@@ -337,14 +431,14 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     if (!splitter.anzahlAktiv) return;
     for (let i = 0; i < NS; i++) {
       if (!splitter.rest[i]) continue;
-      const S = FLAK.sorte[splitter.sorte[i]], R = S.splitterRadius;
+      const so = splitter.sorte[i], S = sorteVon(so), R = S.splitterRadius, fk = faktorVon(so);
       const staerke = splitter.rest[i] / S.splitterDauer; // 1 → 0
       const sx = splitter.pos[i * 3], sy = splitter.pos[i * 3 + 1], sz = splitter.pos[i * 3 + 2];
       for (let k = 0; k < ziele.length; k++) {
         const ziel = ziele[k];
         if (!ziel.aktiv) continue;
         const ab = Math.hypot(ziel.pos.x - sx, ziel.pos.y - sy, ziel.pos.z - sz) - ziel.r;
-        if (ab < R) treffe(ziel, S.splitterDps * staerke * dt * (1 - Math.max(0, ab) / R * 0.5));
+        if (ab < R) treffe(ziel, gepanzert(ziel, S.splitterDps * fk * staerke * dt * (1 - Math.max(0, ab) / R * 0.5)));
       }
       if (--splitter.rest[i] === 0) splitter.anzahlAktiv--;
     }
@@ -361,6 +455,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
       const dx = vel[j] * dt, dy = vel[j + 1] * dt, dz = vel[j + 2] * dt;
       pos[j] = x0 + dx; pos[j + 1] = y0 + dy; pos[j + 2] = z0 + dz;
       alter[i]++;
+      if (geschosse.sorte[i] === PANZER) { panzerSchritt(i, x0, y0, z0, dx, dy, dz, ziele); continue; }
       // Annäherungszünder (nur mit FLAK.annaeherung): Strecke in RELATIVBEWEGUNG gegen Kugel r + 12
       // (WARUM: ~17 m/Schritt → Punkttest tunnelt)
       let bestS = 2, bestZiel = -1;
@@ -382,13 +477,43 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
       }
       if (bestZiel >= 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
-        detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sperr[i], geschosse.streu[i]);
+        detoniere(x0 + dx * bestS, y0 + dy * bestS, z0 + dz * bestS, 'nah', ziele, geschosse.sorte[i], geschosse.streu[i]);
       } else if (--rest[i] === 0) {
         aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
         const b = geschosse.bruch[i]; // genauer Zündort innerhalb des letzten Schritts
-        detoniere(x0 + dx * b, y0 + dy * b, z0 + dz * b, 'zeit', ziele, geschosse.sperr[i], geschosse.streu[i]);
+        detoniere(x0 + dx * b, y0 + dy * b, z0 + dz * b, 'zeit', ziele, geschosse.sorte[i], geschosse.streu[i]);
       }
     }
+  }
+
+  /** Panzergranate (R23, E2): Strecke dieses Schritts in RELATIVBEWEGUNG gegen die Trefferkugel r jedes Ziels (bei
+   *  1600 m/s ≈ 27 m je Schritt — ein Punkttest tunnelte durch 6-m-Boote). Erster Treffer längs der Strecke zählt:
+   *  voller Schaden (keine Panzerung), Einschlag-Ereignis. Ohne Treffer endet sie nach der Reichweite still. */
+  function panzerSchritt(i, x0, y0, z0, dx, dy, dz, ziele) {
+    let bestS = 2, bestK = -1;
+    for (let k = 0; k < ziele.length; k++) {
+      const zl = ziele[k];
+      if (!zl.aktiv) continue;
+      const vp = zl.vorPos ?? zl.pos;
+      const ax = x0 - vp.x, ay = y0 - vp.y, az = z0 - vp.z;
+      const ux = x0 + dx - zl.pos.x - ax, uy = y0 + dy - zl.pos.y - ay, uz = z0 + dz - zl.pos.z - az;
+      const uu = ux * ux + uy * uy + uz * uz;
+      let s = uu > 1e-9 ? -(ax * ux + ay * uy + az * uz) / uu : 0;
+      s = s < 0 ? 0 : s > 1 ? 1 : s;
+      const cx = ax + ux * s, cy = ay + uy * s, cz = az + uz * s, r = zl.r ?? 0;
+      if (cx * cx + cy * cy + cz * cz <= r * r && s < bestS) { bestS = s; bestK = k; }
+    }
+    if (bestK < 0) {
+      if (--geschosse.rest[i] === 0) { geschosse.aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i]; }
+      return;
+    }
+    geschosse.aktiv[i] = 0; geschosse.anzahlAktiv--; geschosse.anzahlLeucht -= geschosse.leucht[i];
+    const zl = ziele[bestK], e = ereignisse.einschlaege.neu(), j = i * 3;
+    treffe(zl, WAFFEN_TYP.schwer.panzer.schaden);
+    e.zielId = zl.id; e.pos.x = x0 + dx * bestS; e.pos.y = y0 + dy * bestS; e.pos.z = z0 + dz * bestS;
+    const v = Math.hypot(geschosse.vel[j], geschosse.vel[j + 1], geschosse.vel[j + 2]) || 1;
+    e.richtung.x = geschosse.vel[j] / v; e.richtung.y = geschosse.vel[j + 1] / v; e.richtung.z = geschosse.vel[j + 2] / v;
+    geschosse.einschlaege++;
   }
 
   function freiesGeschoss() {
@@ -401,11 +526,32 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
 
   // ---------- Turm richten + feuern ----------
   const tmp = v3();
+  /** Hauptbatterie (R23): gewünschte Munition (befehl.munition, fehlt → 'flak') laden. Wechsel = nachladen Sekunden
+   *  ohne Feuer; zurück zur geladenen Munition bricht den Wechsel ab. t.nachladen = verbleibender Anteil (1 → 0). */
+  function munitionSchritt(t, dt, b) {
+    const soll = b ? (b.munition === 'panzer' ? 'panzer' : 'flak') : (t.nachladeRest > 0 ? t.nachladeZiel : t.munition);
+    const N = Math.max(1, Math.round(WAFFEN_TYP.schwer.nachladen / dt));
+    if (t.nachladeRest > 0) {
+      if (soll === t.munition) t.nachladeRest = 0; // Wechsel abgebrochen, die geladene Munition bleibt
+      else if (--t.nachladeRest === 0) { t.munition = soll; ladeWerte(t); }
+    } else if (soll !== t.munition) { t.nachladeZiel = soll; t.nachladeRest = N; }
+    t.nachladen = t.nachladeRest / N;
+  }
+  /** Gatling (R23, nur am Schiff): Drehzahl folgt dem Abzug (befehl.feuer), Schusskonto füllt sich mit kadenzMax · spin.
+   *  WARUM Deckel 1 + Zuwachs: im Dauerfeuer geht kein Bruchteil verloren, nach einer Pause gibt es keinen Feuerstoß. */
+  function gatlingSchritt(t, dt, b) {
+    const G = WAFFEN_TYP.flak, will = !!(b && b.punkt && b.feuer);
+    t.spin = will ? Math.min(1, t.spin + dt / G.anlauf) : Math.max(0, t.spin - dt / G.auslauf);
+    if (t.spin >= G.spinMin) { const a = G.kadenzMax * t.spin * dt; t.konto = Math.min(1 + a, t.konto + a); } else t.konto = 0;
+    t.bereit = t.konto >= 1;
+  }
   function turmSchritt(t, dt, b) {
     const l = t.lafette;
     t.vorGier = t.gier; t.vorNick = t.nick;
     if (t.abklingen > 0) t.abklingen--;
     t.bereit = t.abklingen === 0;
+    const schwer = t.typ === 'schwer', gatling = gatlingAn && !schwer;
+    if (schwer) munitionSchritt(t, dt, b); else if (gatling) gatlingSchritt(t, dt, b);
     const p = b && b.punkt;
     if (!p) { t.imBereich = t.ausgerichtet = t.gesperrt = false; return; }
 
@@ -427,7 +573,7 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     const nSperr = sperrNick(t, gMitte + relSoll);
     if (sollN < nSperr) { sollN = nSperr; gesperrt = true; }
     t.sollGier = gMitte + relSoll; t.sollNick = sollN; t.gesperrt = gesperrt;
-    t.imBereich = !gesperrt && entf <= FLAK.reichweite;
+    t.imBereich = !gesperrt && entf <= t.reichweite; // R23: Reichweite der geladenen Munition (Prüfstand = FLAK.reichweite)
 
     // Richten mit begrenzter Geschwindigkeit. WARUM ohne Umbruch bei Grenzen: der Turm darf nicht durch die Sperrzone drehen.
     const dG = volleDrehung ? umbruch(t.sollGier - t.gier) : relSoll - umbruch(t.gier - gMitte);
@@ -446,17 +592,46 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     t.nick += Math.max(-mn, Math.min(mn, dN));
 
     const fehlG = umbruch(sollG - t.gier) * Math.cos(t.nick), fehlN = Math.atan2(dy, h) - t.nick;
-    t.ausgerichtet = Math.hypot(fehlG, fehlN) <= (b.toleranz ?? 0.01);
+    const fehl = Math.hypot(fehlG, fehlN);
+    t.ausgerichtet = fehl <= (b.toleranz ?? 0.01);
     muendungLokal(t, -1, t.muendung);
 
     // WARUM auch die IST-Lage prüfen: beim Schwenken streicht das Rohr evtl. flach über den Nachbarn
     if (t.nick < sperrNick(t, t.gier)) { t.gesperrt = true; t.imBereich = false; }
+    if (schwer) {
+      // Hauptbatterie (R23): Salve beider Rohre im selben Schritt, nur geladen (kein Wechsel läuft).
+      // WARUM eigene Toleranz für die Panzergranate: sie hat keine Streukugel und keinen Zünder — sie trifft nur,
+      // wenn das Rohr wirklich auf dem Vorhaltepunkt liegt.
+      const pz = t.munition === 'panzer';
+      if (!(b.feuer && t.imBereich && t.bereit && t.nachladeRest === 0)) return;
+      if (pz ? !(fehl <= Math.min(b.toleranz ?? 0.01, WAFFEN_TYP.schwer.panzer.toleranz)) : !t.ausgerichtet) return;
+      const sorte = pz ? PANZER : 4;
+      const a = feuere(t, b, 0, sorte, entf, dt), c = feuere(t, b, 1, sorte, entf, dt);
+      if (a || c) { t.abklingen = Math.max(1, Math.round(WAFFEN_TYP.schwer[t.munition].salve / dt)); t.bereit = false; }
+      return;
+    }
+    if (gatling) {
+      if (!(b.feuer && t.imBereich && t.ausgerichtet && t.konto >= 1)) return;
+      if (feuere(t, b, t.rohr, b.zielId == null ? 3 : 2, entf, dt)) { t.rohr ^= 1; t.konto -= 1; t.bereit = false; }
+      return;
+    }
     if (!(b.feuer && t.imBereich && t.ausgerichtet && t.bereit)) return;
+    const rohr = t.rohr;
+    if (!feuere(t, b, rohr, b.zielId == null ? 1 : 0, entf, dt)) return;
+    t.rohr ^= 1; t.abklingen = FLAK.schussAbstand; t.bereit = false;
+  }
+
+  /** Eine Granate der Sorte `sorte` aus Rohr `rohr` (false = Vorrat voll, verworfen). Prüfstand-Folge wie bis R22:
+   *  dieselben Rechenschritte und Zufallsaufrufe in derselben Reihenfolge (Panzergranate: nur die Rohrstreuung). */
+  function feuere(t, b, rohr, sorte, entf, dt) {
+    const l = t.lafette, p = b.punkt;
+    const gMitte = l.gier[0], gHalb = l.gier[1], nMin = l.nick[0], nMax = l.nick[1];
+    const volleDrehung = gHalb >= Math.PI - 1e-6;
     const i = freiesGeschoss();
-    if (i < 0) { geschosse.verworfen++; return; }
-    const rohr = t.rohr; t.rohr ^= 1; t.abklingen = FLAK.schussAbstand; t.bereit = false; t.schuesse++;
+    if (i < 0) { geschosse.verworfen++; return false; }
+    t.schuesse++;
     muendungLokal(t, rohr, tmp);
-    const v0 = t.v0;
+    const v0 = t.v0, panzer = sorte === PANZER;
     // Leuchtspur VOR der Streuung festlegen: sie bestimmt den Querdeckel (R10). Der Zähler nutzt keinen Zufall.
     let leucht = b.leuchtspur;
     if (leucht == null) { t.leuchtZaehler += FLAK.leuchtAnteil; leucht = t.leuchtZaehler >= 1; if (leucht) t.leuchtZaehler -= 1; }
@@ -464,25 +639,29 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     // (Richtung + Kubikwurzel-Radius) —, dann längs der Schusslinie mit rt, quer mit rq gestreckt. rq = rt → alte Kugel.
     // WARUM Versatz als Winkeldifferenz auf die Rohrrichtung: der Turm richtet nur auf p (Richttempo), jede Granate
     // bekommt ihren eigenen Punkt, der Richtfehler des Turms bleibt erhalten. Alles im Turm-Rahmen (unten gespiegelt).
-    let kG = 0, kN = 0, zuender, zStreu;
-    let qx0 = p.x - tmp.x, qy0 = p.y - tmp.y;
-    const qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
-    if (l.oben === false) { qx0 = -qx0; qy0 = -qy0; }
-    const wunschQ = b.streuKugel || 0, wunschT = b.streuTiefe ?? wunschQ;
-    const rq = Math.min(wunschQ, (leucht ? FLAK.deckelQuerLeucht : einstellung.deckelQuer) * dp);
-    const rt = Math.min(wunschT || 0, einstellung.deckelTiefe * dp);
-    if (rq < wunschQ || rt < wunschT) geschosse.gedeckelt++;
-    geschosse.streu[i] = Math.max(rq, rt);
-    if ((rq > 0 || rt > 0) && dp > 1e-6) {
-      const cz = 2 * t.rnd() - 1, phi = ZWEI_PI * t.rnd(), r = Math.cbrt(t.rnd()), sz = Math.sqrt(1 - cz * cz);
-      const ux = r * sz * Math.cos(phi), uy = r * sz * Math.sin(phi), uz = r * cz;
-      const ex = qx0 / dp, ey = qy0 / dp, ez = qz0 / dp, l = ux * ex + uy * ey + uz * ez; // Anteil längs der Schusslinie
-      const qx = qx0 + rq * (ux - l * ex) + rt * l * ex, qy = qy0 + rq * (uy - l * ey) + rt * l * ey, qz = qz0 + rq * (uz - l * ez) + rt * l * ez;
-      kG = umbruch(Math.atan2(qx, qz) - Math.atan2(qx0, qz0));
-      kN = Math.atan2(qy, Math.hypot(qx, qz)) - Math.atan2(qy0, Math.hypot(qx0, qz0));
-      zuender = Math.hypot(qx, qy, qz) / v0; zStreu = FLAK.zuenderStreuKugel;
-    } else {
-      zuender = b.zuender ?? entf / v0; zStreu = b.zielId == null ? FLAK.zuenderStreuSperr : FLAK.zuenderStreu;
+    // R23: die Panzergranate streut nicht (gezielter Einzelschuss; die Streukugel des Befehls gilt der Flak).
+    let kG = 0, kN = 0, zuender = 0, zStreu = 0;
+    if (panzer) geschosse.streu[i] = 0;
+    else {
+      let qx0 = p.x - tmp.x, qy0 = p.y - tmp.y;
+      const qz0 = p.z - tmp.z, dp = Math.hypot(qx0, qy0, qz0);
+      if (l.oben === false) { qx0 = -qx0; qy0 = -qy0; }
+      const wunschQ = b.streuKugel || 0, wunschT = b.streuTiefe ?? wunschQ;
+      const rq = Math.min(wunschQ, (leucht ? FLAK.deckelQuerLeucht : einstellung.deckelQuer) * dp);
+      const rt = Math.min(wunschT || 0, einstellung.deckelTiefe * dp);
+      if (rq < wunschQ || rt < wunschT) geschosse.gedeckelt++;
+      geschosse.streu[i] = Math.max(rq, rt);
+      if ((rq > 0 || rt > 0) && dp > 1e-6) {
+        const cz = 2 * t.rnd() - 1, phi = ZWEI_PI * t.rnd(), r = Math.cbrt(t.rnd()), sz = Math.sqrt(1 - cz * cz);
+        const ux = r * sz * Math.cos(phi), uy = r * sz * Math.sin(phi), uz = r * cz;
+        const ex = qx0 / dp, ey = qy0 / dp, ez = qz0 / dp, l = ux * ex + uy * ey + uz * ez; // Anteil längs der Schusslinie
+        const qx = qx0 + rq * (ux - l * ex) + rt * l * ex, qy = qy0 + rq * (uy - l * ey) + rt * l * ey, qz = qz0 + rq * (uz - l * ez) + rt * l * ez;
+        kG = umbruch(Math.atan2(qx, qz) - Math.atan2(qx0, qz0));
+        kN = Math.atan2(qy, Math.hypot(qx, qz)) - Math.atan2(qy0, Math.hypot(qx0, qz0));
+        zuender = Math.hypot(qx, qy, qz) / v0; zStreu = FLAK.zuenderStreuKugel;
+      } else {
+        zuender = b.zuender ?? entf / v0; zStreu = b.zielId == null ? FLAK.zuenderStreuSperr : FLAK.zuenderStreu;
+      }
     }
     // Streuung: zwei Achsen, je Dreiecksverteilung (Summe zweier Zufallszahlen) → dichte Mitte, weicher Rand
     let g = t.gier + kG + (t.rnd() + t.rnd() - 1) * t.streuung / Math.max(0.2, Math.cos(t.nick));
@@ -503,20 +682,22 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     let rx = Math.sin(g) * cn, ry = Math.sin(n);
     const rz = Math.cos(g) * cn;
     if (l.oben === false) { rx = -rx; ry = -ry; } // Turm-Rahmen → Schiff
-    zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMinStrecke / v0, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * zStreu);
-    if (rahmen.aktiv) {
-      // Mindestabstand (R14/5): im Schiffsrahmen fliegt die Granate geradlinig mit v0 (das Schiffstempo erbt sie).
-      // Liegt der Zündort näher als mindestAbstand an der Schiffsmitte, zündet sie erst beim Austritt aus der Kugel.
-      const wx = tmp.x - schiffMitte.x, wy = tmp.y - schiffMitte.y, wz = tmp.z - schiffMitte.z;
-      const st = zuender * v0, px = wx + rx * st, py = wy + ry * st, pz = wz + rz * st, R2 = mindestAbstand * mindestAbstand;
-      if (px * px + py * py + pz * pz < R2) {
-        const bb = wx * rx + wy * ry + wz * rz, c = wx * wx + wy * wy + wz * wz - R2;
-        zuender = (-bb + Math.sqrt(Math.max(0, bb * bb - c))) / v0; geschosse.abstandVerlaengert++;
+    if (!panzer) {
+      zuender = Math.min(FLAK.zuenderMax, Math.max(FLAK.zuenderMinStrecke / v0, zuender)) * (1 + (t.rnd() + t.rnd() - 1) * zStreu);
+      if (rahmen.aktiv) {
+        // Mindestabstand (R14/5): im Schiffsrahmen fliegt die Granate geradlinig mit v0 (das Schiffstempo erbt sie).
+        // Liegt der Zündort näher als mindestAbstand an der Schiffsmitte, zündet sie erst beim Austritt aus der Kugel.
+        const wx = tmp.x - schiffMitte.x, wy = tmp.y - schiffMitte.y, wz = tmp.z - schiffMitte.z;
+        const st = zuender * v0, px = wx + rx * st, py = wy + ry * st, pz = wz + rz * st, R2 = mindestAbstand * mindestAbstand;
+        if (px * px + py * py + pz * pz < R2) {
+          const bb = wx * rx + wy * ry + wz * rz, c = wx * wx + wy * wy + wz * wz - R2;
+          zuender = (-bb + Math.sqrt(Math.max(0, bb * bb - c))) / v0; geschosse.abstandVerlaengert++;
+        }
       }
-    }
+    } else zuender = WAFFEN_TYP.schwer.panzer.reichweite / v0; // Lebensdauer: danach endet sie still (kein Zünder)
     const j = i * 3;
     geschosse.aktiv[i] = 1; geschosse.anzahlAktiv++; geschosse.turm[i] = t.id;
-    geschosse.sperr[i] = b.zielId == null ? 1 : 0;
+    geschosse.sorte[i] = sorte;
     geschosse.leucht[i] = leucht ? 1 : 0;
     if (leucht) geschosse.anzahlLeucht++;
     const s = ereignisse.schuesse.neu();
@@ -543,13 +724,14 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     // WARUM ganze Schritte + Bruch: Zähler ohne Zeitrundung (Gleichlauf), Zündort trotzdem auf den Meter genau
     const schritte = zuender / dt, rest = Math.max(1, Math.ceil(schritte - 1e-9));
     geschosse.rest[i] = rest; geschosse.bruch[i] = Math.min(1, Math.max(0, schritte - (rest - 1)));
-    s.turmId = t.id; s.turmIndex = t.index; s.rohr = rohr;
+    s.turmId = t.id; s.turmIndex = t.index; s.rohr = rohr; s.sorte = sorte;
+    return true;
   }
 
   /** befehle[i] gehört zu tuerme[i] (Turm-Reihenfolge); fehlt er, hält der Turm still. */
   function schritt(dt, befehle, ziele) {
     schrittNr++;
-    ereignisse.schuesse.leeren(); ereignisse.detonationen.leeren(); ereignisse.treffer.leeren();
+    ereignisse.schuesse.leeren(); ereignisse.detonationen.leeren(); ereignisse.treffer.leeren(); ereignisse.einschlaege.leeren();
     splitterSchritt(dt, ziele);           // Nachwirkung älterer Detonationen (die neue wirkt in diesem Schritt sofort)
     geschosseSchritt(dt, ziele);          // erst fliegen (neue Geschosse starten an der Mündung, sichtbar ab diesem Bild)
     for (let i = 0; i < tuerme.length; i++) turmSchritt(tuerme[i], dt, befehle ? befehle[i] : null);
@@ -562,6 +744,8 @@ export function erstelleFlak({ startwert = 303, lafetten = LAFETTEN, schiff = nu
     const mische = (v) => { h ^= (Math.round(v * 1000) | 0); h = Math.imul(h, 16777619) >>> 0; };
     mische(schrittNr);
     for (const t of tuerme) { mische(t.gier); mische(t.nick); mische(t.schuesse); }
+    // R23: Zustand der Gatlings/Hauptbatterie nur am Schiff (WARUM: Prüfstand-Prüfsumme bleibt wie R22)
+    if (amSchiff) for (const t of tuerme) { mische(t.spin); mische(t.konto); mische(t.nachladeRest); mische(t.munition === 'panzer' ? 1 : 0); }
     for (let i = 0; i < N; i++) if (geschosse.aktiv[i]) { mische(i); mische(geschosse.pos[i * 3]); mische(geschosse.pos[i * 3 + 1]); mische(geschosse.pos[i * 3 + 2]); }
     mische(ereignisse.detonationen.length); mische(ereignisse.treffer.length); mische(splitter.anzahlAktiv);
     return h.toString(16);

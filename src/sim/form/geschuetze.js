@@ -24,11 +24,11 @@ const PI = Math.PI, VOLL = [0, PI];
 export const GESCHUETZE = {
   // WARUM diese Werte: genau die Türme der Bollwerk-ROH-Liste (dort im Gefecht erprobt) — PDC = Zwillings-PDC der
   // Außenkanten (s 0,7, Sockel 1, Mitte nach außen), Flak = Bauch-Flak z −10 (s 1,1), schwer = Heckturm z −92 (s 1,3).
-  pdc: { art: 'geschuetz', name: 'PDC (Zwilling)', masse: 12, turm: { typ: 'flak', s: 0.7, sockel: 1 },
+  pdc: { art: 'geschuetz', name: 'PDC (Zwillings-Gatling)', masse: 12, turm: { typ: 'flak', s: 0.7, sockel: 1 },
     gier: [PI / 2, 1.8], aussen: true, nick: [-0.25, PI / 2], flaeche: ['oben', 'unten'] },
-  flak: { art: 'geschuetz', name: 'Flak-Turm', masse: 35, turm: { typ: 'flak', s: 1.1, sockel: 0 },
+  flak: { art: 'geschuetz', name: 'Flak-Gatling', masse: 35, turm: { typ: 'flak', s: 1.1, sockel: 0 },
     gier: VOLL, nick: [-0.05, 1.45], flaeche: ['oben', 'unten'] },
-  schwer: { art: 'geschuetz', name: 'Schwerer Turm', masse: 90, turm: { typ: 'schwer', s: 1.3, sockel: 0 },
+  schwer: { art: 'geschuetz', name: 'Hauptbatterie', masse: 90, turm: { typ: 'schwer', s: 1.3, sockel: 0 },
     gier: VOLL, nick: [-0.1, 0.8], flaeche: ['oben', 'unten'] },
 };
 

@@ -65,7 +65,11 @@ const LAEUFE = [['sperrfeuer', 'gerade', 3600], ['zielfeuer', 'manoever', 3600],
 // R23 (KI, Panzerboote): Angreifer-Vorrat 8 → 10 Plätze. WARUM neue Anker: der Fingerabdruck hasht auch leere Plätze
 // (m(aktiv)); über die ersten 8 Plätze gerechnet ist der Lauf bitgleich zu den alten Ankern 0b46bddd52d21b75 /
 // 18c71067d296783f / 21028bdd3a1c1c95 (gemessen R23) — Panzerboote kommen erst ab Welle 2 (frühestens Takt 3676).
-const ANKER = ['7d64829d6fa78af5', '777852570e9ea0ff', '640de22d3dbea2d5'];
+// R23 (Waffentechniker, nach Merge der KI): neu gemessen — WARUM: schiffsLafetten liefert alle 17 Türme (vorher 14 Flak),
+// Gatling am Schiff (Kadenz bis 36/s, Schaden × 0,2), Hauptbatterie (Großgranate/Panzergranate), größere Vorräte
+// (Protokoll R23 E2) — dazu die KI-Steuerung der schweren Türme. KI-Stand allein: 7d64829d6fa78af5 / 777852570e9ea0ff /
+// 640de22d3dbea2d5. Zweimal gemessen, gleich.
+const ANKER = ['75110c4c026c15eb', '04a83ebb2d636a87', '1ecd876cf82e7a15'];
 if (process.env.MESSEN) {
   console.log(JSON.stringify(LAEUFE.map(([m, f, T]) => lauf(erstelleGefecht(), m, f, T).fp)));
   process.exit(0);
@@ -74,7 +78,7 @@ if (process.env.MESSEN) {
   const t0 = performance.now();
   const ist = LAEUFE.map(([m, f, T]) => lauf(erstelleGefecht(), m, f, T));
   const ok = ist.every((r, i) => r.fp === ANKER[i]);
-  zeile('Bollwerk-Gefecht bitgleich zu 19a5ed2 (3 Läufe, Fingerabdruck alle 60 Takte)', 'gleich', ok ? `gleich (${ist.map((r) => r.schuesse).join('/')} Schüsse)` : ist.map((r) => r.fp).join(' / '), ok);
+  zeile('Bollwerk-Gefecht bitgleich zu R23-Bezug (3 Läufe, Fingerabdruck alle 60 Takte)', 'gleich', ok ? `gleich (${ist.map((r) => r.schuesse).join('/')} Schüsse)` : ist.map((r) => r.fp).join(' / '), ok);
   zeile('Bollwerk-Läufe schießen (Gegenprobe: Lauf ist nicht leer)', '> 0 Schüsse | Halt: 0', `${ist[0].schuesse} / ${ist[1].schuesse} | ${ist[2].schuesse}`, ist[0].schuesse > 0 && ist[1].schuesse > 0 && ist[2].schuesse === 0);
   const varianten = [() => erstelleGefecht({}), () => erstelleGefecht({ typ: 'bollwerk' })].map((neu) => sicher(() => lauf(neu(), 'sperrfeuer', 'gerade', 3600).fp, (e) => 'WIRFT ' + e.message));
   zeile('erstelleGefecht({}) und ({ typ: "bollwerk" }) = erstelleGefecht()', 'gleich', varianten.every((v) => v === ANKER[0]) ? 'gleich' : varianten.join(' / '), varianten.every((v) => v === ANKER[0]));
@@ -117,7 +121,8 @@ const formSchiff = (k, seed, mehr = {}) => {
   return { k, seed, form, daten, typ, netze: formNetze(daten.form, daten.versatz) };
 };
 const gefechtForm = (s) => erstelleGefecht({ typ: s.typ, daten: s.daten, werte: s.daten.werte });
-const flakZahl = (s) => s.daten.tuerme.filter((t) => t.typ === 'flak').length;
+// R23 (E2, Nutzer: „die Türme alle funktionsfähig“): flak.tuerme enthält ALLE Türme (flak + schwer), nicht nur die Flak
+const flakZahl = (s) => s.daten.tuerme.length;
 
 // ---------- 2) Form-Gefecht: genutzt, Gleichlauf, stumm ----------
 const schiffe = PRUEFLINGE.map(([k, seed]) => formSchiff(k, seed));

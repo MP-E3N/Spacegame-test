@@ -10,9 +10,11 @@
 //   Runde 10–12: 16) Ellipsoid · 17) Deckel-Regler · 18) Sperr-Schutz versetzter Granaten, keine Detonation vor der Batterie.
 //   Runde 14: Prüfstand bitgleich zu R13 · 19) gedrehtes fliegendes Schiff · 20) unten montiert · 21) Sperren am Schiff,
 //   Gleichlauf, Rechenzeit · 22) Mindestabstand 150 m, erreichbar() · 23) Feuer halt ohne Füllwolken (Grafik).
+//   Runde 23: 24) alle Türme am Schiff, Gatling (Anlauf/Kadenz/Bündel), Hauptbatterie (Salve, Munitionswechsel,
+//   Panzergranate Treffer + Reichweite), Panzerung × (1 − panzer), Neustart = frisch, Grafik (Bündel, Rückstoß, Einschlag).
 // LIEFERT: Tabelle „Messgröße | Ziel | Wert | ok“; Exit-Code 1 bei FEHLER.
 // REGEL: Der Ersatz-Befehl hier ist NUR für die Messung — die echte Zielwahl macht die Turm-KI (src/sim/ki/turmziel.js).
-import { erstelleFlak, FLAK, WAFFEN_REGLER } from '../src/sim/waffen/flak.js';
+import { erstelleFlak, FLAK, WAFFEN_REGLER, WAFFEN_TYP } from '../src/sim/waffen/flak.js';
 import { LAFETTEN, schiffsLafetten } from '../src/sim/waffen/lafetten.js';
 import { SCHIFFSDATEN, rumpfSperre, sperrSektor } from '../src/sim/schiffe/index.js';
 
@@ -638,7 +640,8 @@ function schiffLauf(startwert) {
   const pos = { x: 0, y: 0, z: 0 }, vs = { x: 40, y: -10, z: 220 };
   const ziele = Array.from({ length: 10 }, (_, k) => ({ id: k, pos: { x: 0, y: 0, z: 0 }, vorPos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, r: 6, aktiv: true }));
   const befehle = flak.tuerme.map((t) => ({ turmId: t.id, zielId: null, punkt: { x: 0, y: 0, z: 0 }, feuer: true, toleranz: 0.08, streuKugel: 400, streuTiefe: 300 }));
-  let schuesse = 0, ausserhalb = 0, unterRumpf = 0, unterNachbar = 0, istVerletzt = 0;
+  let schuesse = 0, ausserhalb = 0, unterRumpf = 0, unterNachbar = 0, istVerletzt = 0, istGeprueft = 0;
+  const vorSchuesse = flak.tuerme.map((t) => t.schuesse);
   const t0 = performance.now();
   for (let i = 0; i < 3600; i++) {
     pos.x += vs.x * DT; pos.y += vs.y * DT; pos.z += vs.z * DT; q = mal(dreh, q);
@@ -661,18 +664,21 @@ function schiffLauf(startwert) {
     }
     for (const t of flak.tuerme) {
       // Ist-Lage beim Feuern: das Rohr selbst liegt nie unter der Sperre (sonst stünde es im Rumpf)
-      if (t.abklingen === FLAK.schussAbstand && t.rumpf && t.nick < t.rumpf[sperrSektor(t.gier, t.rumpf.length)] - 1e-9) istVerletzt++;
+      // R23: „hat gefeuert“ über den Schusszähler (Gatling/Hauptbatterie haben kein festes abklingen = schussAbstand mehr)
+      const k = t.index, neu = t.schuesse !== vorSchuesse[k]; vorSchuesse[k] = t.schuesse;
+      if (neu) istGeprueft++;
+      if (neu && t.rumpf && t.nick < t.rumpf[sperrSektor(t.gier, t.rumpf.length)] - 1e-9) istVerletzt++;
     }
   }
   return { ms: (performance.now() - t0) / 3600, schuesse, ausserhalb, unterRumpf, unterNachbar, istVerletzt, h: flak.pruefsumme(),
-    verworfen: flak.geschosse.verworfen, angehoben: flak.geschosse.unterSperre, tuerme: flak.tuerme.length };
+    istGeprueft, verworfen: flak.geschosse.verworfen, angehoben: flak.geschosse.unterSperre, tuerme: flak.tuerme.length };
 }
 {
   schiffLauf(5); // Aufwärmen (JIT)
   const a = schiffLauf(51), b = schiffLauf(51), c = schiffLauf(52);
-  zeile(`R14 Sperren am Schiff (${a.tuerme} Flaktürme, Kugel 400/300, 60 s, Schiff dreht 0,1 rad/s): außerhalb Grenzen / unter Rumpf / unter Nachbar / Rohr unter Rumpf`,
-    '0 / 0 / 0 / 0', `${a.ausserhalb} / ${a.unterRumpf} / ${a.unterNachbar} / ${a.istVerletzt} von ${a.schuesse} (${a.angehoben} angehoben, ${a.verworfen} verworfen)`,
-    a.schuesse > 3000 && a.ausserhalb === 0 && a.unterRumpf === 0 && a.unterNachbar === 0 && a.istVerletzt === 0 && a.verworfen === 0);
+  zeile(`R14 Sperren am Schiff (${a.tuerme} Türme, Kugel 400/300, 60 s, Schiff dreht 0,1 rad/s): außerhalb Grenzen / unter Rumpf / unter Nachbar / Rohr unter Rumpf`,
+    '0 / 0 / 0 / 0', `${a.ausserhalb} / ${a.unterRumpf} / ${a.unterNachbar} / ${a.istVerletzt} von ${a.schuesse} (Rohr geprüft in ${a.istGeprueft} Feuer-Schritten, ${a.angehoben} angehoben, ${a.verworfen} verworfen)`,
+    a.schuesse > 3000 && a.ausserhalb === 0 && a.unterRumpf === 0 && a.unterNachbar === 0 && a.istVerletzt === 0 && a.istGeprueft > 1000 && a.verworfen === 0);
   zeile('R14 Gleichlauf am Schiff (gleicher Startwert / anderer)', 'gleich / anders', `${a.h} / ${b.h} / ${c.h}`, a.h === b.h && a.h !== c.h);
   zeile(`R14 Rechenzeit Sim-Schritt am Schiff (${a.tuerme} Türme, 10 Ziele, ~${Math.round(a.schuesse / 60 * 2)} Granaten)`, '≤ 0,5 ms', a.ms.toFixed(3) + ' ms', a.ms <= 0.5);
 }
@@ -734,6 +740,177 @@ function schiffLauf(startwert) {
   }
   zeile('R14 Feuer halt: Füllwolken beim Feuern / ab 0,5 s nach dem letzten Schuss (echte Detonationen danach: Info)', '> 0 / 0',
     `${waehrend} / ${nach} (${nachDet} echte Det. danach)`, waehrend > 0 && nach === 0);
+}
+
+// ---------- 24) R23: alle Türme, Gatling, Hauptbatterie (Großgranate / Panzergranate), Panzerung, Neustart ----------
+{
+  const { lafetten } = schiffsLafetten(BW);
+  const reihenfolge = lafetten.map((l) => l.id).join(',') === BW.tuerme.map((t) => t.id).join(',');
+  const fl0 = schiffsFlak(81), schwere = fl0.tuerme.filter((t) => t.typ === 'schwer').length;
+  const felder = fl0.tuerme.every((t) => t.typ === t.lafette.typ && t.munition === 'flak' && t.nachladen === 0 && t.spin === 0 &&
+    t.v0 === (t.typ === 'schwer' ? WAFFEN_TYP.schwer.flak.v0 : WAFFEN_TYP.flak.v0));
+  zeile('R23 schiffsLafetten: alle Türme in Schiffs-Reihenfolge, Zustand typ/munition/v0/nachladen/spin', `${BW.tuerme.length} Türme, 3 schwer, Felder ok`,
+    `${lafetten.length} Türme (${schwere} schwer), Reihenfolge ${reihenfolge ? 'gleich' : 'ANDERS'}, Felder ${felder ? 'ok' : 'FALSCH'}`,
+    lafetten.length === BW.tuerme.length && schwere === 3 && reihenfolge && felder);
+}
+/** Schiffs-Flak ohne Rahmen; nur Turm k bekommt einen Befehl auf einen freien Punkt in d m. */
+function einTurm(startwert, waehle, d = 1000) {
+  const flak = schiffsFlak(startwert), k = flak.tuerme.findIndex(waehle), t = flak.tuerme[k];
+  t.erreichbarTest = (g, n) => flak.erreichbar(k, g, n);
+  const f = freieRichtung(t), r = turmRichtung(t.lafette, f.g, f.n), l = t.lafette;
+  const punkt = { x: l.x + r.x * d, y: l.y + r.y * d, z: l.z + r.z * d };
+  const befehle = flak.tuerme.map((u) => ({ turmId: u.id, zielId: null, punkt: null, feuer: false }));
+  befehle[k] = { turmId: t.id, zielId: 7, punkt, feuer: true, toleranz: 0.02, streuKugel: 0, zuender: d / t.v0 };
+  return { flak, k, t, befehle, punkt };
+}
+{
+  // Gatling: Anlauf, volle Kadenz, Bündel abwechselnd, Auslauf
+  const { flak, k, t, befehle } = einTurm(82, (u) => u.typ === 'flak');
+  const G = WAFFEN_TYP.flak;
+  let frueh = 0, voll = 0, wechselFalsch = 0, letztesRohr = -1, sorteFalsch = 0, spinBeiVoll = 0;
+  for (let i = 0; i < 300; i++) {
+    flak.schritt(DT, befehle, []);
+    for (const s of flak.ereignisse.schuesse) {
+      if (s.turmIndex !== k) continue;
+      if (i < 30) frueh++; else if (i >= 120) voll++;
+      if (letztesRohr >= 0 && s.rohr === letztesRohr) wechselFalsch++;
+      letztesRohr = s.rohr; if (s.sorte !== 2) sorteFalsch++;
+    }
+    if (i === 299) spinBeiVoll = t.spin;
+  }
+  const kadenz = voll / (180 * DT);
+  befehle[k].feuer = false;
+  let nachPause = 0, spinNach = [];
+  for (let i = 0; i < 120; i++) { flak.schritt(DT, befehle, []); nachPause += flak.ereignisse.schuesse.length; if (i === 44 || i === 119) spinNach.push(t.spin); }
+  zeile('R23 Gatling: Schüsse erste 0,5 s / Kadenz bei voller Drehzahl (Schuss/s) / spin', `< ${Math.round(G.kadenzMax / 2 * 0.5)} / ${G.kadenzMax} ± 1 / 1`,
+    `${frueh} / ${kadenz.toFixed(1)} / ${spinBeiVoll.toFixed(2)}`, frueh > 0 && frueh < G.kadenzMax / 2 * 0.5 && Math.abs(kadenz - G.kadenzMax) <= 1 && spinBeiVoll === 1);
+  zeile('R23 Gatling: Bündel abwechselnd, Ereignis-Sorte 2 (Zielgranate) | Feuer halt: Schüsse, spin nach 0,75 s / 2 s', '0 falsch | 0, fällt, 0',
+    `${wechselFalsch + sorteFalsch} falsch | ${nachPause}, ${spinNach.map((x) => x.toFixed(2)).join(' / ')}`,
+    wechselFalsch === 0 && sorteFalsch === 0 && nachPause === 0 && spinNach[0] > 0 && spinNach[0] < 1 && spinNach[1] === 0);
+}
+{
+  // Hauptbatterie, Großgranate: Salve beider Rohre im selben Schritt, alle 2 s, v0 950, Detonation Sorte 4 (gewicht > 1)
+  const { flak, k, t, befehle } = einTurm(83, (u) => u.typ === 'schwer' && u.id === 2);
+  const salven = [], det = [];
+  for (let i = 0; i < 60 * 9; i++) {
+    flak.schritt(DT, befehle, []);
+    const s = flak.ereignisse.schuesse.filter((e) => e.turmIndex === k);
+    if (s.length) salven.push({ i, rohre: s.map((e) => e.rohr).sort().join(''), sorte: s[0].sorte });
+    for (const d of flak.ereignisse.detonationen) det.push(d.sorte + ':' + d.gewicht);
+  }
+  const abst = salven.slice(1).map((s, j) => s.i - salven[j].i), soll = Math.round(WAFFEN_TYP.schwer.flak.salve / DT);
+  zeile('R23 Hauptbatterie Großgranate: Salven in 9 s, je beide Rohre / Abstand (Schritte) / v0 / Detonation sorte:gewicht', `≥ 4, „01“ / ${soll} / 950 / 4:2.2`,
+    `${salven.length}, ${[...new Set(salven.map((s) => s.rohre))].join('|')} / ${[...new Set(abst)].join(',')} / ${t.v0} / ${[...new Set(det)].join(',')}`,
+    salven.length >= 4 && salven.every((s) => s.rohre === '01' && s.sorte === 4) && abst.every((a) => a === soll) && t.v0 === 950 && det.length > 0 && det.every((x) => x === '4:2.2'));
+}
+{
+  // Munitionswechsel → Nachladen 3 s ohne Feuer, danach Panzergranate (v0 1600); zurück während des Wechsels bricht ab
+  const { flak, k, t, befehle } = einTurm(84, (u) => u.typ === 'schwer' && u.id === 2);
+  for (let i = 0; i < 30; i++) flak.schritt(DT, befehle, []);
+  befehle[k].munition = 'panzer';
+  let imWechsel = 0, start = -1, fertig = -1, nl0 = -1;
+  for (let i = 0; i < 300; i++) {
+    flak.schritt(DT, befehle, []);
+    if (i === 0) nl0 = t.nachladen;
+    if (t.nachladeRest > 0) imWechsel += flak.ereignisse.schuesse.length;
+    if (start < 0 && t.nachladeRest > 0) start = i;
+    if (fertig < 0 && start >= 0 && t.nachladeRest === 0) fertig = i;
+  }
+  const dauer = (fertig - start + 1) * DT;
+  // Abbruch: Wechsel zurück auf 'flak' nach 1 s → geladen bleibt 'panzer', kein Nachladen mehr
+  befehle[k].munition = 'flak'; for (let i = 0; i < 60; i++) flak.schritt(DT, befehle, []);
+  const mitte = { m: t.munition, n: t.nachladen.toFixed(2) };
+  befehle[k].munition = 'panzer'; flak.schritt(DT, befehle, []);
+  zeile('R23 Munitionswechsel flak → panzer: Dauer / Schüsse während / danach geladen, v0 | zurück nach 1 s: geladen, nachladen | wieder panzer',
+    `3,0 s / 0 / panzer, 1600 | panzer, 0.67 | sofort 0`,
+    `${dauer.toFixed(2)} s (nachladen ${nl0.toFixed(2)} → 0) / ${imWechsel} / ${t.munition}, ${t.v0} | ${mitte.m}, ${mitte.n} | ${t.nachladen}`,
+    Math.abs(dauer - WAFFEN_TYP.schwer.nachladen) < 0.02 && nl0 === 1 && imWechsel === 0 && t.munition === 'panzer' && t.v0 === 1600 && mitte.m === 'panzer' && mitte.n === '0.67' && t.nachladen === 0);
+}
+{
+  // Panzergranate: trifft ein 6-m-Boot in 1200 m (27 m je Schritt → Strecke-Kugel-Test), voller Schaden trotz panzer 0,85,
+  // keine Detonation; Reichweite: ohne Ziel endet sie nach ≤ 3000 m ohne Ereignis
+  for (const panzer of [0, 0.85]) {
+    const { flak, k, t, befehle, punkt } = einTurm(85, (u) => u.typ === 'schwer' && u.id === 2, 1200);
+    befehle[k].munition = 'panzer'; befehle[k].toleranz = 0.02;
+    const ziel = { id: 7, pos: { ...punkt }, vorPos: { ...punkt }, vel: { x: 0, y: 0, z: 0 }, r: 6, aktiv: true, panzer };
+    let schaden = 0, ein = 0, det = 0, einZiel = true, abstand = 0;
+    for (let i = 0; i < 60 * 12; i++) {
+      flak.schritt(DT, befehle, [ziel]);
+      for (const tr of flak.ereignisse.treffer) schaden += tr.schaden;
+      for (const e of flak.ereignisse.einschlaege) { ein++; einZiel &&= e.zielId === 7; abstand = Math.max(abstand, Math.hypot(e.pos.x - punkt.x, e.pos.y - punkt.y, e.pos.z - punkt.z)); }
+      det += flak.ereignisse.detonationen.length;
+    }
+    const soll = ein * WAFFEN_TYP.schwer.panzer.schaden;
+    zeile(`R23 Panzergranate 1200 m gegen r 6 (panzer ${panzer}): Einschläge von Schüssen / Schaden = Einschläge × 220 / Detonationen / Einschlag am Ziel`,
+      '≥ 60 % / gleich / 0 / ≤ 6 m', `${ein} von ${t.schuesse} / ${schaden.toFixed(1)} = ${soll} / ${det} / ${abstand.toFixed(2)} m`,
+      t.schuesse >= 6 && ein >= 0.6 * t.schuesse && Math.abs(schaden - soll) < 1e-9 && det === 0 && einZiel && abstand <= 6.01);
+  }
+  const { flak, k, t, befehle } = einTurm(86, (u) => u.typ === 'schwer' && u.id === 2, 1200);
+  befehle[k].munition = 'panzer';
+  let weit = 0, ein = 0, det = 0, aktivMax = 0;
+  const start = new Map();
+  for (let i = 0; i < 60 * 12; i++) {
+    flak.schritt(DT, befehle, []);
+    const gs = flak.geschosse;
+    for (let g = 0; g < gs.max; g++) {
+      if (!gs.aktiv[g]) { start.delete(g); continue; }
+      if (gs.alter[g] === 0) start.set(g, [gs.pos[g * 3], gs.pos[g * 3 + 1], gs.pos[g * 3 + 2]]);
+      const p0 = start.get(g); if (p0) weit = Math.max(weit, Math.hypot(gs.pos[g * 3] - p0[0], gs.pos[g * 3 + 1] - p0[1], gs.pos[g * 3 + 2] - p0[2]));
+    }
+    aktivMax = Math.max(aktivMax, gs.anzahlAktiv); ein += flak.ereignisse.einschlaege.length; det += flak.ereignisse.detonationen.length;
+  }
+  zeile('R23 Panzergranate ohne Ziel: weiteste Strecke / Einschläge / Detonationen / höchstens gleichzeitig im Flug', `≤ ${WAFFEN_TYP.schwer.panzer.reichweite + 30} m / 0 / 0 / ≤ 4`,
+    `${weit.toFixed(0)} m / ${ein} / ${det} / ${aktivMax}`, weit > 2900 && weit <= WAFFEN_TYP.schwer.panzer.reichweite + 30 && ein === 0 && det === 0 && aktivMax <= 4 && t.schuesse > 4);
+}
+{
+  // Panzerung: dieselbe Gatling-Feuerfolge gegen ein Ziel mit/ohne panzer 0,85 → Flak-Schaden genau × 0,15
+  const lauf = (panzer) => { const { flak, k, befehle, punkt } = einTurm(87, (u) => u.typ === 'flak');
+    befehle[k].streuKugel = 20; befehle[k].streuTiefe = 20;
+    const z = { id: 7, pos: { ...punkt }, vorPos: { ...punkt }, vel: { x: 0, y: 0, z: 0 }, r: 6, aktiv: true, panzer };
+    let s = 0; for (let i = 0; i < 300; i++) { flak.schritt(DT, befehle, [z]); for (const tr of flak.ereignisse.treffer) s += tr.schaden; } return s; };
+  const ohne = lauf(undefined), mit = lauf(0.85);
+  zeile('R23 Panzerung 0,85: Flak-Schaden (Detonation + Splitter) mit / ohne', '× 0,15 (±1e-9)', `${mit.toFixed(2)} / ${ohne.toFixed(2)} = ${(mit / ohne).toFixed(6)}`,
+    ohne > 0 && Math.abs(mit / ohne - 0.15) < 1e-9);
+}
+{
+  // Neustart = frische Instanz auch für die neuen Felder (Lehre R22): Lauf mit Wechseln, zuruecksetzen, Vergleich
+  const zustand = (f) => JSON.stringify(f.tuerme.map((t) => [t.typ, t.munition, t.nachladeRest, t.nachladeZiel, t.nachladen, t.spin, t.konto, t.v0, t.reichweite, t.abklingen, t.rohr, t.schuesse, ...t.richtGeschw]))
+    + f.geschosse.einschlaege + f.geschosse.sorte.join('') + f.ereignisse.einschlaege.length;
+  const lauf = (f, n, mitZiel) => { const ziele = mitZiel ? [{ id: 3, pos: { x: 0, y: 300, z: 1300 }, vorPos: { x: 0, y: 300, z: 1300 }, vel: { x: 0, y: 0, z: 0 }, r: 8, aktiv: true, panzer: 0.5 }] : [];
+    const b = f.tuerme.map((t, i) => ({ turmId: t.id, zielId: 3, punkt: { x: 0, y: 300, z: 1300 }, feuer: true, toleranz: 0.05, streuKugel: 40, munition: i % 2 ? 'panzer' : 'flak' }));
+    for (let i = 0; i < n; i++) { if (i === n >> 1) b.forEach((x) => { x.munition = x.munition === 'panzer' ? 'flak' : 'panzer'; }); f.schritt(DT, b, ziele); }
+    return f.pruefsumme(); };
+  const a = schiffsFlak(88); lauf(a, 900, true); a.zuruecksetzen();
+  const frisch = schiffsFlak(88), gleichDirekt = zustand(a) === zustand(frisch);
+  const pa = lauf(a, 1200, true), pf = lauf(frisch, 1200, true);
+  zeile('R23 Neustart: neue Felder direkt nach zuruecksetzen() | Prüfsumme weitere 1200 Schritte = frische Instanz', 'gleich | gleich',
+    `${gleichDirekt ? 'gleich' : 'ANDERS'} | ${pa} / ${pf}`, gleichDirekt && pa === pf);
+}
+{
+  // Grafik (Node, ohne Renderer): Bündel drehen mit spin, Hauptbatterie mit Rückstoß, Einschlag-Funken, kein Überschreiben
+  const THREE = await import('three');
+  const { erstelleFlakGrafik } = await import('../src/grafik/waffen/flakgrafik.js');
+  const { flak, k, befehle, punkt } = einTurm(89, (u) => u.typ === 'schwer' && u.id === 2, 1200);
+  const g = flak.tuerme.findIndex((u) => u.typ === 'flak');
+  befehle[g] = { ...befehle[k], turmId: flak.tuerme[g].id, munition: undefined };
+  befehle[k].munition = 'panzer';
+  const modelle = flak.tuerme.map((u) => ({ drehkranz: new THREE.Object3D(), wiege: new THREE.Object3D(), rohre: [new THREE.Object3D(), new THREE.Object3D()],
+    buendel: u.typ === 'flak' ? [new THREE.Object3D(), new THREE.Object3D()] : [] }));
+  const grafik = erstelleFlakGrafik(new THREE.Scene(), new THREE.PerspectiveCamera(60, 1.6, 0.1, 1e5), { turmModelle: modelle });
+  const ziel = { id: 7, pos: { ...punkt }, vorPos: { ...punkt }, vel: { x: 0, y: 0, z: 0 }, r: 6, aktiv: true, panzer: 0.85 };
+  let ein = 0, rueckMax = 0, spurPanzer = 0;
+  for (let i = 0; i < 60 * 10; i++) {
+    // Schiff fliegt 30 m/s nach +Z, das Ziel fliegt mit (bleibt im Schiffsrahmen am Befehlspunkt)
+    flak.setzeRahmen({ pos: { x: 0, y: 0, z: i * 0.5 }, rot: { x: 0, y: 0, z: 0, w: 1 }, vel: { x: 0, y: 0, z: 30 } });
+    ziel.vorPos.z = ziel.pos.z; ziel.pos.z = punkt.z + i * 0.5; ziel.vel.z = 30;
+    flak.schritt(DT, befehle, [ziel]); grafik.nachSchritt(flak); ein += flak.ereignisse.einschlaege.length;
+    grafik.aktualisiere(flak, 1, DT, i * DT, null);
+    rueckMax = Math.max(rueckMax, -modelle[k].rohre[0].position.z);
+    for (let j = 0; j < flak.geschosse.max; j++) if (flak.geschosse.aktiv[j] && flak.geschosse.sorte[j] === 5) spurPanzer++;
+  }
+  const dreht = modelle[g].buendel[0].rotation.z !== 0, still = modelle[g].rohre[0].position.z === modelle[g].buendel[0].position.z;
+  zeile('R23 Grafik: Gatling-Bündel drehen (ohne Rückstoß) / Hauptbatterie-Rückstoß / Einschläge / überschrieben', 'ja / > 0,7 m / > 0 / 0',
+    `${dreht && still ? 'ja' : 'NEIN'} / ${rueckMax.toFixed(2)} m / ${ein} / ${grafik.zaehler.ueberschrieben}`, dreht && still && rueckMax > 0.7 && ein > 0 && spurPanzer > 0 && grafik.zaehler.ueberschrieben === 0);
 }
 
 // ---------- Ausgabe ----------
