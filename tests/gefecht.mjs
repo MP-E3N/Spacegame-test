@@ -62,7 +62,10 @@ function lauf(g, modus, flug, T, beobachte = null, ab = 0, streng = false) {
 
 // ---------- 1) Bollwerk bitgleich (Anker gemessen auf 19a5ed2, MESSEN=1) ----------
 const LAEUFE = [['sperrfeuer', 'gerade', 3600], ['zielfeuer', 'manoever', 3600], ['halt', 'gerade', 1800]];
-const ANKER = ['0b46bddd52d21b75', '18c71067d296783f', '21028bdd3a1c1c95'];
+// R23 (KI, Panzerboote): Angreifer-Vorrat 8 → 10 Plätze. WARUM neue Anker: der Fingerabdruck hasht auch leere Plätze
+// (m(aktiv)); über die ersten 8 Plätze gerechnet ist der Lauf bitgleich zu den alten Ankern 0b46bddd52d21b75 /
+// 18c71067d296783f / 21028bdd3a1c1c95 (gemessen R23) — Panzerboote kommen erst ab Welle 2 (frühestens Takt 3676).
+const ANKER = ['7d64829d6fa78af5', '777852570e9ea0ff', '640de22d3dbea2d5'];
 if (process.env.MESSEN) {
   console.log(JSON.stringify(LAEUFE.map(([m, f, T]) => lauf(erstelleGefecht(), m, f, T).fp)));
   process.exit(0);

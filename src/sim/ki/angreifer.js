@@ -5,11 +5,19 @@
 //        anlauf (Schlangenlinie, Feuer 700 → 380 m) → abdrehen (nach außen, am Schiff vorbei) → ausholen bis 1500 m →
 //        nächste Peilung 110° weiter (WARUM: Angriffe aus wechselnden Richtungen, die Türme müssen sich verteilen).
 //        Lesbarkeit (Rolle KI): Rotten starten gemeinsam, Feuer nur mit der Nase zum Schiff, sichtbare Leuchtspur.
+//        R23 (Nutzer: „die großen Batteriegeschütze mit zwei Munitionstypen … panzerbrechende Geschosse gegen Panzerung“):
+//        zweiter Gegnertyp PANZERBOOT (art 'panzer', r 16, 900 HP, panzer 0,85, 110 m/s, schwere Kanone) — ab Welle 2
+//        je Welle 1, ab Welle 3 je 2, ohne Neustart. Plätze: erst die Kanonenboote (0 … boote−1), dahinter die Panzerboote
+//        (gerade Startnummer → zwei Panzerboote bilden eine eigene Rotte). Welle 1 bleibt bitgleich zum Stand R22.
+//        Die Schadensdämpfung (Flak × (1 − panzer)) rechnet die WAFFE; hier stehen nur r / hp / panzer.
 // LIEFERT: erstelleAngreifer({ startwert, abstand? }) (abstand: Felder aus ANGREIFER_ABSTAENDE, R21) → { ziele, geschosse, welle, statistik, schritt(dt, flakEreignisse, schiffZ,
-//          kugeln) → { abschuesse[{ id, pos }], treffer[{ pos, schaden }] }, zuruecksetzen() } · ANGREIFER (Werte)
-//          ziele[i] = { id, pos, vel, vorPos, r, hp, hpMax, aktiv, angriff, vorstoss (immer false), phase } — WELT, feste Slots
-//          geschosse = Pool { max, anzahlAktiv, aktiv (Uint8), pos/vorPos/vel (Float64 ×3), alter (Takte) } — WELT
-//          welle = { nr, gleichzeitig, rest (Neustarts übrig), pause (s bis zur nächsten Welle, 0 = läuft) }
+//          kugeln) → { abschuesse[{ id, pos }], treffer[{ pos, schaden }] }, zuruecksetzen() } · ANGREIFER (Werte) · GEGNER_TYP
+//          ziele[i] = { id, pos, vel, vorPos, r, hp, hpMax, aktiv, angriff, vorstoss (immer false), phase, art ('boot' |
+//          'panzer'), panzer (0..1) } — WELT, feste Slots (R23: 10 = 8 Boote + 2 Panzerboote)
+//          geschosse = Pool { max, anzahlAktiv, aktiv (Uint8), pos/vorPos/vel (Float64 ×3), alter (Takte), art (Uint8:
+//          0 Autokanone, 1 schwere Kanone, R23 für die Grafik) } — WELT
+//          welle = { nr, gleichzeitig (belegte Plätze = boote + panzer), boote, panzer, rest (Neustarts übrig),
+//          pause (s bis zur nächsten Welle, 0 = läuft) }
 //          statistik = { abschuesse, laeufe, schuesse, treffer, schaden }
 //          schiffZ = { pos, vel, rot (Quaternion), zerstoert } (schiff.js) · kugeln = Rumpfkugeln Schiffs-Lokal (SCHIFFSDATEN)
 // REGEL: Simulation — kein DOM, kein Math.random (eigener Zufall mit Startwert), fester Schritt, keine neuen Objekte im
@@ -47,10 +55,34 @@ export const ANGREIFER = {
     kegel: 0.26,          // rad: Feuer nur, wenn die Flugrichtung (relativ zum Schiff) so nah am Ziel liegt
     pool: 128,
   },
+  // R23 Panzerboote je Welle (letzter Wert gilt weiter). WARUM erst ab Welle 2: Welle 1 lehrt die Kanonenboote, und der
+  // Gefecht-Bezug (60 s, Welle 2 beginnt frühestens nach 61 s) bleibt bitgleich.
+  panzerWellen: [0, 1, 2],
+  panzer: {
+    // WARUM r 16 / 900 HP / panzer 0,85: Gatling-Flak macht ×0,15 Schaden → 900 HP wirken wie 6000 HP gegen Flak (Messung
+    // im Bericht: Gatlings allein > 60 s); eine Panzergranate (voller Schaden, Treffer über r) braucht ≈ 5–6 Treffer.
+    r: 16, hpMax: 900, panzer: 0.85,
+    // m/s, m/s². WARUM 110 (Boot 170): schwer und lesbar — der Spieler sieht es kommen und kann die Hauptbatterie umstellen
+    tempo: 110, tempoAb: 120, beschl: 35,
+    // WARUM 450 m/s, 1,2/s, 60 Schaden: „schwerere Kanone“ — je Treffer 4× Autokanone, Feuerrate 30 %, Schadensrate
+    // ≈ 1,2× eines Boots (ein Panzerboot ist gefährlich, aber nicht die ganze Welle). leben 1,8 s → Reichweite 810 m ≥ feuerAb.
+    waffe: { v: 450, rate: 1.2, streu: 0.6 * Math.PI / 180, leben: 1.8, schaden: 60, kegel: 0.22 },
+  },
 };
 
+/** R23: Typentabelle für Grafik und CIC (Name, Größe, Härte; Werte aus ANGREIFER). */
+export const GEGNER_TYP = Object.freeze({
+  boot: Object.freeze({ name: 'Kanonenboot', kurz: 'KB', r: ANGREIFER.r, hpMax: ANGREIFER.hpMax, panzer: 0, tempo: ANGREIFER.tempo,
+    waffe: 'Autokanone', munitionEmpfohlen: 'flak' }),
+  panzer: Object.freeze({ name: 'Panzerboot', kurz: 'PB', r: ANGREIFER.panzer.r, hpMax: ANGREIFER.panzer.hpMax, panzer: ANGREIFER.panzer.panzer,
+    tempo: ANGREIFER.panzer.tempo, waffe: 'Schwere Kanone', munitionEmpfohlen: 'panzer' }),
+});
+
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
-const MAXS = Math.max(...ANGREIFER.wellen);
+const welleWert = (liste, nr) => liste[Math.min(nr - 1, liste.length - 1)];
+// WARUM die Summe je Welle (nicht Max Boote + Max Panzer): die Plätze müssen für jede Welle reichen (R23: 8 + 2 = 10)
+const MAXS = Math.max(...ANGREIFER.wellen.map((b, k) => b + welleWert(ANGREIFER.panzerWellen, k + 1)),
+  ...ANGREIFER.panzerWellen.map((p, k) => p + welleWert(ANGREIFER.wellen, k + 1)));
 /** Grundzustand der Arbeitsfelder je Platz (Erzeugen UND zuruecksetzen — eine Stelle für beides, Lehre R10). */
 const ST_GRUND = Object.freeze({ tot: 0, peil: 0, nick: 0, t: 0, cd: 0, weave: 0, zielZ: 0, bereit: false, weich: 0, weichPause: 0,
   wx: 0, wy: 0, wz: 0, ax: 0, ay: 0, az: 0 });
@@ -62,21 +94,25 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
   // WARUM eine Kopie nur mit abstand: ohne Angabe bleibt alles bitgleich (dasselbe ANGREIFER-Objekt)
   let A = ANGREIFER;
   if (abstand) { A = { ...ANGREIFER }; for (const k of ANGREIFER_ABSTAENDE) if (Number.isFinite(abstand[k])) A[k] = abstand[k]; }
-  const WF = A.waffe;
+  const WF = A.waffe, P = A.panzer;
+  // Werte je Art (0 Boot, 1 Panzerboot) — feste Tabellen, im Schritt nur gelesen
+  const WAFFE = [WF, { ...WF, ...P.waffe }];
+  const TEMPO = [A.tempo, P.tempo], TEMPO_AB = [A.tempoAb, P.tempoAb], BESCHL = [A.beschl, P.beschl];
   let rnd = zufall(startwert);
   const ziele = [], st = [], abschussVorrat = [];
+  const artSlot = new Uint8Array(MAXS); // Art je Platz in der laufenden Welle (0 Boot, 1 Panzerboot)
   for (let i = 0; i < MAXS; i++) {
     ziele.push({ id: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, vorPos: { x: 0, y: 0, z: 0 }, r: A.r, hp: 0,
-      hpMax: A.hpMax, aktiv: false, angriff: false, vorstoss: false, phase: 'warten' });
+      hpMax: A.hpMax, aktiv: false, angriff: false, vorstoss: false, phase: 'warten', art: 'boot', panzer: 0 });
     st.push({ ...ST_GRUND });
     abschussVorrat.push({ id: 0, pos: { x: 0, y: 0, z: 0 } });
   }
   const N = WF.pool;
   const geschosse = { max: N, anzahlAktiv: 0, verworfen: 0, aktiv: new Uint8Array(N), alter: new Uint16Array(N),
-    pos: new Float64Array(N * 3), vorPos: new Float64Array(N * 3), vel: new Float64Array(N * 3) };
+    art: new Uint8Array(N), pos: new Float64Array(N * 3), vorPos: new Float64Array(N * 3), vel: new Float64Array(N * 3) };
   const trefferVorrat = Array.from({ length: N }, () => ({ pos: { x: 0, y: 0, z: 0 }, schaden: 0 }));
   const abschuesse = [], treffer = [], ergebnis = { abschuesse, treffer };
-  const welle = { nr: 0, gleichzeitig: 0, rest: 0, pause: 0 };
+  const welle = { nr: 0, gleichzeitig: 0, boote: 0, panzer: 0, rest: 0, pause: 0 };
   const statistik = { abschuesse: 0, laeufe: 0, schuesse: 0, treffer: 0, schaden: 0 };
   let naechsteId, zeiger;
   // Vorlagen (keine neuen Objekte im Schritt)
@@ -90,7 +126,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
     // Prüfsumme ein (5255,9 statt 5010,4); die Arbeitsfelder je Platz (st) setzen wir mit, damit kein Rest überlebt.
     for (let i = 0; i < MAXS; i++) {
       const z = ziele[i]; z.aktiv = false; z.angriff = false; z.vorstoss = false; z.hp = 0; z.hpMax = A.hpMax; z.r = A.r;
-      z.phase = 'warten'; z.id = 0;
+      z.phase = 'warten'; z.id = 0; z.art = 'boot'; z.panzer = 0;
       z.pos.x = z.pos.y = z.pos.z = 0; z.vel.x = z.vel.y = z.vel.z = 0; z.vorPos.x = z.vorPos.y = z.vorPos.z = 0;
       Object.assign(st[i], ST_GRUND);
       const a = abschussVorrat[i]; a.id = 0; a.pos.x = a.pos.y = a.pos.z = 0;
@@ -99,8 +135,9 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
     for (const v of [v1, v2, mP, tP, tV]) v.x = v.y = v.z = 0;
     ab.t = ab.x = ab.y = ab.z = 0;
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0;
-    geschosse.alter.fill(0); geschosse.pos.fill(0); geschosse.vorPos.fill(0); geschosse.vel.fill(0);
-    welle.nr = 0; welle.gleichzeitig = 0; welle.rest = 0; welle.pause = A.erstePause;
+    geschosse.alter.fill(0); geschosse.art.fill(0); geschosse.pos.fill(0); geschosse.vorPos.fill(0); geschosse.vel.fill(0);
+    artSlot.fill(0);
+    welle.nr = 0; welle.gleichzeitig = 0; welle.boote = 0; welle.panzer = 0; welle.rest = 0; welle.pause = A.erstePause;
     for (const k in statistik) statistik[k] = 0;
     abschuesse.length = 0; treffer.length = 0;
   }
@@ -114,23 +151,30 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
 
   function erscheine(i, schiffZ) {
     const z = ziele[i], s = st[i], p = st[i ^ 1], pz = ziele[i ^ 1];
-    // Rotte: Partner aktiv → gleiche Peilung, sonst neue (Zufall mit Startwert)
-    if (pz && pz.aktiv && (i ^ 1) < welle.gleichzeitig) { s.peil = p.peil; s.nick = p.nick; }
+    // Rotte: Partner aktiv → gleiche Peilung, sonst neue (Zufall mit Startwert). R23: nur Partner derselben Art
+    if (pz && pz.aktiv && (i ^ 1) < welle.gleichzeitig && artSlot[i ^ 1] === artSlot[i]) { s.peil = p.peil; s.nick = p.nick; }
     else { s.peil = rnd() * 2 * Math.PI; s.nick = A.nickPeil[(i >> 1) & 1]; }
     const g = rnd() * 2 * Math.PI, n = -0.6 + rnd() * 1.4, c = Math.cos(n);
     weltPunkt(schiffZ, Math.sin(g) * c * A.start, Math.sin(n) * A.start, Math.cos(g) * c * A.start, z.pos);
     const dx = schiffZ.pos.x - z.pos.x, dy = schiffZ.pos.y - z.pos.y, dz = schiffZ.pos.z - z.pos.z, d = L(dx, dy, dz) || 1;
-    z.vel.x = dx / d * A.tempo; z.vel.y = dy / d * A.tempo; z.vel.z = dz / d * A.tempo;
+    const art = artSlot[i], tempo = TEMPO[art];
+    z.vel.x = dx / d * tempo; z.vel.y = dy / d * tempo; z.vel.z = dz / d * tempo;
     z.vorPos.x = z.pos.x; z.vorPos.y = z.pos.y; z.vorPos.z = z.pos.z;
-    z.id = naechsteId++; z.hp = A.hpMax; z.aktiv = true; z.angriff = false; z.phase = 'sammeln';
+    // R23: Art-Werte bei jedem Erscheinen (der Platz kann in der nächsten Welle die Art wechseln)
+    if (art) { z.art = 'panzer'; z.r = P.r; z.hpMax = P.hpMax; z.panzer = P.panzer; } else { z.art = 'boot'; z.r = A.r; z.hpMax = A.hpMax; z.panzer = 0; }
+    z.id = naechsteId++; z.hp = z.hpMax; z.aktiv = true; z.angriff = false; z.phase = 'sammeln';
     s.tot = 0; s.t = 0; s.cd = 0; s.weave = rnd() * 2 * Math.PI; s.zielZ = (rnd() * 2 - 1) * A.rumpfZiel;
     s.bereit = false; s.weich = 0; s.weichPause = 0;
   }
 
   function starteWelle(schiffZ) {
     welle.nr++;
-    welle.gleichzeitig = A.wellen[Math.min(welle.nr - 1, A.wellen.length - 1)];
-    welle.rest = welle.gleichzeitig * (A.kontingent - 1);
+    welle.boote = welleWert(A.wellen, welle.nr);
+    welle.panzer = welleWert(A.panzerWellen, welle.nr);
+    welle.gleichzeitig = welle.boote + welle.panzer;
+    for (let i = 0; i < MAXS; i++) artSlot[i] = i >= welle.boote && i < welle.gleichzeitig ? 1 : 0;
+    // WARUM Neustarts nur für Boote: „je Welle 1 Panzerboot“ (R23) — ein abgeschossenes Panzerboot kommt nicht wieder
+    welle.rest = welle.boote * (A.kontingent - 1);
     welle.pause = 0;
     for (let i = 0; i < welle.gleichzeitig; i++) erscheine(i, schiffZ);
   }
@@ -149,7 +193,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
   }
 
   function schiesse(i, schiffZ, tx, ty, tz) {
-    const z = ziele[i], p = z.pos, v = z.vel, vs = schiffZ.vel;
+    const z = ziele[i], p = z.pos, v = z.vel, vs = schiffZ.vel, WF = WAFFE[artSlot[i]];
     // Abfangen im mitbewegten Rahmen des Schützen: Ziel relativ (vs − v), Geschoss v0 relativ, erbt das Bootstempo
     tP.x = tx; tP.y = ty; tP.z = tz; tV.x = vs.x - v.x; tV.y = vs.y - v.y; tV.z = vs.z - v.z;
     let dx, dy, dz;
@@ -169,7 +213,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
     if (k < 0) { geschosse.verworfen++; return; }
     zeiger = (k + 1) % N;
     const g = geschosse, o = k * 3;
-    g.aktiv[k] = 1; g.anzahlAktiv++; g.alter[k] = 0;
+    g.aktiv[k] = 1; g.anzahlAktiv++; g.alter[k] = 0; g.art[k] = artSlot[i];
     g.pos[o] = g.vorPos[o] = p.x; g.pos[o + 1] = g.vorPos[o + 1] = p.y; g.pos[o + 2] = g.vorPos[o + 2] = p.z;
     g.vel[o] = dx * WF.v + v.x; g.vel[o + 1] = dy * WF.v + v.y; g.vel[o + 2] = dz * WF.v + v.z;
     statistik.schuesse++;
@@ -177,9 +221,9 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
 
   /** Ein Boot fliegt: Wunschgeschwindigkeit RELATIV zum Schiff (vs + Richtung · Tempo), Beschleunigung begrenzt. */
   function fliege(i, dt, schiffZ) {
-    const z = ziele[i], s = st[i], p = z.pos, v = z.vel, S = schiffZ.pos, vs = schiffZ.vel;
+    const z = ziele[i], s = st[i], p = z.pos, v = z.vel, S = schiffZ.pos, vs = schiffZ.vel, art = artSlot[i], WF = WAFFE[art];
     const rx = p.x - S.x, ry = p.y - S.y, rz = p.z - S.z, d = L(rx, ry, rz) || 1;
-    let wx, wy, wz, tempo = A.tempo;
+    let wx, wy, wz, tempo = TEMPO[art];
     s.t += dt; s.cd -= dt;
     if (s.weich > 0) { s.weich -= dt; if (s.weich <= 0) s.weichPause = A.ausweich.pause; } else if (s.weichPause > 0) s.weichPause -= dt;
     if (z.phase === 'sammeln') {
@@ -216,7 +260,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
       }
     } else {
       // abdrehen / ausholen
-      wx = s.ax; wy = s.ay; wz = s.az; tempo = A.tempoAb;
+      wx = s.ax; wy = s.ay; wz = s.az; tempo = TEMPO_AB[art];
       if (d > A.ausholen) { z.phase = 'sammeln'; s.t = 0; s.peil += A.peilSchritt; s.zielZ = (rnd() * 2 - 1) * A.rumpfZiel; }
     }
     let wl = L(wx, wy, wz) || 1;
@@ -230,7 +274,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
     }
     // Soll relativ zum Schiff, Beschleunigung begrenzt
     let ax = vs.x + wx * tempo - v.x, ay = vs.y + wy * tempo - v.y, az = vs.z + wz * tempo - v.z;
-    const al = L(ax, ay, az), amax = A.beschl * dt;
+    const al = L(ax, ay, az), amax = BESCHL[art] * dt;
     if (al > amax) { ax *= amax / al; ay *= amax / al; az *= amax / al; }
     v.x += ax; v.y += ay; v.z += az;
     // Mindestabstand zur Schiffsmitte: Annäherung (relativ) entfernen — WARUM hart: kein Flug durch den Rumpf
@@ -245,10 +289,11 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
 
   /** Geschosse fliegen; Treffer = Strecke (relativ zum Schiff, im Schiffsrahmen) schneidet eine Rumpfkugel. */
   function geschosseSchritt(dt, schiffZ, kugeln) {
-    const g = geschosse, S = schiffZ.pos, vs = schiffZ.vel, lebenT = Math.round(WF.leben / dt);
+    const g = geschosse, S = schiffZ.pos, vs = schiffZ.vel;
+    const leben0 = Math.round(WAFFE[0].leben / dt), leben1 = Math.round(WAFFE[1].leben / dt);
     for (let k = 0; k < N; k++) {
       if (!g.aktiv[k]) continue;
-      const o = k * 3;
+      const o = k * 3, lebenT = g.art[k] ? leben1 : leben0, schaden = WAFFE[g.art[k]].schaden;
       g.vorPos[o] = g.pos[o]; g.vorPos[o + 1] = g.pos[o + 1]; g.vorPos[o + 2] = g.pos[o + 2];
       g.pos[o] += g.vel[o] * dt; g.pos[o + 1] += g.vel[o + 1] * dt; g.pos[o + 2] += g.vel[o + 2] * dt;
       g.alter[k]++;
@@ -269,8 +314,8 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
       }
       if (getroffen) {
         const t = trefferVorrat[treffer.length];
-        t.pos.x = g.pos[o]; t.pos.y = g.pos[o + 1]; t.pos.z = g.pos[o + 2]; t.schaden = WF.schaden;
-        treffer.push(t); statistik.treffer++; statistik.schaden += WF.schaden;
+        t.pos.x = g.pos[o]; t.pos.y = g.pos[o + 1]; t.pos.z = g.pos[o + 2]; t.schaden = schaden;
+        treffer.push(t); statistik.treffer++; statistik.schaden += schaden;
       }
       if (getroffen || g.alter[k] >= lebenT) { g.aktiv[k] = 0; g.anzahlAktiv--; }
     }
@@ -311,7 +356,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
         const z = ziele[i];
         if (z.aktiv) { lebend++; continue; }
         st[i].tot += dt;
-        if (welle.rest > 0 && st[i].tot >= A.neustart - 1e-9) { welle.rest--; erscheine(i, schiffZ); lebend++; }
+        if (welle.rest > 0 && !artSlot[i] && st[i].tot >= A.neustart - 1e-9) { welle.rest--; erscheine(i, schiffZ); lebend++; }
       }
       if (lebend === 0 && welle.rest === 0) welle.pause = A.wellenPause;
     }
