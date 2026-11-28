@@ -125,6 +125,11 @@ const bereich = (zt, id) => zt.zustand.bereiche.find((b) => b.id === id);
   for (let i = 0; i < 20; i++) z2.schritt(DT, lageMit([treffer(0, 0, -115)]));
   w = z2.schritt(DT, lageMit());
   zeile('Antrieb 0 % → hebelMax / Nachbrenner', ZENTRALE.antriebRest + ' / gesperrt', w.hebelMax.toFixed(2) + ' / ' + (w.nachbrennerFrei ? 'frei' : 'gesperrt'), Math.abs(w.hebelMax - ZENTRALE.antriebRest) < 1e-9 && !w.nachbrennerFrei);
+  // Leichter Schaden (Antrieb 70 %, Mitte 70 %) → noch keine Wirkung (wirkSchwelle 60 %)
+  const z2b = neu();
+  for (let i = 0; i < 6; i++) z2b.schritt(DT, lageMit([treffer(0, 0, -115), treffer(0, -2, 38)]));
+  w = z2b.schritt(DT, lageMit());
+  zeile('Antrieb/Mitte 70 % → hebelMax / Türme aus', '1 / 0', w.hebelMax + ' / ' + w.tuermeAus.length + ' (Antrieb ' + Math.round(bereich(z2b, 'antrieb').zustand * 100) + ' %)', w.hebelMax === 1 && w.tuermeAus.length === 0);
   // Batterie oben zerstört → alle oberen Türme aus (Grund 1), untere an
   const z3 = neu(), oben = tuerme.filter((t) => t.lafette.oben !== false);
   const l0 = oben[0].lafette;

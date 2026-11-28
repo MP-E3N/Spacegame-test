@@ -47,8 +47,10 @@ export const ZENTRALE = {
   drehRest: 0.4,          // Drehfaktor bei Heck 0 %
   sensor: 3400, sensorRest: 0.35, // m Reichweite des Lageschirms, Anteil bei Bug 0 %
   reaktorRest: 0.5,       // Energie-Gesamtfaktor bei Mittschiffs 0 % (Reaktor beschädigt → weniger für alles)
-  reaktorSchwelle: 0.6,   // erst unter diesem Mittschiffs-Zustand sinkt die Leistung (linear bis reaktorRest bei 0 %).
-                          // WARUM: sonst schalteten schon 4 Streifschüsse mittschiffs (−20 %) 2 Türme ab (Messung Test 7)
+  // Alle Rumpfbereiche (Bug, Mitte, Heck, Antrieb) wirken erst UNTER dieser Schwelle, dann linear bis zum Rest bei 0 %
+  // (Batterien: batterieSchwelle). WARUM: sonst schalteten schon 4 Streifschüsse mittschiffs (−20 %) 2 Türme ab
+  // (Messung Test 7), und jeder erste Treffer am Antrieb verstellte den Hebel — leichte Schäden verkraftet das Schiff.
+  wirkSchwelle: 0.6,
   // ---------- Energie (Summe ENERGIE_SUMME) ----------
   // WARUM diese Bezugswerte: damit liefert die Standardverteilung genau die alte Wirkung (hebelMax 1, alle Türme,
   // Reparatur ×1); mehr als der Bezug bringt beim Antrieb nichts über 1, bei der Reparatur schnelleres Arbeiten.
@@ -81,6 +83,8 @@ export const ZENTRALE = {
 };
 
 const klemme = (x, a, b) => (x < a ? a : x > b ? b : x);
+/** Wirkanteil eines Rumpfbereichs: 1 bis zur Schwelle, darunter linear auf 0. */
+const wirk = (zustand) => Math.min(1, zustand / ZENTRALE.wirkSchwelle);
 const ALARM_CODE = { gruen: 1, gelb: 2, rot: 3 };
 const MODUS_CODE = { sperrfeuer: 1, zielfeuer: 2 };
 const MUN_CODE = { auto: 1, flak: 2, panzer: 3 };
@@ -312,7 +316,7 @@ export function erstelleZentrale({ kugeln = null, laenge = null, bereiche = null
 
     // 3) Energie (Reaktor mittschiffs skaliert alles)
     const E = zustand.energie, S = Z.energieStandard;
-    const reaktor = Z.reaktorRest + (1 - Z.reaktorRest) * Math.min(1, bereichNach.mitte.zustand / Z.reaktorSchwelle);
+    const reaktor = Z.reaktorRest + (1 - Z.reaktorRest) * wirk(bereichNach.mitte.zustand);
     const vAntrieb = E.antrieb / S.antrieb * reaktor, vWaffen = E.waffen / S.waffen * reaktor, vRep = E.reparatur / S.reparatur * reaktor;
 
     // 4) Trupps: Weg, dann Reparatur von Bereich und Rumpfschaden dieses Bereichs
@@ -346,10 +350,10 @@ export function erstelleZentrale({ kugeln = null, laenge = null, bereiche = null
 
     // 6) Wirkungen
     const zA = bereichNach.antrieb.zustand;
-    wirkung.hebelMax = klemme(Math.min(1, vAntrieb) * (Z.antriebRest + (1 - Z.antriebRest) * zA), Z.hebelMin, 1);
+    wirkung.hebelMax = klemme(Math.min(1, vAntrieb) * (Z.antriebRest + (1 - Z.antriebRest) * wirk(zA)), Z.hebelMin, 1);
     wirkung.nachbrennerFrei = vAntrieb >= Z.nachbrenner.versorgung && zA >= Z.nachbrenner.antrieb;
-    wirkung.drehFaktor = Z.drehRest + (1 - Z.drehRest) * bereichNach.heck.zustand;
-    wirkung.sensorReichweite = Z.sensor * (Z.sensorRest + (1 - Z.sensorRest) * bereichNach.bug.zustand);
+    wirkung.drehFaktor = Z.drehRest + (1 - Z.drehRest) * wirk(bereichNach.heck.zustand);
+    wirkung.sensorReichweite = Z.sensor * (Z.sensorRest + (1 - Z.sensorRest) * wirk(bereichNach.bug.zustand));
     wirkung.feuerFrei = zustand.waffen.frei && A.waffenFrei;
     // Türme: erst Batterieschaden (meistgetroffene zuerst), dann Energie × Besatzung (von hinten in der Turmliste)
     const G = wirkung.turmGrund, aus = wirkung.tuermeAus;
