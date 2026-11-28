@@ -3,62 +3,53 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 19 gepusht**, Runde 20
-> + 21 nur lokal committet, 2026-11-28). Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (10 Dateien, ~40 s).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 22 gepusht**, 2026-11-28).
+> Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (12 Dateien, ~80 s).
 
-## Nachtrag Runde 22 (2026-11-28, Pflege „Reste aufräumen“, lokal committet)
-- Stirnkanten (Fase/Rundung) jetzt auch an Körpern mit eigenem Umriss: IDs `K<e>P<j>` (Kappe e, Umriss-Seite j → j+1).
-- Generator-Träger dicht: `schweissen.js` verschweißt bei offenen Kanten bis zu 3× mit anderer Zugaben-Reihenfolge
-  (`info.versuche`); 675 Prüfformen 17 → 0 undicht. GENERATOR_VERSION bleibt 2.
-- Gefecht: Neustart (N) = frische Instanz, auch im ganzen Zustand (Koop-Grundlage).
-- Werkstatt: Leiste nach Esc im Kanten-Maßfeld korrekt; umgesetzte Bauteile folgen dem Symmetrie-Schalter.
-- Tests: 12 Dateien (neu `tests/dicht.mjs`, echtes CSG in node; `tests/daten/generator-v2.json` = gespeicherte v2-Formen),
-  `npm test` ~80 s. generiere-Grenze Median ≤ 30 ms. Protokoll `.claude/team/protokolle/2026-11-28-runde22.md`.
-- Offen (Kann): Kappenfase nach Punkt einfügen/löschen nicht mehr bearbeitbar; Rundung 4-Stufen-Näherung; Verschweißen-
-  Ausreißer bis ~270 ms. Nutzer-Urteile zu R19–R22 offen. Nächster Schritt nicht beauftragt (Ideen: Gegner-Modell +
-  Spielziel im Gefecht, Stationen fürs Koop, Geschütze an Seitenflächen).
-
-## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 21)
-- **Letzter Stand:** Runde 21 = sechs Nutzerpunkte nach seinem R20-Test, alle umgesetzt, lokal committet (nicht gepusht),
-  Protokoll `.claude/team/protokolle/2026-11-28-runde21.md`:
-  1. Riesiger Punkt in den Würfel-Ansichten behoben (Sprites gegen den Tele-Bildwinkel ausgeglichen, `spriteGroessen`).
-  2. „🗋 Neu anfangen (leer)“ links oben (Strg+Z holt die alte Form).
-  3. **Gespeicherte Form im Gefechtstest**: Werkstatt-Knopf „⚔ Gefecht“ bzw. `gefecht.html?form=<Name>`, im Gefecht oben
-     „Schiff“-Auswahl. Sim `erstelleGefecht({ typ, daten, werte })`, Rumpfsperre aus Höhenfeld, `gefecht.stumm`.
-  4. **Kanten wie Inventor**: Leiste „◢ Fase“ (R) / „◜ Rundung“ (T) → Kanten anklicken (Umschalt = mehrere) → Maß in m →
-     Enter. Längskanten `L0–L3` (Spant-Feld `ecken`), Kappenkanten `K0o…K1r` (echte Spanten + `kf`), eigener Umriss `P<j>`.
-     In gerader Ansicht (Würfel-Fläche) blaue Pfeile an den Seiten → Seite länger/kürzer ziehen.
-  5. **Verschieben**: Körper/Bauteil ziehen = verschieben (Körper auf der Ebene der angefassten Fläche, Raster 0,5 m,
-     Strg frei); Fläche ziehen nur noch am **blauen Pfeil-Griff** in der Flächenmitte.
-  6. **Hintergrund Weltall ↔ Studio** (Knopf rechts in Werkstatt und Werft, `src/menue/stimmung.js`, `bild.setzeStimmung`).
-- **Nutzer-Urteile offen:** R19, R20 und R21. Offen aus R21: Rundung/Umschalt-Mehrfachwahl/Bauteile umsetzen nicht per
-  echter Maus geprüft; Kappenkanten bei Körpern mit eigenem Umriss p fehlen noch; pruefsumme nach zuruecksetzen (Kann).
-- **Vorher — Runde 20 Schiffsgenerator** (lokal committet). Form-Werkstatt links oben
-  „🎲 Schiffsgenerator“: Klasse (Korvette/Fregatte/Träger), Seed + 🎲 Würfeln (Taste G bei offenem Generator), Regler Länge,
-  Breite, Kantigkeit (höher = kantiger), Aufbauten, Geschütze (0 = keine), Triebwerke (Stück; schwere Schiffe bekommen
-  automatisch mehr/größere), ★ Favoriten (localStorage, speichern Einstellung + GENERATOR_VERSION 2), Standard. Ergebnis
-  ist eine ganz normale Form (Strg+Z holt die vorige, Regler-Ziehen = ein Rückgängig-Schritt), sofort flugtauglich →
-  Probeflug geht. Protokoll `.claude/team/protokolle/2026-11-26-runde20.md`.
-- **Nutzer-Urteile offen:** R19 (Bauteile, Probeflug) und R20 (Generator: Aussehen, Vielfalt, Klassen). Beispiel-Seeds:
-  Korvette 24757 / 8919 / 40595 · Fregatte 24757 / 16838 / 72271 · Träger 24757 / 32676 / 8919.
-- **Offen aus R20:** 4 von 135 Träger-Formen (v. a. Kantigkeit 0) haben 3–20 offene Splitter-Kanten nach dem Verschweißen
-  (Anzeige „undicht“, Flächenschluss ~1e-9); Korvetten tragen wenige Türme (Ø 2); Antennen entfernt (rissen beim CSG);
-  nicht geprüft: Probeflug eines generierten Schiffs, Favoriten/Taste G per echter Maus/Tastatur. Ideen: Grundmuster
-  (`grundmuster(einst)`) in der Leiste anzeigen, Generator auch für Gegner-Drohnen, Gefechtstest mit eigenem Schiff.
+## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 22) — hier einsteigen
+- **Letzter Stand:** Runden 20–22 fertig und gepusht. Kein nächster Schritt beauftragt; der Nutzer testet nach jeder
+  Runde selbst und schickt dann eine **nummerierte Befundliste**. Nutzer-Urteile zu R19–R22 stehen noch aus.
+- **Ideen für die nächste größere Runde (nicht beauftragt):** echtes Kanonenboot-/Drohnen-Modell + Spielziel im Gefecht
+  (Wellen-Ende, Sieg/Niederlage, Punkte) · erste weitere Station fürs Koop (Waffen/Maschine/Taktik) · Geschütze an
+  Seitenflächen · Gefecht-Balance für kleine eigene Schiffe (Korvetten mit 1–2 Türmen).
+- **Form-Werkstatt (Menü 5) heute:**
+  - **Bedienung:** Körper/Bauteil ziehen = verschieben (Körper auf der Ebene der angefassten Fläche, Raster 0,5 m, Strg
+    frei; Bauteile = umsetzen, Symmetrie-Schalter gilt). Fläche länger/kürzer nur am **blauen Pfeil-Griff** in der
+    Flächenmitte; in gerader Ansicht (Würfel-Fläche) Pfeile an allen von der Kante gesehenen Seiten. Zahl + Enter = genau.
+  - **Kanten wie Inventor:** Leiste „◢ Fase“ (R) / „◜ Rundung“ (T) → Kanten anklicken (Umschalt = mehrere) → Maß in m →
+    Enter. IDs: Längskanten `L0–L3` (Spant-Feld `ecken`), Stirnkanten `K0o…K1r` (Normprofil) bzw. `K<e>P<j>` (eigener
+    Umriss), Umriss-Ecken `P<j>`; Stirnkanten über echte Spanten + Marker `kf`. Rechnung `src/sim/form/kanten.js`,
+    UI `src/werkstatt/kanten.js` (Schiffbauer).
+  - **Schiffsgenerator** (links oben 🎲): Klasse, Seed + Würfeln (G), Regler, ★ Favoriten — Ergebnis ist eine normale,
+    flugtaugliche Form. `src/sim/form/generator.js`, GENERATOR_VERSION 2. Beispiel-Seeds: Korvette 24757/8919/40595 ·
+    Fregatte 24757/16838/72271 · Träger 24757/32676/8919.
+  - **🗋 Neu anfangen**, **◐ Hintergrund Weltall/Studio** (auch in der Werft; `src/menue/stimmung.js`,
+    `bild.setzeStimmung`), **✈ Probeflug**, **⚔ Gefecht** (speichert und öffnet `gefecht.html?form=<Name>`).
+  - Verschweißen (`src/grafik/form/schweissen.js`): bei offenen Kanten bis 3 Versuche mit anderer Zugaben-Reihenfolge
+    (`spiel.info.versuche`) — Generator-Formen sind dicht (`tests/dicht.mjs`).
+- **Gefechtstest (Menü 1):** oben „Schiff“-Auswahl (Bollwerk oder gespeicherte Form). Sim
+  `erstelleGefecht({ typ, daten, werte })`, Rumpfsperre aus Höhenfeld (`formHoehenfeld`), Türme mit Zapfen im Material
+  = `gefecht.stumm`. Neustart (N) = frische Instanz im ganzen Zustand (Koop-Grundlage).
+- **Offen (Kann):** Stirnkanten-Fase nach Punkt einfügen/löschen nicht mehr als Kante bearbeitbar; Rundung als
+  4-Stufen-Näherung (bis ~10 % mehr Abtrag); Verschweißen-Ausreißer bis ~270 ms (3–6 % der Formen); offen aus R18/R19:
+  Geist zeigt künftige Spiegelkopie nicht, L-Düse ragt an schmalen Hecks über, Turm-Spiegelkopie kann zu dicht stehen.
 - **Arbeitsweise mit dem Nutzer:** Jede Runde mit Team-Routine (`schwarmfront-team`), AUSSER er sagt „ohne Team“/„Schnellfix“.
-  Testrunden ≤ 3 Min., ≤ 3 je Runde, ihm vorher/nachher einen Satz sagen. Nach jeder Runde fragt er meist „erst selbst testen“.
-  Commit lokal ok, **Push nur auf ausdrücklichen Wunsch**. `konfig/formen/` und `konfig/schiffe/` sind ungetrackt und
-  enthalten SEINE Entwürfe (z. B. Triebwerksgondel.json, Beispiel1.json) — nicht löschen, nicht committen; eigene Testdateien
-  dort nach dem Test wieder entfernen.
+  Testrunden ≤ 3 Min., ≤ 3 je Runde, ihm vorher/nachher einen Satz sagen. UI vor jeder Testrunde selbst mit echter Maus
+  bedienen (Lehre R21/R22). Commit lokal ok, **Push nur auf ausdrücklichen Wunsch**. `konfig/formen/` und
+  `konfig/schiffe/` sind ungetrackt und enthalten SEINE Entwürfe (Test1.json, Triebwerksgondel.json, Beispiel1.json) —
+  nicht löschen, nicht committen; eigene Testdateien dort nach dem Test wieder entfernen. Eigene Browsertests ändern
+  seinen localStorage → vorher in sessionStorage sichern, danach zurückschreiben.
 - **Verdeckter Browser:** Ist der Browser-Bereich ausgeblendet, läuft requestAnimationFrame nicht → `resize_window` 1280×720,
-  Kamerafahrten mit `spiel.wuerfel.schritt(performance.now() + 5000)` abschließen; Screenshots 800×450 (Faktor 0,625).
+  Kamerafahrten mit `spiel.wuerfel.schritt(performance.now() + 5000)` abschließen, `spiel.bedienung.jedesBild()` legt
+  Griffe neu; Screenshots 800×450 (Faktor 0,625). Debug: `spiel.generator`, `spiel.stimmung`, `spiel.bild`, `spiel.bedienung`.
+- Protokolle der letzten Runden: `.claude/team/protokolle/2026-11-26-runde20.md`, `2026-11-28-runde21.md`, `2026-11-28-runde22.md`.
 
 ## Worum es geht
 Koop-Weltraumspiel im Browser (Three.js + Vite, alles aus Code): bis zu 4 Spieler bedienen gemeinsam ein Kriegsschiff
 (Stationen Steuer · Waffen · Maschine · Taktik) und halten gegen einen **Drohnenschwarm** stand. Stil industriell,
 militärisch, abgenutzt, keine Fenster (angelehnt an das Gefühl von Battlestar Galactica, eigene Entwürfe).
 
-## Stand jetzt (2026-11-26, nach Runde 19) — hier einsteigen
+## Ansichten im Detail (gewachsen bis Runde 21 — Kurzfassung oben ist aktueller)
 **Startmenü** `http://localhost:5180/` (`index.html`, `src/menue/*`): Tasten 1–5 / Pfeile + Enter / Klick; aus jeder
 Ansicht Esc oder Knopf „Menü“ zurück (`src/menue/zurueck.js`).
 1. **Gefechtstest** (`gefecht.html`, `src/gefecht/gefecht.js`, Sim `src/sim/gefecht.js`) — das Bollwerk fliegen
