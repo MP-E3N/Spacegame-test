@@ -3,11 +3,11 @@
 > **Einstieg für die nächste Sitzung:** Diese Datei lesen, dann `CLAUDE.md` (Regeln), `PROJEKT.md` (Aufbau +
 > Schnittstellen), `docs/IDEE.md` (Spielidee), `.claude/team/TEAM.md` (Team + Testrunden-Regel).
 > **Jede Runde läuft mit dem Team** nach `.claude/skills/schwarmfront-team/SKILL.md` (Nutzer hat nachgefragt, als ohne
-> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 22 gepusht**, Runde 23 nur lokal committet, 2026-11-28).
+> Team gebaut wurde). Repo: https://github.com/MP-E3N/Spacegame-test (Branch `main`; **bis Runde 23 gepusht**, 2026-11-28).
 > Start: Vorschau „schwarmfront“ bzw. `npm run dev` → http://localhost:5180 (Startmenü) · Tests: `npm test` (14 Dateien, ~60 s).
 
 ## Runde 23 (2026-11-28, Team) — hier einsteigen
-Nutzerliste mit 5 Punkten; Protokoll `.claude/team/protokolle/2026-11-28-runde23.md`. **Lokal committet, NICHT gepusht.**
+Nutzerliste mit 5 Punkten; Protokoll `.claude/team/protokolle/2026-11-28-runde23.md`. **Gepusht 47d4b36 (2026-11-28).**
 1. **Werkstatt:** Spiegelkopien zeigen jetzt auch Drahtgitter + Spant-Ring („nur die Punkte wurden gespiegelt“).
 2. **SL-01 Silberlanze** (Typ Aurora, eigener Entwurf nach E-005): 370 m, Nadelbug, vier X-Ausleger über das Heck, 6 schwere
    Türme + 16 Gatlings, 4 Triebwerke M. `BEISPIEL_SCHIFFE` in `src/sim/form/beispiele.js`; wählbar im Gefecht (Schiff-Liste),
