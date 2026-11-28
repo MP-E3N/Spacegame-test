@@ -36,7 +36,8 @@ function gleich(a, b) {
   if (a.b !== b.b || a.h !== b.h || (a.x ?? 0) !== (b.x ?? 0) || (a.y ?? 0) !== (b.y ?? 0)) return false;
   if (!!a.p !== !!b.p) return false;
   if (a.p) return a.p.length === b.p.length && a.p.every((q, i) => q[0] === b.p[i][0] && q[1] === b.p[i][1]);
-  return (a.rundung ?? 0) === (b.rundung ?? 0) && (a.fase ?? 0) === (b.fase ?? 0);
+  // Runde 21: eigene Ecken-Maße gehören zum Querschnitt
+  return (a.rundung ?? 0) === (b.rundung ?? 0) && (a.fase ?? 0) === (b.fase ?? 0) && JSON.stringify(a.ecken ?? null) === JSON.stringify(b.ecken ?? null);
 }
 /** Umriss bei z (linear zwischen den Spanten, i-ter zu i-tem Punkt) und Abschnitt-Index. */
 function umrissBei(sp, z) {
@@ -96,7 +97,35 @@ export function trefferImKoerper(lage, p, n) {
 }
 
 // ---------------- Ziehen ----------------
+/**
+ * Runde 21: Kappe mit Kappenkanten-Fase/-Rundung (kf am End-Spant, kanten.js) — die Gruppe (End-Spant + Spanten im
+ * Abstand ≤ kf.mass) wandert als Ganzes. WARUM: sonst hinge zieheKappe eine Kopie des GEFASTEN End-Spants an und die
+ * Fase würde zur langen Schräge. Nach außen: der Abschnitt davor wächst (nicht prismatisch → Kopie der Gruppen-Basis
+ * an ihrer alten Stelle); nach innen höchstens bis 0,1 m an den Nachbarn.
+ */
+function zieheKappeGruppe(sp, ende, d) {
+  let neu = sp.map((s) => ({ ...s })), sg = ende ? 1 : -1;
+  const eI = ende ? neu.length - 1 : 0, zE = neu[eI].z, tief = neu[eI].kf.mass + 1e-4;
+  const inGruppe = (s) => Math.abs(s.z - zE) <= tief;
+  const gruppe = neu.filter(inGruppe), rest = neu.filter((s) => !inGruppe(s));
+  if (!rest.length) return { sp: neu, d: 0 };
+  const basis = ende ? gruppe[0] : gruppe[gruppe.length - 1], nb = ende ? rest[rest.length - 1] : rest[0];
+  if (d >= 0) {
+    d = Math.min(d, Math.max(0, GRENZEN.weit - sg * zE));
+    if (d === 0) return { sp: neu, d: 0 };
+    const { kf, ...b } = basis, kopie = { ...b };
+    const mitKopie = !gleich(basis, nb) && neu.length < GRENZEN.spanten;
+    for (const s of gruppe) s.z = s.z + sg * d;
+    neu = ende ? [...rest, ...(mitKopie ? [kopie] : []), ...gruppe] : [...gruppe, ...(mitKopie ? [kopie] : []), ...rest];
+    return { sp: neu, d };
+  }
+  const weg = Math.max(0, Math.min(-d, Math.abs(basis.z - nb.z) - MIN.abstand));
+  for (const s of gruppe) s.z = s.z - sg * weg;
+  return { sp: neu, d: -weg };
+}
+
 function zieheKappe(sp, ende, d) {
+  if (sp[ende ? sp.length - 1 : 0].kf) return zieheKappeGruppe(sp, ende, d);
   const neu = sp.map((s) => ({ ...s })), sg = ende ? 1 : -1;
   const end = () => (ende ? neu.length - 1 : 0), nach = () => (ende ? neu.length - 2 : 1);
   if (d >= 0) {
@@ -129,7 +158,9 @@ function zieheSeite(sp, achse, vz, d) {
   const dMin = MIN.mass - Math.min(...sp.map((s) => s[feld])), dMax = GRENZEN.mass - Math.max(...sp.map((s) => s[feld]));
   // nach innen höchstens bis 0,1 m, nach außen höchstens bis 400 m (Grenze der Werkstatt)
   const dd = Math.min(Math.max(d, Math.min(0, dMin)), Math.max(0, dMax));
-  return { sp: sp.map((s) => ({ ...s, [feld]: s[feld] + dd, [mitte]: (s[mitte] ?? 0) + vz * dd / 2 })), d: dd };
+  // Runde 21: die gemerkte Ursprungsgröße einer Kappenkanten-Fase zieht mit (sonst baut erneutes Bearbeiten falsch zurück)
+  const zieh = (s) => ({ ...s, [feld]: s[feld] + dd, [mitte]: (s[mitte] ?? 0) + vz * dd / 2 });
+  return { sp: sp.map((s) => (s.kf ? { ...zieh(s), kf: { ...s.kf, vorher: zieh(s.kf.vorher) } } : zieh(s))), d: dd };
 }
 
 /**

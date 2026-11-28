@@ -14,6 +14,10 @@
 //   Körper { id, typ, op: 'plus'|'minus', mat, pos: [x,y,z], dreh: [rx,ry,rz] (Grad, Reihenfolge X→Y→Z), spiegel,
 //            spanten: [Spant] (z aufsteigend, mind. 2) }
 //   Spant  { z, b, h, x?, y?, rundung (0..1), fase (0..1), p? } — b/h = VOLLE Breite/Höhe (anders als TEILE der Werft!)
+//          ecken (Runde 21, optional, nur ohne p): [e0, e1, e2, e3] je null | { f: m } (Fase-Abstand) | { r: m } (Radius);
+//          Ecke 0 = (+x, +y), 1 = (−x, +y), 2 = (−x, −y), 3 = (+x, −y) — überschreibt rundung/fase NUR an dieser Ecke.
+//          kf (Runde 21, optional, nur am End-Spant): Kappenkanten-Fase/-Rundung { seiten: ['o'|'u'|'l'|'r'], art:
+//          'fase'|'rundung', mass, vorher: { b, h, x, y } } — die Spanten im Abstand ≤ mass davor gehören dazu (kanten.js).
 //          p (Runde 17): eigener Umriss [[u, v], …] (3–64 Punkte), relativ zum Spant: Punkt = (x + u·b, y + v·h);
 //          die Werkstatt hält u, v im Bereich −0,5 … 0,5 (Umriss füllt b × h genau). Mit p gelten rundung/fase nicht.
 //          Hat Spant 0 ein p, haben ALLE Spanten eines mit gleich vielen Punkten (i-ter Punkt → i-ter Punkt im Loft).
@@ -37,11 +41,14 @@ export function profilPunkte(s) {
   const w = zahl(s.b, 1) / 2, h = zahl(s.h, 1) / 2, m = Math.min(w, h);
   const r = klemme(s.rundung ?? 0), f = klemme(s.fase ?? 0);
   // WARUM ≤ m − MIN_EINZUG: sonst fallen Eck-Ende und nächster Eck-Anfang zusammen (Zylinder: Kanten der Länge 0, Prüfer R16)
-  const e = Math.min(m - MIN_EINZUG, Math.max(MIN_EINZUG, Math.max(r, f) * m));
-  const mix = r + f > 0 ? r / (r + f) : 0; // 1 = Bogen, 0 = Fase
+  const e0 = Math.min(m - MIN_EINZUG, Math.max(MIN_EINZUG, Math.max(r, f) * m));
+  const mix0 = r + f > 0 ? r / (r + f) : 0; // 1 = Bogen, 0 = Fase
   const ox = s.x ?? 0, oy = s.y ?? 0, aus = [];
   const zeichen = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
   for (let i = 0; i < 4; i++) {
+    // Runde 21: Ecke mit eigenem Maß in METERN (Fase-Abstand f bzw. Radius r), sonst der gemeinsame Anteil wie bisher
+    const ek = s.ecken?.[i], eigen = ek && (ek.f > 0 || ek.r > 0);
+    const e = eigen ? Math.min(m - MIN_EINZUG, Math.max(MIN_EINZUG, ek.r > 0 ? ek.r : ek.f)) : e0, mix = eigen ? (ek.r > 0 ? 1 : 0) : mix0;
     const [sx, sy] = zeichen[i], cx = sx * (w - e), cy = sy * (h - e);
     const a0 = i * Math.PI / 2, a1 = a0 + Math.PI / 2;
     const p0 = [cx + e * Math.cos(a0), cy + e * Math.sin(a0)], p1 = [cx + e * Math.cos(a1), cy + e * Math.sin(a1)];
@@ -100,7 +107,7 @@ export function normalisiere(form) {
       pos: vec(x?.pos).map((v) => klemme(v, -GRENZEN.weit, GRENZEN.weit)), dreh: vec(x?.dreh).map((g) => ((g % 360) + 360) % 360), spiegel: spiegelAchsen(x?.spiegel), ...(x?.fest === true && { fest: true }),
       spanten: umrisse((Array.isArray(x?.spanten) ? x.spanten : []).slice(0, GRENZEN.spanten).map((s) => ({
         z: klemme(zahl(s?.z), -GRENZEN.weit, GRENZEN.weit), b: klemme(zahl(s?.b, 1), 0.1, GRENZEN.mass), h: klemme(zahl(s?.h, 1), 0.1, GRENZEN.mass),
-        x: klemme(zahl(s?.x), -GRENZEN.mass, GRENZEN.mass), y: klemme(zahl(s?.y), -GRENZEN.mass, GRENZEN.mass), rundung: klemme(s?.rundung), fase: klemme(s?.fase), ...(s?.p !== undefined && { p: s.p }),
+        x: klemme(zahl(s?.x), -GRENZEN.mass, GRENZEN.mass), y: klemme(zahl(s?.y), -GRENZEN.mass, GRENZEN.mass), rundung: klemme(s?.rundung), fase: klemme(s?.fase), ...eckenFeld(s?.ecken), ...kfFeld(s?.kf), ...(s?.p !== undefined && { p: s.p }),
       })).sort((a, b) => a.z - b.z)),
     })),
     andock: (Array.isArray(form?.andock) ? form.andock : []).slice(0, 32).map((p, i) => andockPunkt(p, i)),
@@ -123,11 +130,29 @@ const rp = (x) => Math.round(x * 1e6) / 1e6 + 0; // Umriss-Anteile auf 1e-6 (bei
  * gleicher Punktzahl (fehlt/passt nicht → Kopie von Spant 0); Umlauf gegen den Uhrzeigersinn (sonst alle umdrehen —
  * WARUM alle: die Zuordnung i-ter Punkt → i-ter Punkt im Loft bleibt erhalten). Ohne p bei Spant 0: alle p weg.
  */
+/**
+ * Runde 21: ecken/kf säubern — WARUM nur bei gültigem Inhalt ein Feld: alte Formen sollen JSON-bitgleich bleiben.
+ * Maße auf 1 mm, 0 < m ≤ 200 m; je Ecke nur f ODER r (r gewinnt).
+ */
+function eckenFeld(e) {
+  if (!Array.isArray(e)) return {};
+  const mm = (x) => (Number.isFinite(x) && x > 0 ? r3(Math.min(x, GRENZEN.mass / 2)) : 0);
+  const l = [0, 1, 2, 3].map((i) => { const r = mm(e[i]?.r), f = mm(e[i]?.f); return r > 0 ? { r } : f > 0 ? { f } : null; });
+  return l.some(Boolean) ? { ecken: l } : {};
+}
+function kfFeld(k) {
+  if (!k || typeof k !== 'object') return {};
+  const seiten = ['o', 'u', 'l', 'r'].filter((x) => Array.isArray(k.seiten) && k.seiten.includes(x));
+  const m = Number.isFinite(k.mass) && k.mass > 0 ? r3(Math.min(k.mass, GRENZEN.mass)) : 0, v = k.vorher;
+  if (!seiten.length || !m || !v || !['b', 'h', 'x', 'y'].every((x) => Number.isFinite(v[x]))) return {};
+  return { kf: { seiten, art: k.art === 'rundung' ? 'rundung' : 'fase', mass: m, vorher: { b: r3(v.b), h: r3(v.h), x: r3(v.x), y: r3(v.y) } } };
+}
 function umrisse(spanten) {
   const p0 = spanten[0]?.p;
   if (!umrissOk(p0)) return spanten.map(({ p, ...s }) => s);
   const n = p0.length, norm = (p) => p.map(([u, v]) => [rp(klemme(u, -1, 1)), rp(klemme(v, -1, 1))]);
-  let liste = spanten.map((s) => ({ ...s, p: norm(umrissOk(s.p) && s.p.length === n ? s.p : p0) }));
+  // WARUM ecken/kf weg: mit eigenem Umriss gelten sie nicht (Kanten werden dort als Punkte geändert, Runde 21)
+  let liste = spanten.map(({ ecken, kf, ...s }) => ({ ...s, p: norm(umrissOk(s.p) && s.p.length === n ? s.p : p0) }));
   if (flaecheV(liste[0].p) < 0) liste = liste.map((s) => ({ ...s, p: [...s.p].reverse() }));
   return liste;
 }
@@ -332,13 +357,16 @@ export function skizzenKoerper({ punkte, ex, ey, n, d = 0, tiefe, id, op = 'plus
  */
 export function alsPunkte(k) {
   if (k.spanten[0]?.p) return k;
-  const scharf = k.spanten.every((s) => !(s.rundung > 0) && !(s.fase > 0)), fase = k.spanten.every((s) => !(s.rundung > 0));
+  // Runde 21: eigene Ecken-Maße zählen mit (Fase-Ecke → 8 Punkte, Radius-Ecke → alle 32)
+  const rund = (s) => s.rundung > 0 || s.ecken?.some((e) => e?.r > 0), gefast = (s) => s.fase > 0 || s.ecken?.some((e) => e?.f > 0);
+  const scharf = k.spanten.every((s) => !rund(s) && !gefast(s)), fase = k.spanten.every((s) => !rund(s));
   return { ...k, spanten: k.spanten.map((s) => {
     const ox = s.x ?? 0, oy = s.y ?? 0, w = s.b / 2, h = s.h / 2, alle = profilPunkte(s);
     // WARUM eigene Ecken bei „scharf“: profilPunkte zieht jede Ecke um 3 cm ein (MIN_EINZUG) — hier sollen echte Ecken entstehen
     const abs = scharf ? [[w, h], [-w, h], [-w, -h], [w, -h]].map(([a, c]) => [ox + a, oy + c])
       : fase ? [0, 7, 8, 15, 16, 23, 24, 31].map((i) => alle[i]) : alle; // Fasen: Anfang und Ende jeder Ecke
-    return { ...s, rundung: 0, fase: 0, ...umrissAusPunkten(abs) };
+    const { ecken, kf, ...rest } = s; // WARUM weg: mit Umriss p gelten ecken/kf nicht mehr
+    return { ...rest, rundung: 0, fase: 0, ...umrissAusPunkten(abs) };
   }) };
 }
 
@@ -393,7 +421,7 @@ export function fuegeSpantEin(k, i) {
   if (!a || !b || k.spanten.length >= GRENZEN.spanten) return k;
   const m = (x, y) => r3(((x ?? 0) + (y ?? 0)) / 2);
   const neu = { z: m(a.z, b.z), b: m(a.b, b.b), h: m(a.h, b.h), x: m(a.x, b.x), y: m(a.y, b.y), rundung: m(a.rundung, b.rundung), fase: m(a.fase, b.fase),
-    ...(a.p && { p: a.p.map((q, j) => [rp((q[0] + b.p[j][0]) / 2), rp((q[1] + b.p[j][1]) / 2)]) }) };
+    ...(a.p && { p: a.p.map((q, j) => [rp((q[0] + b.p[j][0]) / 2), rp((q[1] + b.p[j][1]) / 2)]) }), ...(a.ecken && { ecken: a.ecken }) };
   // WARUM Umriss aus den gemittelten ABSOLUTEN Punkten: verschiedene b/h der Nachbarn würden die Mitte sonst verzerren
   if (a.p) Object.assign(neu, umrissAusPunkten(profilPunkte(a).map((q, j) => [(q[0] + profilPunkte(b)[j][0]) / 2, (q[1] + profilPunkte(b)[j][1]) / 2])));
   return { ...k, spanten: [...k.spanten.slice(0, i + 1), neu, ...k.spanten.slice(i + 1)] };
@@ -421,7 +449,10 @@ export function spiegelKoerper(k, achse, id) {
   const a = ACHSEN.indexOf(achse), R = drehMatrix(k.dreh);
   const m = R.map((zeile, i) => zeile.map((v, j) => v * (i === a ? -1 : 1) * (j === 0 ? -1 : 1)));
   return { ...k, id, spiegel: [], pos: k.pos.map((v, i) => r3(i === a ? -v : v)), dreh: eulerAusMatrix(m),
-    spanten: k.spanten.map((s) => ({ ...s, x: r3(-(s.x ?? 0)), ...(s.p && { p: s.p.map(([u, v]) => [rp(-u), v]).reverse() }) })) };
+    // Runde 21: x → −x tauscht die Ecken 0 ↔ 1, 2 ↔ 3 und die Kappenseiten l ↔ r
+    spanten: k.spanten.map((s) => ({ ...s, x: r3(-(s.x ?? 0)), ...(s.p && { p: s.p.map(([u, v]) => [rp(-u), v]).reverse() }),
+      ...(s.ecken && { ecken: [s.ecken[1], s.ecken[0], s.ecken[3], s.ecken[2]] }),
+      ...(s.kf && { kf: { ...s.kf, seiten: s.kf.seiten.map((x) => ({ l: 'r', r: 'l' })[x] ?? x), vorher: { ...s.kf.vorher, x: r3(-s.kf.vorher.x) } } }) })) };
 }
 
 // ---------------- Form → Werft-Modul ----------------
