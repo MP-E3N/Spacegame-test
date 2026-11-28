@@ -19,6 +19,7 @@ import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig, zeigeSchiff } fro
 import { formZuSchiff } from '../sim/form/bauteile.js';
 import { formId } from '../sim/form/form.js';
 import { erstelleFormSchiff } from '../grafik/form/schiff.js';
+import { BEISPIEL_SCHIFFE } from '../sim/form/beispiele.js';
 
 const SCHRITT = 1 / 60;
 const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei — Maus ziehen, Rad zoomt' };
@@ -34,9 +35,14 @@ const formName = new URLSearchParams(location.search).get('form');
 let formDaten = null, formFehler = '';
 if (formName) {
   try {
-    const r = await fetch('/api/formen/' + encodeURIComponent(formName)); const d = await r.json();
-    if (!r.ok) throw new Error(d.fehler ?? r.status);
-    formDaten = formZuSchiff(d);
+    // R23: eingebaute Beispielschiffe (SL-01 Silberlanze) über ?form=beispiel:<Name> — WARUM nicht in konfig/formen: dort liegen nur die Entwürfe des Nutzers
+    const beispiel = formName.startsWith('beispiel:') ? BEISPIEL_SCHIFFE.find((b) => b.name === formName.slice(9)) : null;
+    if (beispiel) formDaten = formZuSchiff(structuredClone(beispiel));
+    else {
+      const r = await fetch('/api/formen/' + encodeURIComponent(formName)); const d = await r.json();
+      if (!r.ok) throw new Error(d.fehler ?? r.status);
+      formDaten = formZuSchiff(d);
+    }
   } catch (f) { console.error(f); formFehler = 'Form „' + formName + '“ ließ sich nicht laden — ' + (f.message ?? f) + ' · Bollwerk statt dessen'; }
 }
 const modell = formDaten ? erstelleFormSchiff(bild.scene, formDaten) : erstelleBollwerk(bild.scene);
@@ -174,11 +180,12 @@ window.spiel = {
 // ---------------- Schiffswahl (R21): Bollwerk oder gespeicherte Form → Seite neu laden ----------------
 const wahl = $('g-schiff');
 if (wahl) {
-  wahl.innerHTML = '<option value="">BT-12 Bollwerk</option>';
+  wahl.innerHTML = '<option value="">BT-12 Bollwerk</option>' + BEISPIEL_SCHIFFE.map((b) => '<option value="beispiel:' + b.name + '">' + b.name + '</option>').join('');
   fetch('/api/formen').then((r) => r.json()).then((namen) => {
     for (const n of namen) { const o = document.createElement('option'); o.value = n; o.textContent = n; wahl.append(o); }
     wahl.value = formDaten ? formName : '';
-  }).catch(() => { /* ohne Dev-Server nur Bollwerk */ });
+  }).catch(() => { /* ohne Dev-Server nur Bollwerk + Beispiele */ });
+  if (formDaten) wahl.value = formName; // Beispielschiff sofort sichtbar gewählt (die Liste der Formen kommt später)
   wahl.addEventListener('change', () => { location.href = wahl.value ? '/gefecht.html?form=' + encodeURIComponent(wahl.value) : '/gefecht.html'; });
   // WARUM blur: sonst steuern Pfeil-/Buchstabentasten danach die Auswahl statt des Schiffs
   wahl.addEventListener('keydown', (e) => { if (e.key === 'Escape') wahl.blur(); });

@@ -26,7 +26,9 @@ import { erstelleBedienung } from './bedienung.js';
 import { BAUTEILE, passtAuf, FLAECHEN, pruefeSchiff } from '../sim/form/bauteile.js';
 import { bauteilGrafik } from '../grafik/form/schiff.js';
 import { bauteilListe } from '../sim/form/form.js';
-import { BEISPIEL_FORMEN } from '../sim/form/beispiele.js';
+import { BEISPIEL_FORMEN, BEISPIEL_SCHIFFE } from '../sim/form/beispiele.js';
+// R23: Beispielschiffe (SL-01 Silberlanze) stehen hinter den Beispielformen in derselben Liste
+const BEISPIELE = [...BEISPIEL_FORMEN, ...BEISPIEL_SCHIFFE];
 import { erstelleGeneratorTafel } from './generator-tafel.js';
 import { erstelleKantenWerkzeug } from './kanten.js';
 
@@ -787,7 +789,7 @@ for (const [name, v] of Object.entries(VORLAGEN)) {
 }
 $('f-art').innerHTML = ARTEN.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
 $('k-mat').innerHTML = MATS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
-$('k-beispiel').innerHTML = '<option value="">Beispiele …</option>' + BEISPIEL_FORMEN.map((f, i) => `<option value="${i}">${f.name}</option>`).join('');
+$('k-beispiel').innerHTML = '<option value="">Beispiele …</option>' + BEISPIELE.map((f, i) => `<option value="${i}">${f.name}</option>`).join('');
 $('f-name').addEventListener('change', (e) => aendere({ ...form, name: e.target.value.trim() || 'Form' }));
 $('f-art').addEventListener('change', (e) => aendere({ ...form, art: e.target.value }));
 $('k-op').addEventListener('click', () => { const k = koerper(); if (k) aendereKoerper(k.id, (x) => ({ ...x, op: x.op === 'minus' ? 'plus' : 'minus' })); });
@@ -905,7 +907,7 @@ function neuAnfangen() {
 }
 $('k-neu').addEventListener('click', neuAnfangen);
 $('k-neu-gross').addEventListener('click', neuAnfangen);
-$('k-beispiel').addEventListener('change', (e) => { const i = e.target.value; e.target.value = ''; if (i === '') return; aendere(kopie(BEISPIEL_FORMEN[+i])); waehle(form.koerper[0]?.id ?? null); fokus(); });
+$('k-beispiel').addEventListener('change', (e) => { const i = e.target.value; e.target.value = ''; if (i === '') return; aendere(kopie(BEISPIELE[+i])); waehle(form.koerper[0]?.id ?? null); fokus(); });
 $('k-speichern').addEventListener('click', () => speichern());
 $('k-werft').addEventListener('click', async () => { if (await speichern()) location.href = '/werft.html'; });
 $('k-laden').addEventListener('focus', fuelleListe);

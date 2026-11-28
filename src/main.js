@@ -14,6 +14,7 @@ import { erstelleSimWelt } from './sim/welt.js';
 import { leseEingabe } from './eingabe.js';
 import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig, zeigeSchiff } from './hud.js';
 import { formZuSchiff } from './sim/form/bauteile.js';
+import { BEISPIEL_SCHIFFE } from './sim/form/beispiele.js';
 import { registriereSchiff } from './sim/schiffe/index.js';
 import { erstelleFormSchiff } from './grafik/form/schiff.js';
 
@@ -30,8 +31,10 @@ const formName = new URLSearchParams(location.search).get('form');
 let eigenes = null, eigenesFehler = '', SCHIFFSINFO = null;
 if (formName) {
   try {
-    const r = await fetch('/api/formen/' + encodeURIComponent(formName)); const d = await r.json();
-    if (!r.ok) throw new Error(d.fehler ?? r.status);
+    // R23: ?form=beispiel:<Name> = eingebautes Beispielschiff (SL-01 Silberlanze)
+    const beispiel = formName.startsWith('beispiel:') ? BEISPIEL_SCHIFFE.find((b) => b.name === formName.slice(9)) : null;
+    let d = beispiel ? structuredClone(beispiel) : null;
+    if (!d) { const r = await fetch('/api/formen/' + encodeURIComponent(formName)); d = await r.json(); if (!r.ok) throw new Error(d.fehler ?? r.status); }
     const schiff = formZuSchiff(d); SCHIFFSINFO = schiff;
     registriereSchiff('eigen', schiff, schiff.werte);
     eigenes = erstelleFormSchiff(bild.scene, schiff); eigenes.typ = 'eigen';
