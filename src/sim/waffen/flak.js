@@ -151,8 +151,11 @@ export const WAFFEN_TYP = {
     // einige Zehntel bis zur Nenndrehzahl — der erste Feuerstoß beginnt mit ~9 Schuss/s und „sägt“ dann hoch; kurze
     // Feuerpausen (Raumwechsel ~0,2 s) kosten so kaum Drehzahl.
     anlauf: 0.8, auslauf: 1.5, spinMin: 0.25,
-    // Schaden und Splitter-Dps je Granate × 0,34 (Sorten 2/3). WARUM: dieselbe Wirkung je Sekunde wie R22 (Bezug
-    // Bollwerk 3 min: Sperr 12,0 / Ziel 10,3 Abschüsse/min) bei ~3× Granaten — gemessen, siehe Bericht R23.
+    // Schaden und Splitter-Dps je Granate × 0,2 (Sorten 2/3). WARUM: dieselbe Wirkung wie R22 bei ~3,8× Granaten.
+    // Bollwerk 3 min (KI R22), Sperr / Ziel: R22 12,0 / 10,3 Abschüsse/min, Rumpf −5,9 / −7,6 %/min.
+    // Faktor 0,34: 12,0 / 11,3 und −3,0 / −2,3 (zu stark: Boote sterben vor dem Schuss) · 0,25: −5,7 / −5,9 ·
+    // 0,22: −5,3 / −7,2 · 0,2: 12,0 / 11,3 und −6,5 / −7,7 (gewählt) · 0,16: 9,7 / 11,7. Streuung zwischen Läufen ≈ ±1 %/min.
+    // Mit der KI R23 (Panzerboote) bei 0,2: Rumpf −9,8 / −8,0 gegen −10,5 / −12,0 mit den alten Waffen.
     schadenFaktor: 0.2,
   },
   schwer: {
