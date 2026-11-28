@@ -28,6 +28,7 @@ import { bauteilGrafik } from '../grafik/form/schiff.js';
 import { bauteilListe } from '../sim/form/form.js';
 import { BEISPIEL_FORMEN } from '../sim/form/beispiele.js';
 import { erstelleGeneratorTafel } from './generator-tafel.js';
+import { erstelleKantenWerkzeug } from './kanten.js';
 
 const $ = (id) => document.getElementById(id);
 const ZWISCHEN = 'schwarmfront-werkstatt-form';
@@ -98,6 +99,7 @@ let schiffPruefung = null; // R19: pruefeSchiff(form) — Flugwerte, Meldungen, 
 // WARUM let oben statt const unten (Prüfer R18): ?. schützt nicht vor der „temporal dead zone“ — so sind die drei vor
 // ihrer Erzeugung (Ende der Datei) einfach null
 let wuerfel = null, skizze = null, bedienung = null;
+let kantenWerkzeug = null, kantenArt = null; // R21: Fase/Rundung an Kanten (Schiffbauer, src/werkstatt/kanten.js)
 let mehrOffen = false;    // rechte Tafel: Körper-Details (Spanten, Punkte, Lage …) nur auf Wunsch
 const SYM = 'schwarmfront-werkstatt-symmetrie';
 let symmetrie = localStorage.getItem(SYM) !== 'aus'; // Standard an (KSP/Space Engineers: Symmetrie ist EIN Schalter)
@@ -826,6 +828,8 @@ $('k-mehr').addEventListener('click', () => { mehrOffen = !mehrOffen; zeigeTafel
 for (const b of document.querySelectorAll('#am-teil button')) b.addEventListener('click', () => leistenKnopf(b.dataset.t));
 function leistenKnopf(t) {
   const k = koerper(); if (!k) return;
+  if (t === 'fase' || t === 'rundung') { kantenStart(t); return; }
+  if (kantenWerkzeug.aktiv()) { kantenWerkzeug.abbrechen(); kantenArt = null; }
   if (['ziehen', 'schieben', 'drehen', 'groesse'].includes(t)) setzeModus(modus === t && t !== 'ziehen' ? 'ziehen' : t);
   else if (t === 'kopie') dupliziere();
   else if (t === 'minus') { if (k.fest) zeigeMeldungKurz('Körper ist fixiert'); else aendereKoerper(k.id, (x) => ({ ...x, op: x.op === 'minus' ? 'plus' : 'minus' })); }
@@ -842,7 +846,8 @@ function zeigeLeiste() {
   if (!k) return;
   for (const b of l.querySelectorAll('button')) {
     const t = b.dataset.t;
-    b.classList.toggle('an', t === modus || (t === 'mehr' && mehrOffen) || (t === 'fest' && !!k.fest) || (t === 'spiegel' && k.spiegel.includes('x')) || (t === 'minus' && k.op === 'minus'));
+    const kw = !!kantenWerkzeug?.aktiv();
+    b.classList.toggle('an', (t === modus && !kw) || (kw && t === kantenArt) || (t === 'mehr' && mehrOffen) || (t === 'fest' && !!k.fest) || (t === 'spiegel' && k.spiegel.includes('x')) || (t === 'minus' && k.op === 'minus'));
     b.disabled = !!k.fest && ['schieben', 'drehen', 'groesse', 'minus', 'loeschen'].includes(t);
   }
   l.querySelector('[data-t="fest"]').textContent = k.fest ? '🔒 Gelöst?' : '🔓 Fixieren';
@@ -952,6 +957,10 @@ addEventListener('keydown', (e) => {
   }
   // Skizze hat Vorrang: Enter/Esc/Rücktaste gehören ihr, die übrigen Werkstatt-Tasten ruhen
   if (skizze.aktiv()) { if (skizze.taste(e)) { e.preventDefault(); e.stopPropagation(); } return; }
+  // R21: Kanten-Werkzeug (Zahl + Enter, Esc) hat Vorrang, solange es aktiv ist
+  if (kantenWerkzeug.aktiv()) {
+    if (kantenWerkzeug.taste(e)) { e.preventDefault(); e.stopPropagation(); if (!kantenWerkzeug.aktiv()) { kantenArt = null; zeigeLeiste(); } return; }
+  }
   // Push/Pull und Setzen: Zahl + Enter, Esc
   if (bedienung.taste(e)) { e.preventDefault(); e.stopPropagation(); return; }
   const strg = e.ctrlKey || e.metaKey, t = e.key.toLowerCase();
@@ -976,7 +985,9 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (!loescheBauteil()) loescheKoerper(); }
   else if (t === 'f') fokus();
   else if (t === 'h') $('hilfe').classList.toggle('versteckt');
-  else if (t === 'g' && generator.offen()) generator.wuerfeln(); // R20: nur bei offenem Generator (sonst ungewollt neue Form)
+  else if (t === 'g' && generator.offen()) generator.wuerfeln();
+  else if (t === 'r') kantenStart('fase');    // R21: Fase (wie Inventor „Fase“)
+  else if (t === 't') kantenStart('rundung'); // R21: Rundung // R20: nur bei offenem Generator (sonst ungewollt neue Form)
 }, { capture: true });
 addEventListener('keyup', (e) => { if (e.key === 'Control' || e.key === 'Meta') { griff.setTranslationSnap(0.5); griff.setRotationSnap(15 * RAD); } });
 
@@ -996,7 +1007,7 @@ function starteSkizze() {
 }
 bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, rohGruppe, wuerfel, griff,
   holeForm: () => form, koerper, waehle, meldung: zeigeMeldungKurz, platziere,
-  darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen',
+  darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen' && !kantenWerkzeug?.aktiv(),
   klickVerbraucht() { gedrueckt = null; },
   // R21: gerade Ansicht (Kantengriffe), Bauteile anfassen (umsetzen) und wählen
   gerade: geradeAnsicht, bauteilGruppe, waehleBauteil,
@@ -1009,6 +1020,19 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   uebernehme(merk) { ziehen = false; zurueck.push(merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; aendere(form, { merken: false }); },
   setzeForm(f, merk) { ziehen = false; if (merk) { zurueck.push(merk); vor.length = 0; } aendere(f, { merken: false }); },
 });
+
+// ---------------- Kanten: Fase / Rundung wie Inventor (Runde 21) ----------------
+kantenWerkzeug = erstelleKantenWerkzeug({ scene, camera, leinwand: $('leinwand'), rohGruppe, steuer, wuerfel,
+  holeForm: () => form, koerper, meldung: zeigeMeldungKurz,
+  darf: () => !skizze.aktiv() && !punkteModus,
+  ersetzeKoerper(id, k) { aendereKoerper(id, () => k); } });
+/** Werkzeug Fase/Rundung starten oder (gleicher Knopf erneut) beenden. */
+function kantenStart(art) {
+  const k = koerper(); if (!k) { zeigeMeldungKurz('Erst einen Körper wählen — dann Kanten anklicken'); return; }
+  if (kantenWerkzeug.aktiv() && kantenArt === art) { kantenWerkzeug.abbrechen(); kantenArt = null; zeigeLeiste(); return; }
+  bedienung.abbrechen(); if (punkteModus) schaltePunkte(false); if (modus !== 'ziehen') setzeModus('ziehen');
+  kantenArt = kantenWerkzeug.start(art) ? art : null; zeigeLeiste();
+}
 
 // ---------------- Hintergrund Weltall ↔ Studio (Runde 21) ----------------
 const stimmung = stimmungsKnopf($('k-stimmung'), bild, baueRaster);

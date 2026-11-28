@@ -175,9 +175,12 @@ else {
     const spOk = Math.abs(c.min[0] + o.max[0]) < 1e-9 && Math.abs(c.max[0] + o.min[0]) < 1e-9 && Math.abs(massenwerte(form).schwerpunkt[0]) < 1e-9 && !pruefe(form).some((m) => m.code === 'umriss_kreuzt');
     zeile('Spiegelkörper (x = 10, Spiegel x) mit Fase: Kopie spiegelbildlich, Schwerpunkt x = 0, Umriss ok', 'ja', spOk ? 'ja' : `${o.min[0]}…${o.max[0]} / ${c.min[0]}…${c.max[0]}`, spOk);
   } else zeile('Spiegelkörper mit Fase', 'wirft nicht', sp.fehler, false);
-  // kanteFlaechen
-  const kf = typeof kanteFlaechen === 'function' ? sicher(() => kanteFlaechen(Q, 'L0'), (e) => e) : { message: 'nicht exportiert' };
-  zeile('kanteFlaechen(Quader, L0) → zwei verschiedene Flächen', '2', Array.isArray(kf) ? `${kf.length}${kf.length === 2 && J(kf[0]) === J(kf[1]) ? ' (gleich!)' : ''}` : 'wirft ' + kf?.message, Array.isArray(kf) && kf.length === 2 && J(kf[0]) !== J(kf[1]));
+  // kanteFlaechen: entfällt (Protokoll R21, Entscheidung 2 — 4b löst bedienung.js über Kantengriffe in gerader Ansicht).
+  // Nur prüfen, falls es später doch exportiert wird.
+  if (typeof kanteFlaechen === 'function') {
+    const kf = sicher(() => kanteFlaechen(Q, 'L0'), (e) => e);
+    zeile('kanteFlaechen(Quader, L0) → zwei verschiedene Flächen', '2', Array.isArray(kf) ? `${kf.length}${kf.length === 2 && J(kf[0]) === J(kf[1]) ? ' (gleich!)' : ''}` : 'wirft ' + kf?.message, Array.isArray(kf) && kf.length === 2 && J(kf[0]) !== J(kf[1]));
+  }
   // Generator-Formen: Fase am Hauptrumpf bringt keine neuen Fehler
   const neueFehler = [];
   for (const k of ['korvette', 'fregatte', 'traeger']) for (const seed of [4711, 815]) {
