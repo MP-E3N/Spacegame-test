@@ -1,6 +1,7 @@
 // ZWECK: Push/Pull der Form-Werkstatt (Runde 18): Fläche eines Körpers am Treffer erkennen, Fläche ziehen, Maß in
 //        Zugrichtung, neuen Körper bündig auf eine Fläche setzen. Reine Rechnung: ohne three, ohne DOM, ohne Zufall.
 // LIEFERT: flaecheVon(k, p, n, dreieck?) → Fläche · ziehe(k, flaeche, d) → { koerper, d } · flaechenMass(k, flaeche) → m
+//          · rueckeUmrissSeite(spant, j, d) → { spant, d } (Runde 22, für Kappenkanten an Umriss-Seiten)
 //          · trefferImKoerper(lage, p, n) → { p, n } · ablegen(huelle, treffer) → pos · MIN (Mindestmaße)
 // REGEL (Protokoll R18, Entscheidungen 1–9):
 //   Fläche = { art: 'kappe', ende: 0 | 1 } | { art: 'seite', achse: 'x' | 'y', vz: ±1 } | { art: 'kante', j }, immer mit
@@ -237,13 +238,31 @@ function zieheKante(sp, j, d) {
   }), d: dd };
 }
 
+function vorherGezogen(s, j, d) {
+  const { kf, ...rest } = s, t = { ...rest, ...kf.vorher }, n = zieheKante([t], j, d).sp[0];
+  return { b: n.b, h: n.h, x: n.x ?? 0, y: n.y ?? 0, p: n.p };
+}
+/**
+ * Runde 22 (kanten.js): Umriss-Seite j EINES Spants um d verschieben (negativ = einrücken), Nachbarseiten bleiben in
+ * ihrer Ebene; geklemmt wie beim Ziehen (Selbstschnitt, Kippen, Mindestmaße) → { spant, d (angewandt) }.
+ */
+export function rueckeUmrissSeite(s, j, d) {
+  if (!s?.p || !Number.isFinite(d)) return { spant: s, d: 0 };
+  const r = zieheKante([s], j, d);
+  return { spant: r.sp[0], d: r.d + 0 };
+}
+
 /** Fläche um d Meter nach außen ziehen (negativ = hinein) → { koerper (neu), d (angewandt, nach Klemmung) }. */
 export function ziehe(k, f, d) {
   if (!k || !f || !Number.isFinite(d) || k.fest || !k.spanten || k.spanten.length < 2) return { koerper: k, d: 0 };
   let r;
   if (f.art === 'kappe') r = zieheKappe(k.spanten, f.ende, d);
   else if (f.art === 'seite') r = zieheSeite(k.spanten, f.achse, f.vz, d);
-  else if (f.art === 'kante' && k.spanten[0].p) r = zieheKante(k.spanten, f.j, d);
+  else if (f.art === 'kante' && k.spanten[0].p) {
+    r = zieheKante(k.spanten, f.j, d);
+    // Runde 22: der gemerkte Umriss einer Kappenkanten-Fase zieht mit (sonst baut erneutes Bearbeiten falsch zurück)
+    r.sp = r.sp.map((s) => (s.kf?.vorher?.p ? { ...s, kf: { ...s.kf, vorher: vorherGezogen(s, f.j, r.d) } } : s));
+  }
   else return { koerper: k, d: 0 };
   return { koerper: { ...k, spanten: r.sp }, d: r.d + 0 };
 }
