@@ -271,7 +271,9 @@ export function erstelleBedienung(ctx) {
   }
   function endeUmsetzen(abbrechen = false) {
     const { b, merk } = setzen.umsetzen, ok = !abbrechen && setzen.p && setzen.gut;
-    const neu = ok ? { ...b, p: setzen.p, n: setzen.n } : b;
+    // R22: gleiche Symmetrie-Regel wie beim Setzen — ein mittiges Geschütz bekommt beim Wegziehen seine Spiegelkopie,
+    // eines mit Kopie verliert sie, wenn es auf die Mitte rückt (sonst wird das Schiff beim Umsetzen schief)
+    const neu = ok ? { ...b, p: setzen.p, n: setzen.n, spiegel: ctx.spiegelFuer ? ctx.spiegelFuer(b.typ, setzen.p) : b.spiegel } : b;
     setzen = null; ring.visible = false; ctx.steuer.enabled = true;
     if (bauteilGeist) { scene.remove(bauteilGeist); bauteilGeist.traverse((x) => x.geometry?.dispose()); bauteilGeist = null; }
     if (!ok) { selbst(() => ctx.setzeForm(merk, null)); if (!abbrechen) ctx.meldung('Hier passt das Bauteil nicht — zurück an seinen Platz'); return; }

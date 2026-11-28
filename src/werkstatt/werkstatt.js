@@ -1013,6 +1013,7 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   klickVerbraucht() { gedrueckt = null; },
   // R21: gerade Ansicht (Kantengriffe), Bauteile anfassen (umsetzen) und wählen
   gerade: geradeAnsicht, bauteilGruppe, waehleBauteil,
+  spiegelFuer: (typ, p) => (symmetrie && Math.abs(p[0]) >= halbBreite(typ) ? ['x'] : []), // R22: wie platziereBauteil
   // R19: Bauteile setzen
   passtAuf, flaechenText, bauteilName: (typ) => BAUTEILE[typ]?.name ?? typ, platziereBauteil, rasteBauteil,
   // Triebwerke gehören ans Heck: Kamera schräg von hinten, sonst sieht man die Fläche nicht (Spieltest R19, Soll)
@@ -1075,6 +1076,8 @@ function spriteGroessen() {
 }
 function schleife() {
   wuerfel.schritt(); steuer.update(); spriteGroessen(); bedienung.jedesBild();
+  // R22: Esc im Maß-Feld beendet das Kanten-Werkzeug selbst (das Feld schluckt die Taste) — Leiste nachziehen
+  if (kantenArt && !kantenWerkzeug.aktiv()) { kantenArt = null; zeigeLeiste(); }
   // WARUM: Freigabe (gerade Ansicht) und Plus-Marken hängen an der Blickrichtung → nach Kamerabewegung neu legen (≤ 10×/s)
   if (punkteModus && !punktZug) {
     const kam = camera.matrixWorld.elements.map((v) => v.toFixed(3)).join();
