@@ -18,6 +18,10 @@
 //        Schiffstempo, der Spur-Schweif folgt dem Tempo relativ zum Schiff (sonst stünde er bei 200 m/s ~10° schief),
 //        lage.schirme sind Schiffs-Lokal und werden für die Füll-Flak mit dem Rahmen in Welt umgerechnet.
 //        Füll-Flak nur, solange zuletzt geschossen wurde (R14, Nutzer: „bei Feuer halt trotzdem Rauchwolken“).
+// R23 (Gatling + Hauptbatterie): turmModelle[i].buendel (turm() aus bauteile.js, typ 'flak') drehen mit t.spin, ohne
+//        Rückstoß; fehlt buendel → Rohre mit Rückstoß wie bisher (schwer: länger). Blitz/Rauch je Ereignis-`sorte`,
+//        Wolken/Kerne je Detonations-`gewicht`, Panzergranaten (geschosse.sorte 5) als heller kurzer Stab, Funken an
+//        ereignisse.einschlaege. Ohne diese Felder (Prüfstand) läuft alles wie R22.
 import * as THREE from 'three';
 import { turm, materialien } from '../schiff/bauteile.js';
 import { LAFETTEN } from '../../sim/waffen/lafetten.js';
@@ -29,7 +33,8 @@ import { uPixel, spurMaterial, gluehMaterial, rauchMaterial } from './shader.js'
 //        Anschlag (Leben × 2, 6 Zusatz): 60 × (5,6 + 6 × 4 s) ≈ 1780, gemessen bis 2048 voll → 3072 (Node-Messung R11). Glühen: Füll-Flak glüht
 //        nicht, Kerne bleiben kurz.
 // R14 (Bollwerk, 14 Flaktürme ≈ 140 Det./s): Spur 640 (= Granaten-Vorrat am Schiff), Glühen 768 (140 × (0,66 + 6 × 0,36 s) ≈ 400 + Blitze).
-const MAX_SPUR = 640, MAX_GLUEH = 768, MAX_RAUCH = 3072;
+// R23 (Gatling ≈ 500 Det./s, Blitze ~36/s je Turm, Einschlag-Funken): Glühen 768 → 1280 (gemessen im Bollwerk-Gefecht).
+const MAX_SPUR = 640, MAX_GLUEH = 1280, MAX_RAUCH = 3072;
 const SPUR_LAENGE = 25;        // m (R8, Nutzer: „kleiner“) — WARUM nicht kürzer: unter ~1 Schrittweg (17 m bei 1000 m/s) wird die Spur zur Perlenkette
 // Nahe der Kamera (Runde 7, Bildprüfer: weiße Glut vor der Batterie-Kamera): Glühen unter NAH_VOLL m gedämpft,
 // Bildschirmradius gedeckelt (Blitz klein, Kern groß). Kamera steht im Prüfstand-Blick ~30 m vom nächsten Turm.
@@ -39,6 +44,16 @@ const SIM_DT = 1 / 60;
 const RUECK = 0.7, RUECK_ZEIT = 0.17; // m, s
 // Mündung (R8, Nutzer: „zu rauchig“): Blitz kleiner/kürzer, Rauch nur jeder 3. Schuss, klein, kurz und durchscheinend
 const BLITZ_M = 2.5, BLITZ_S = 0.05, MRAUCH_JEDER = 3, MRAUCH_M = 2.5, MRAUCH_S = 0.3, MRAUCH_DECKKRAFT = 0.3;
+// R23 Gatling (Nutzer: „die Flak-Geschütze zu Gatlings machen“, nur am Schiff, Ereignis sorte 2/3): bis 36 Schuss/s je
+// Turm → Blitz kleiner und kürzer (sonst steht ein Dauerball am Rohr), Mündungsrauch nur jeder 10. Schuss, KEIN Rückstoß
+// (die Bündel drehen: 3 U/s bei voller Drehzahl t.spin = 1), Dauer-Leuchtspur nur jede 3. Granate (Spur-Vorrat 640).
+const GATLING = { blitzM: 1.4, blitzS: 0.03, rauchJeder: 10, drehzahl: 6 * Math.PI, spurJeder: 3 };
+// Hauptbatterie (sorte 4/5): großer Blitz und Rauch je Rohr, langer Rückstoß. Panzergranate (5): heller kurzer Stab,
+// immer sichtbar. Einschlag: Funkenkern + Funken entgegen der Flugrichtung + Rauchpuff. Großgranate: Wolke und Kern größer
+// (Ereignis gewicht 2,2), Gatling-Detonation kleiner (gewicht 0,35: Zusatz-Explosionen anteilig über einen Zähler).
+const SCHWER = { blitzM: 6, blitzS: 0.09, rauchM: 6, rauchS: 0.8, rauchDeckkraft: 0.35, rueck: 1.4, rueckZeit: 0.45 };
+const PANZER_SPUR = { laenge: 9, hell: 10 };
+const EINSCHLAG = { kern: 9, kernS: 0.22, kraft: 1.3, funken: 5, funkenM: 2.2, funkenS: 0.35, funkenV: 70 };
 // Zusatz-Explosionen je Detonation (R9, Nutzer: „3 weitere Explosionseffekte, nur visuell, für mehr Fülle“; R10: 4, weiter,
 // länger — „das Areal um ein Ziel viel weiter gestreut mit Flak-Wolken gesättigt“). Nur Grafik-Zufall (rnd), die Sim merkt
 // nichts — diese Wolken tragen KEINEN Schaden (Absicht, Entscheidung R10/3). Verzögerung über negatives Alter.
@@ -130,9 +145,12 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
   // ---------- Turmmodelle ----------
   // Prüfstand: eigene Batterie aus LAFETTEN. Am Schiff: die Turm-Modelle des Schiffs (Reihenfolge = flak.tuerme).
   const gruppe = new THREE.Group(); gruppe.name = 'flak-batterie'; scene.add(gruppe);
-  const modelle = turmModelle ?? (() => { const mats = materialien(); return LAFETTEN.map((l) => turm(gruppe, mats, l)); })();
+  const modelle = turmModelle ?? (() => { const mats = materialien(); return LAFETTEN.map((l) => turm(gruppe, mats, l, { gatling: false })); })(); // R23: Prüfstand = Zwilling
   const NT = modelle.length;
   const rueck = new Float32Array(NT * 2).fill(1); // s seit dem letzten Schuss je Rohr (Index = flak.tuerme-Platz)
+  const drehPhase = new Float32Array(NT); // R23: Winkel der Gatling-Bündel je Turm (rad, nur Grafik)
+  let wolkeKonto = 0; // R23: Hauptwolken-Zähler der Gatling-Detonationen
+  let zusatzKonto = 0; // R23: Bruchteile der Zusatz-Explosionen kleiner Detonationen (kein Zufall → Prüfstand gleich)
 
   // ---------- Effekt-Vorräte ----------
   const spur = quadGeometrie({ aKopf: 3, aSchweif: 3, aHell: 1 }, MAX_SPUR, true);
@@ -192,6 +210,23 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
       // WARUM vorPos und Tempo (R14): das Schiffsmodell wird zwischen vorigem und aktuellem Schritt gezeichnet — an der
       // Mündung des vorigen Rahmens beginnend und mit dem Schiff treibend bleibt der Blitz am Rohr (Prüfstand: vorPos = pos, vel 0).
       const p = s.vorPos ?? s.pos, v = s.vel, vx = v ? v.x : 0, vy = v ? v.y : 0, vz = v ? v.z : 0, k = s.turmIndex ?? s.turmId;
+      const so = s.sorte ?? 0;
+      if (so === 2 || so === 3) { // Gatling (R23)
+        neuesGluehen(p.x + s.richtung.x * 1.2, p.y + s.richtung.y * 1.2, p.z + s.richtung.z * 1.2, GATLING.blitzM, GATLING.blitzS, 1, 0, 0, vx, vy, vz);
+        if (k < NT && ++mRauchZaehler[k] >= GATLING.rauchJeder) {
+          mRauchZaehler[k] = 0;
+          neueWolke(p.x + s.richtung.x * 2, p.y + s.richtung.y * 2, p.z + s.richtung.z * 2, 0.6, MRAUCH_M, MRAUCH_S,
+            s.richtung.x * 6 + vx, s.richtung.y * 6 + vy, s.richtung.z * 6 + vz, 0, MRAUCH_DECKKRAFT);
+        }
+        continue;
+      }
+      if (so >= 4) { // Hauptbatterie (R23): großer Blitz + Rauch je Rohr, Rückstoß
+        neuesGluehen(p.x + s.richtung.x * 3, p.y + s.richtung.y * 3, p.z + s.richtung.z * 3, SCHWER.blitzM, SCHWER.blitzS, 1.4, 0, 0, vx, vy, vz);
+        neueWolke(p.x + s.richtung.x * 4, p.y + s.richtung.y * 4, p.z + s.richtung.z * 4, 1.5, SCHWER.rauchM, SCHWER.rauchS,
+          s.richtung.x * 12 + vx, s.richtung.y * 12 + vy, s.richtung.z * 12 + vz, 0.3, SCHWER.rauchDeckkraft);
+        if (k < NT) rueck[k * 2 + s.rohr] = 0;
+        continue;
+      }
       neuesGluehen(p.x + s.richtung.x * 1.2, p.y + s.richtung.y * 1.2, p.z + s.richtung.z * 1.2, BLITZ_M, BLITZ_S, 1, 0, 0, vx, vy, vz);
       // Mündungsrauch: kleiner Puff, treibt etwas mit dem Rohr — WARUM: ohne Leuchtspur soll man trotzdem sehen, dass
       // geschossen wird. WARUM nur jeder 3. Schuss: bei 10 Schuss/s standen sonst ~6 Puffs je Turm übereinander (Wurst).
@@ -202,14 +237,32 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
       }
       if (k < NT) rueck[k * 2 + s.rohr] = 0;
     }
+    // Panzergranaten-Einschläge (R23, Ereignis einschlaege): Funkenkern (ohne Kern-Budget) + Funken zurück + Rauchpuff
+    if (e.einschlaege) for (const ei of e.einschlaege) {
+      const q = ei.pos, r = ei.richtung;
+      neuesGluehen(q.x, q.y, q.z, EINSCHLAG.kern, EINSCHLAG.kernS, EINSCHLAG.kraft, 2);
+      for (let f = 0; f < EINSCHLAG.funken; f++) {
+        const V = EINSCHLAG.funkenV;
+        neuesGluehen(q.x, q.y, q.z, EINSCHLAG.funkenM, EINSCHLAG.funkenS * (0.6 + 0.6 * rnd()), 1, 0, 0,
+          (-r.x + rnd() - 0.5) * V, (-r.y + rnd() - 0.5) * V, (-r.z + rnd() - 0.5) * V);
+      }
+      neueWolke(q.x, q.y, q.z, 2, 9, 1.2, -r.x * 8, -r.y * 8, -r.z * 8, 0.6, 0.35);
+    }
     if (!e.detonationen.length) return;
     const leben = rw('lebenFaktor'), dauer = rw('explosionDauer'), deck = rw('rauchDeckkraft'), gr = rw('rauchGroesse'), hell = rw('explosionHell');
     const kernGr = 0.8 + 0.2 * hell; // Glut wächst etwas mit (R13)
     for (const d of e.detonationen) {
-      neuesGluehen(d.pos.x, d.pos.y, d.pos.z, (d.art === 'nah' ? 13 : 11) * kernGr, KERN_DAUER * dauer, hell, 1);
+      // R23: gewicht (fehlt = 1 → wie bisher) skaliert Kern und Hauptwolke; kleine Detonationen (Gatling) bekommen
+      // anteilig Zusatz-Explosionen. WARUM: ~3× mehr Detonationen dürfen Rauch-/Glut-Vorrat und Kern-Budget nicht sprengen.
+      const gw = d.gewicht ?? 1, gk = gw === 1 ? 1 : gw < 1 ? 0.7 : 1.5, gwW = gw === 1 ? 1 : gw < 1 ? 0.75 : 1.6;
+      neuesGluehen(d.pos.x, d.pos.y, d.pos.z, (d.art === 'nah' ? 13 : 11) * kernGr * gk, KERN_DAUER * dauer, gw < 1 ? hell * 0.75 : hell, 1);
       // Sichtgröße ≈ Splitter-Wirkradius (Runde 7) beim Standard-Regler
-      neueWolke(d.pos.x, d.pos.y, d.pos.z, 6, WOLKE_R * gr, HAUPT_LEBEN * leben, 0, 0, 0, 1, deck);
-      zusatzExplosionen(d.pos, d.streu || 0, leben, dauer, deck, gr, hell, kernGr);
+      // R23: Gatling-Detonation nur jede 2. mit Hauptwolke (Zähler) — WARUM: ohne das +70 % Wolken gegen R22 (Messung)
+      if (gw >= 1 || (wolkeKonto += 0.5) >= 1) { if (gw < 1) wolkeKonto -= 1;
+        neueWolke(d.pos.x, d.pos.y, d.pos.z, 6, WOLKE_R * gr * gwW, HAUPT_LEBEN * leben, 0, 0, 0, 1, deck); }
+      let anzahl = -1; // −1 = Regler (bisheriger Weg)
+      if (gw < 1) { zusatzKonto += Math.round(rw('zusatzAnzahl')) * gw; anzahl = Math.floor(zusatzKonto); zusatzKonto -= anzahl; }
+      zusatzExplosionen(d.pos, d.streu || 0, leben, dauer, deck, gr * (gw > 1 ? 1.3 : 1), hell, kernGr, anzahl);
       // Detonations-Ring für die Füll-Flak (Quelle A)
       const j = detRing.zeiger; detRing.zeiger = (j + 1) % FUELL_RING;
       detRing.pos[j * 3] = d.pos.x; detRing.pos[j * 3 + 1] = d.pos.y; detRing.pos[j * 3 + 2] = d.pos.z; detRing.zeit[j] = uhr;
@@ -218,8 +271,8 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
 
   /** Kleinere, leicht verzögerte Explosionen um den Zündpunkt (nur Grafik, R9/R10); streu = benutzte Streuung (m).
    *  Anzahl/Weite/Leben/Dauer/Deckkraft/Größe aus den Reglern (R11); Standard = R10 (gleich viele rnd-Aufrufe). */
-  function zusatzExplosionen(p, streu, leben, dauer, deck, gr, hell = 1, kernGr = 1) {
-    const Z = ZUSATZ, weite = rw('zusatzWeite'), anzahl = Math.round(rw('zusatzAnzahl'));
+  function zusatzExplosionen(p, streu, leben, dauer, deck, gr, hell = 1, kernGr = 1, anzahlVorgabe = -1) {
+    const Z = ZUSATZ, weite = rw('zusatzWeite'), anzahl = anzahlVorgabe >= 0 ? anzahlVorgabe : Math.round(rw('zusatzAnzahl'));
     const vMax = Math.min(Z.versatz[2], Math.max(Z.versatz[1], Z.versatz[1] + Z.versatzJeStreu * streu));
     for (let k = 0; k < anzahl; k++) {
       // Richtung gleichverteilt auf der Kugel, Abstand 20 m … vMax
@@ -333,9 +386,19 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
       if (!t || !m) continue;
       m.drehkranz.rotation.y = t.vorGier + umbruch(t.gier - t.vorGier) * alpha;
       m.wiege.rotation.x = -(t.vorNick + (t.nick - t.vorNick) * alpha);
+      // R23: Gatling-Bündel drehen mit t.spin (Turmmodell liefert buendel, sonst nichts tun) — kein Rückstoß.
+      // WARUM das zweite Bündel um 0,5 rad versetzt: beide drehen gleich schnell und sähen sonst starr gespiegelt aus.
+      const B = m.buendel;
+      if (B && B.length) {
+        drehPhase[i] = (drehPhase[i] + (t.spin ?? 0) * GATLING.drehzahl * dt) % ZWEI_PI;
+        for (let r = 0; r < B.length; r++) B[r].rotation.z = drehPhase[i] + r * 0.5;
+        continue;
+      }
+      const schwer = t.typ === 'schwer', RU = schwer ? SCHWER.rueck : RUECK, RZ = schwer ? SCHWER.rueckZeit : RUECK_ZEIT;
       for (let r = 0; r < 2; r++) {
         const k = i * 2 + r, z = (rueck[k] += dt);
-        m.rohre[r].position.z = z < 0.03 ? -RUECK * z / 0.03 : -RUECK * Math.max(0, 1 - (z - 0.03) / (RUECK_ZEIT - 0.03)) ** 2;
+        if (!m.rohre[r]) continue;
+        m.rohre[r].position.z = z < 0.03 ? -RU * z / 0.03 : -RU * Math.max(0, 1 - (z - 0.03) / (RZ - 0.03)) ** 2;
       }
     }
 
@@ -347,19 +410,22 @@ export function erstelleFlakGrafik(scene, camera, { turmModelle = null } = {}) {
     let n = 0;
     for (let i = 0; i < gs.max && n < MAX_SPUR; i++) {
       // Spur nur für Leuchtspur-Granaten (Runde 7) — außer regler.spurImmer (R13, Knopf „Leuchtspur dauerhaft“, nur Optik)
-      const echt = gs.leucht[i] === 1;
-      if (!gs.aktiv[i] || (!echt && !regler.spurImmer)) continue;
+      const echt = gs.leucht[i] === 1, so = gs.sorte ? gs.sorte[i] : 0, panzer = so === 5;
+      if (!gs.aktiv[i] || (!echt && !panzer && !regler.spurImmer)) continue;
+      // R23: Gatling-Granaten ohne Leuchtspur-Befehl nur jede 3. als Dauerspur (Vorrat 640 bei ~1000 Granaten im Flug)
+      if (!echt && !panzer && (so === 2 || so === 3) && i % GATLING.spurJeder !== 0) continue;
       const j = i * 3;
       const vx = gs.vel[j] - sx, vy = gs.vel[j + 1] - sy, vz = gs.vel[j + 2] - sz, v = Math.hypot(vx, vy, vz) || 1;
       const strecke = (gs.alter[i] + alpha) * v * SIM_DT;
       let hell = 4;
-      if (!echt) { // dauerhafte Spur: erst nach SPUR_EIN_AB m einblenden (Entscheidung R14/5)
+      if (panzer) hell = PANZER_SPUR.hell; // Panzergranate: heller kurzer Stab ab der Mündung (gerade, keine Streukugel)
+      else if (!echt) { // dauerhafte Spur: erst nach SPUR_EIN_AB m einblenden (Entscheidung R14/5)
         if (strecke <= SPUR_EIN_AB) continue;
         hell = 4 * Math.min(1, (strecke - SPUR_EIN_AB) / SPUR_EIN_WEG);
       }
       const x = gs.vorPos[j] + (gs.pos[j] - gs.vorPos[j]) * alpha, y = gs.vorPos[j + 1] + (gs.pos[j + 1] - gs.vorPos[j + 1]) * alpha,
         z = gs.vorPos[j + 2] + (gs.pos[j + 2] - gs.vorPos[j + 2]) * alpha;
-      const l = Math.min(SPUR_LAENGE, strecke) / v;
+      const l = Math.min(panzer ? PANZER_SPUR.laenge : SPUR_LAENGE, strecke) / v;
       K[n * 3] = x; K[n * 3 + 1] = y; K[n * 3 + 2] = z;
       S[n * 3] = x - vx * l; S[n * 3 + 1] = y - vy * l; S[n * 3 + 2] = z - vz * l;
       H[n] = hell; n++;

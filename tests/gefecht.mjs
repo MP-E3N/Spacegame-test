@@ -62,7 +62,9 @@ function lauf(g, modus, flug, T, beobachte = null, ab = 0, streng = false) {
 
 // ---------- 1) Bollwerk bitgleich (Anker gemessen auf 19a5ed2, MESSEN=1) ----------
 const LAEUFE = [['sperrfeuer', 'gerade', 3600], ['zielfeuer', 'manoever', 3600], ['halt', 'gerade', 1800]];
-const ANKER = ['0b46bddd52d21b75', '18c71067d296783f', '21028bdd3a1c1c95'];
+// R23 (Waffentechniker): neu gemessen — WARUM: alle 17 Türme feuern (vorher 14), Gatling am Schiff, Hauptbatterie,
+// größere Vorräte (Protokoll R23 E2). Bezug vorher: 0b46bddd52d21b75 / 18c71067d296783f / 21028bdd3a1c1c95 (19a5ed2).
+const ANKER = ['06590ae1964378f4', '4613df28d879f159', '1030dd1cb889e9d5'];
 if (process.env.MESSEN) {
   console.log(JSON.stringify(LAEUFE.map(([m, f, T]) => lauf(erstelleGefecht(), m, f, T).fp)));
   process.exit(0);
@@ -71,7 +73,7 @@ if (process.env.MESSEN) {
   const t0 = performance.now();
   const ist = LAEUFE.map(([m, f, T]) => lauf(erstelleGefecht(), m, f, T));
   const ok = ist.every((r, i) => r.fp === ANKER[i]);
-  zeile('Bollwerk-Gefecht bitgleich zu 19a5ed2 (3 Läufe, Fingerabdruck alle 60 Takte)', 'gleich', ok ? `gleich (${ist.map((r) => r.schuesse).join('/')} Schüsse)` : ist.map((r) => r.fp).join(' / '), ok);
+  zeile('Bollwerk-Gefecht bitgleich zu R23-Bezug (3 Läufe, Fingerabdruck alle 60 Takte)', 'gleich', ok ? `gleich (${ist.map((r) => r.schuesse).join('/')} Schüsse)` : ist.map((r) => r.fp).join(' / '), ok);
   zeile('Bollwerk-Läufe schießen (Gegenprobe: Lauf ist nicht leer)', '> 0 Schüsse | Halt: 0', `${ist[0].schuesse} / ${ist[1].schuesse} | ${ist[2].schuesse}`, ist[0].schuesse > 0 && ist[1].schuesse > 0 && ist[2].schuesse === 0);
   const varianten = [() => erstelleGefecht({}), () => erstelleGefecht({ typ: 'bollwerk' })].map((neu) => sicher(() => lauf(neu(), 'sperrfeuer', 'gerade', 3600).fp, (e) => 'WIRFT ' + e.message));
   zeile('erstelleGefecht({}) und ({ typ: "bollwerk" }) = erstelleGefecht()', 'gleich', varianten.every((v) => v === ANKER[0]) ? 'gleich' : varianten.join(' / '), varianten.every((v) => v === ANKER[0]));
@@ -114,7 +116,8 @@ const formSchiff = (k, seed, mehr = {}) => {
   return { k, seed, form, daten, typ, netze: formNetze(daten.form, daten.versatz) };
 };
 const gefechtForm = (s) => erstelleGefecht({ typ: s.typ, daten: s.daten, werte: s.daten.werte });
-const flakZahl = (s) => s.daten.tuerme.filter((t) => t.typ === 'flak').length;
+// R23 (E2, Nutzer: „die Türme alle funktionsfähig“): flak.tuerme enthält ALLE Türme (flak + schwer), nicht nur die Flak
+const flakZahl = (s) => s.daten.tuerme.length;
 
 // ---------- 2) Form-Gefecht: genutzt, Gleichlauf, stumm ----------
 const schiffe = PRUEFLINGE.map(([k, seed]) => formSchiff(k, seed));
