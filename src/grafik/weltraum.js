@@ -1,7 +1,12 @@
 // ZWECK: Der Weltraum-Hintergrund: Nebel und Milchstraßenband, Sterne, Sonne, ein Gasriese.
-// LIEFERT: SONNE_RICHTUNG (Welt, zeigt zur Sonne) · erstelleHimmel({ sterne }) → { gruppe, folge(kameraPos), pixel(v) }
+//        Seit R21 kann dieselbe Himmelskugel auch ein Designstudio (weiß-graue Hohlkehle) zeigen.
+// LIEFERT: SONNE_RICHTUNG (Welt, zeigt zur Sonne) · STUDIO_HIMMEL (Werte der Studio-Kugel, live als Uniforms)
+//          · erstelleHimmel({ sterne }) → { gruppe, folge(kameraPos), pixel(v), stimmung(art) }
+//          art: 'weltall' (Standard) | 'studio' (Hintergrund: Verlauf, Sterne/Sonne/Planet aus)
+//               | 'studio-umgebung' (nur für die Spiegel-Umgebung: Verlauf gedämpft + Leuchtflächen, HDR)
 // REGEL: Die Gruppe wandert jedes Bild mit der Kamera mit (folge) → alles darin ist „unendlich weit weg“,
 //        keine Parallaxe, auch nach vielen Kilometern Flug. Alles ohne Tiefenschreiben/-test, vor dem Rest gezeichnet.
+//        Stimmung wechselt NUR Uniforms und visible — kein neues Material, kein neues Objekt (sonst Neukompilierung).
 // WARUM ein Gasriese: der leere Raum braucht einen großen, ruhigen Bezugspunkt für Richtung und Lage.
 import * as THREE from 'three';
 import { zufall } from './zufall.js';
@@ -12,6 +17,20 @@ export const SONNE_RICHTUNG = new THREE.Vector3(0.85, 0.38, 0.3).normalize();
 const PLANET_RICHTUNG = new THREE.Vector3(-0.5, -0.12, 1).normalize();
 const BAND = new THREE.Vector3(0.35, 0.88, -0.3).normalize(); // Normale der Milchstraßen-Ebene
 const R_HIMMEL = 25000;
+
+// Studio-Kugel (R21, Nutzer: „mal Weltall, mal Designstudio mit weiß-grauem Hintergrund“). Linear-HDR vor AgX:
+// AgX bildet 1,0 → sRGB 202, 2,0 → 224, 3,0 → 233 ab (nachgerechnet) — „Weiß“ braucht deshalb Werte um 3.
+// WARUM als Uniform-Werte statt fest im Shader: Projektleitung/Bildprüfer können im Browser nachstimmen
+// (STUDIO_HIMMEL ändern, danach bild.setzeStimmung('studio', { neu: true })), ohne dass ein Shader neu übersetzt wird.
+export const STUDIO_HIMMEL = {
+  oben: new THREE.Vector3(3.10, 3.14, 3.22),   // Decke/Wand oben: fast weiß, Hauch kühl (sRGB ~232)
+  mitte: new THREE.Vector3(1.95, 1.96, 1.98),  // Horizont = Kehle (sRGB ~223)
+  unten: new THREE.Vector3(1.00, 0.99, 0.97),  // Boden: hellgrau (sRGB ~202) → oben hell, unten grauer
+  // Nur Spiegel-Umgebung: Verlauf × faktor (sonst ertrinkt der Rumpf in Fülllicht), dazu drei Leuchtflächen
+  // (Hauptfeld in Sonnenrichtung, Deckenfeld, schmales Kantenlicht von hinten) → Glanz auf Metall, Kanten lesbar.
+  umgebung: new THREE.Vector4(0.35, 5.0, 3.0, 2.5), // x faktor, y Hauptfeld, z Decke, w Kantenlicht
+};
+const KANTEN_RICHTUNG = new THREE.Vector3(-SONNE_RICHTUNG.x, 0.25, -SONNE_RICHTUNG.z).normalize();
 
 // Wert-Rauschen in GLSL (für Nebel und Planet). WARUM eigenes: kein Zusatz nötig, am Himmel reicht diese Güte.
 const GLSL_RAUSCHEN = /* glsl */`
@@ -27,13 +46,41 @@ float fbm(vec3 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 6; i++){ s += a *
 function nebelMaterial() {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false,
-    uniforms: { band: { value: BAND } },
+    uniforms: {
+      band: { value: BAND },
+      // 0 = Weltall (bisheriger Pfad unverändert), 1 = Studio-Hintergrund, 2 = Studio-Spiegelumgebung
+      studio: { value: 0 },
+      studioOben: { value: STUDIO_HIMMEL.oben }, studioMitte: { value: STUDIO_HIMMEL.mitte },
+      studioUnten: { value: STUDIO_HIMMEL.unten }, studioUmg: { value: STUDIO_HIMMEL.umgebung },
+      sonne: { value: SONNE_RICHTUNG }, kante: { value: KANTEN_RICHTUNG },
+    },
     vertexShader: /* glsl */`varying vec3 vR; void main(){ vR = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */`
       uniform vec3 band; varying vec3 vR;
+      uniform float studio; uniform vec3 studioOben, studioMitte, studioUnten, sonne, kante; uniform vec4 studioUmg;
       ${GLSL_RAUSCHEN}
+      // Fotostudio-Hohlkehle: Boden grau → Kehle am Horizont → Wand/Decke fast weiß. Nur die Richtung d.y zählt,
+      // weil die Kugel mit der Kamera wandert (der Verlauf bleibt beim Drehen „im Raum“ stehen).
+      vec3 studioFarbe(vec3 d, bool umgebung){
+        vec3 c = mix(studioUnten, studioMitte, smoothstep(-0.45, 0.05, d.y));
+        c = mix(c, studioOben, smoothstep(0.0, 0.75, d.y));
+        if (umgebung) {
+          c *= studioUmg.x;
+          c += studioUmg.y * smoothstep(0.90, 0.93, dot(d, sonne));  // Hauptfeld hinter der Sonne (Glanz passt zum Schatten)
+          c += studioUmg.z * smoothstep(0.82, 0.90, d.y);            // Deckenfeld → Oberseiten heller als Flanken
+          c += studioUmg.w * smoothstep(0.93, 0.96, dot(d, kante));  // Kantenlicht von hinten → Silhouette/Fasen
+        } else {
+          // WARUM Dither: ein weicher Verlauf über den ganzen Schirm zeigt im 8-Bit-Bild sonst Stufen (Banding);
+          // ±1,5 % ≈ ±½ Tonstufe nach AgX. Hash aus der Bildposition → steht still, kein Flimmern.
+          c *= 1.0 + (h3(vec3(gl_FragCoord.xy, 7.0)) - 0.5) * 0.03;
+        }
+        return min(c, vec3(30.0)); // HDR deckeln (HalfFloat, Bloom)
+      }
       void main(){
         vec3 d = normalize(vR);
+        // WARUM Verzweigung statt eigenem Material: ein Uniform-Wechsel kostet nichts, ein neues Material hieße
+        // Shader-Neukompilierung beim ersten Umschalten (Ruckler). Bei studio = 0 läuft exakt der alte Weg.
+        if (studio > 0.5) { gl_FragColor = vec4(studioFarbe(d, studio > 1.5), 1.0); return; }
         float b = dot(d, band);
         float wolke = fbm(d * 2.2);
         float fein = fbm(d * 7.0 + wolke * 1.5);
@@ -167,9 +214,18 @@ export function erstelleHimmel({ sterne: mitSternen = true } = {}) {
   if (mitSternen) { const s = sterne(pixel); s.renderOrder = -9; gruppe.add(s); }
   const so = sonne(); so.renderOrder = -8; gruppe.add(so);
   const pl = planet(); pl.renderOrder = -7; gruppe.add(pl);
+  const weltallTeile = gruppe.children.filter((o) => o !== nebel); // Sterne, Sonne, Planet — im Studio unsichtbar
+  const MODUS = { weltall: 0, studio: 1, 'studio-umgebung': 2 };
   return {
     gruppe,
     folge(kameraPos) { gruppe.position.copy(kameraPos); },
     pixel(v) { pixel.value = v; },
+    /** Stimmung umschalten: nur Uniform + visible. WARUM visible statt entfernen: Programme bleiben im Cache. */
+    stimmung(art) {
+      const m = MODUS[art];
+      if (m === undefined) throw new Error(`Unbekannte Himmels-Stimmung: ${art}`);
+      nebel.material.uniforms.studio.value = m;
+      for (const o of weltallTeile) o.visible = m === 0;
+    },
   };
 }
