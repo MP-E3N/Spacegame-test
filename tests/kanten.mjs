@@ -80,7 +80,7 @@ if (process.env.MESSEN) { console.log(JSON.stringify(Object.fromEntries(Object.e
 
 // ---------- 2) kanten.js ----------
 const PFAD = process.env.KANTEN_MODUL ? pathToFileURL(process.env.KANTEN_MODUL).href : new URL('../src/sim/form/kanten.js', import.meta.url).href;
-const K = await import(PFAD).then((m) => { const f = ['kantenVon', 'fase', 'rundung', 'kanteFlaechen'].filter((n) => !(n in m)); return f.length ? `exportiert nicht ${f.join(', ')}` : m; }, (e) => `fehlt oder lädt nicht (${e.code ?? ''} ${String(e.message).split('\n')[0]})`);
+const K = await import(PFAD).then((m) => { const f = ['kantenVon', 'fase', 'rundung'].filter((n) => !(n in m)); return f.length ? `exportiert nicht ${f.join(', ')}` : m; }, (e) => `fehlt oder lädt nicht (${e.code ?? ''} ${String(e.message).split('\n')[0]})`);
 if (typeof K === 'string') zeile('src/sim/form/kanten.js', 'vorhanden + Exporte', K, false);
 else {
   const { kantenVon, fase, rundung, kanteFlaechen } = K;
@@ -127,9 +127,12 @@ else {
   const r2 = sicher(() => op(rundung, Q, ['L1'], 2), (e) => ({ fehler: e.message }));
   if (r2.fehler) zeile('rundung(Quader, [L1], 2)', 'wirft nicht', r2.fehler, false);
   else {
-    const dV = V0 - volumen(r2.k), dSoll = L * (4 * (1 - Math.PI / 4) - MIN * MIN / 2);
+    // WARUM Sollwert aus dem Polygon (Lernbuch R16: exakte Formel, nicht das Verhalten): der Bogen besteht aus N Sehnen —
+    // abgeschnitten wird r² minus N Dreiecke (r²/2)·sin(π/2N); N aus den Punkten auf dem Kreis
+    const c0 = [-(w - 2), h - 2], aufBogen = profilPunkte(r2.k.spanten[0]).filter(([x, y]) => x <= c0[0] + 1e-9 && y >= c0[1] - 1e-9 && Math.abs(Math.hypot(x - c0[0], y - c0[1]) - 2) < 1e-6).length, N = aufBogen - 1;
+    const dV = V0 - volumen(r2.k), dSoll = L * (4 - 2 * N * Math.sin(Math.PI / (2 * N)) - MIN * MIN / 2), dKreis = L * 4 * (1 - Math.PI / 4);
+    zeile('rundung L1 = 2 m: Volumen sinkt um L·(r² − N·r²/2·sin(π/2N)) (N Sehnen) | Abweichung zum echten Kreis', `${dSoll.toFixed(4)} ±1e-6 | ≤ 5 %`, `${dV.toFixed(6)} (N = ${N}) | ${(100 * (dV / dKreis - 1)).toFixed(1)} %`, N >= 4 && Math.abs(dV - dSoll) < 1e-6 * V0 + 1e-6 && Math.abs(dV / dKreis - 1) <= 0.05);
     zeile('rundung L1 = 2 m: mass | Endpunkte + Bogenpunkte auf dem Kreis (Ecke 1 links oben)', '2 | ja', `${r2.mass} | ${rundOk(r2.k, -1, 1, 2) ? 'ja' : 'NEIN'}`, r2.mass === 2 && rundOk(r2.k, -1, 1, 2));
-    zeile('rundung L1 = 2 m: Volumen sinkt um ≈ L·r²(1 − π/4) (Polygon)', `${dSoll.toFixed(3)} m³ ±3 %`, `${dV.toFixed(3)} m³`, Math.abs(dV / dSoll - 1) < 0.03);
   }
   // Klemmen, Müll, unbekannte id
   const gross = sicher(() => op(fase, Q, ['L0'], 100), (e) => ({ fehler: e.message }));
@@ -173,7 +176,7 @@ else {
     zeile('Spiegelkörper (x = 10, Spiegel x) mit Fase: Kopie spiegelbildlich, Schwerpunkt x = 0, Umriss ok', 'ja', spOk ? 'ja' : `${o.min[0]}…${o.max[0]} / ${c.min[0]}…${c.max[0]}`, spOk);
   } else zeile('Spiegelkörper mit Fase', 'wirft nicht', sp.fehler, false);
   // kanteFlaechen
-  const kf = sicher(() => kanteFlaechen(Q, 'L0'), (e) => e);
+  const kf = typeof kanteFlaechen === 'function' ? sicher(() => kanteFlaechen(Q, 'L0'), (e) => e) : { message: 'nicht exportiert' };
   zeile('kanteFlaechen(Quader, L0) → zwei verschiedene Flächen', '2', Array.isArray(kf) ? `${kf.length}${kf.length === 2 && J(kf[0]) === J(kf[1]) ? ' (gleich!)' : ''}` : 'wirft ' + kf?.message, Array.isArray(kf) && kf.length === 2 && J(kf[0]) !== J(kf[1]));
   // Generator-Formen: Fase am Hauptrumpf bringt keine neuen Fehler
   const neueFehler = [];

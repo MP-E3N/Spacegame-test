@@ -24,6 +24,7 @@ const zeile = (groesse, ziel, wert, ok, hart = true) => {
   if (!ok && hart) harte++;
   zeilen.push({ groesse, ziel, wert: String(wert), ok: ok ? 'ok' : hart ? 'FEHLER' : 'WARN' });
 };
+const J = (o) => JSON.stringify(o);
 const sicher = (f, fb) => { try { return f(); } catch (e) { return fb(e); } };
 
 // ---------- Fingerabdruck (Float64-Bits, zwei 32-Bit-Hashes) ----------
@@ -148,9 +149,11 @@ const NG = ' (Form nicht genutzt → nicht prüfbar)';
   const S = formSchiff('fregatte', 4711, { geschuetze: 0 });
   const gs = sicher(() => gefechtForm(S), (e) => ({ fehler: e.message }));
   const rs = gs.fehler ? null : sicher(() => lauf(gs, 'sperrfeuer', 'gerade', 600), (e) => ({ fehler: e.message }));
-  zeile('Form ohne Türme: gefecht.stumm, läuft, 0 Schüsse', 'stumm | 0', gs.fehler ?? rs?.fehler ?? `${gs.stumm === true ? 'stumm' : 'stumm = ' + gs.stumm} | ${rs.schuesse}`, !gs.fehler && !rs?.fehler && gs.stumm === true && rs.schuesse === 0);
-  const nichtStumm = schiffe.every((s) => sicher(() => gefechtForm(s).stumm, () => true) === false);
-  zeile('Form mit Flak: gefecht.stumm = false', 'false', nichtStumm ? 'false' : 'NICHT false', nichtStumm);
+  // stumm = Liste { index, id, grund } der Flak-Türme, die nirgends feuern können (Schnittstelle Waffentechniker R21)
+  const st = Array.isArray(gs.stumm) ? gs.stumm : null;
+  zeile('Form ohne Türme: läuft, 0 Schüsse, stumm = []', '0 | []', gs.fehler ?? rs?.fehler ?? `${rs.schuesse} | ${J(gs.stumm)}`, !gs.fehler && !rs?.fehler && rs.schuesse === 0 && st?.length === 0);
+  const stummListe = schiffe.flatMap((s) => { const g = sicher(() => gefechtForm(s), () => null); return !g ? [`${s.typ}: wirft`] : !Array.isArray(g.stumm) ? [`${s.typ}: stumm = ${J(g.stumm)}`] : g.stumm.map((x) => `${s.typ} Turm ${x.id} (${x.grund})`); });
+  zeile('Generator-Formen: jede Flak kann feuern (gefecht.stumm leer)', '0', stummListe.slice(0, 3).join(', ') || '0', stummListe.length === 0);
 }
 
 // ---------- 3) Kein Schuss in den eigenen Rumpf ----------
