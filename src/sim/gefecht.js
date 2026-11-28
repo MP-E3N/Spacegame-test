@@ -150,6 +150,10 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
   function schritt(dt, steuerBefehl, flakBefehl) {
     // 0) Wirkung der Zentrale aus dem vorigen Schritt (ein Schritt Verzug — deterministisch, Koop)
     const w = zentrale.wirkung;
+    // WARUM erst Grundwerte (Befund Prüfer R23, Soll 1): mit Teilbefehlen ({ hebel }) blieben Autopilot-Ruder und stopp
+    // sonst im festen Objekt kleben — das Schiff drehte nach „Kurs aus“ weiter
+    steuerMix.hebel = 0; steuerMix.gieren = 0; steuerMix.nicken = 0; steuerMix.rollen = 0; steuerMix.quer = 0; steuerMix.hoch = 0;
+    steuerMix.stopp = false; steuerMix.nachbrenner = false; steuerMix.daempferUmschalten = false;
     Object.assign(steuerMix, steuerBefehl);
     if (w.steuer?.lenkt) { steuerMix.gieren = w.steuer.gieren; steuerMix.nicken = w.steuer.nicken; steuerMix.rollen = w.steuer.rollen; }
     if (w.steuer?.faehrt) { steuerMix.hebel = w.steuer.hebel; if (w.steuer.stopp) steuerMix.stopp = true; }
@@ -181,6 +185,7 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
     flak.setzeRahmen(schiff.z);
     zieleLokal = inSchiffsrahmen(angreifer.ziele, schiff.z, zieleLokal);
     // WARUM kein Feuer als Wrack: ein zerstörtes Schiff hat keine Energie für die Türme
+    for (const k in fbZ) fbZ[k] = undefined; // WARUM: Felder, die der Seitenbefehl nicht mehr trägt, gelten nicht weiter
     Object.assign(fbZ, flakBefehl);
     const wa = zentrale.zustand.waffen;
     // WARUM „?? Zentrale“: ein ausdrücklicher Seiten-/Testbefehl (modus im flakBefehl) gilt weiter (Tests, Labor-Weg);

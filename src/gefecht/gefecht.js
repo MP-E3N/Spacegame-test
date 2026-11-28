@@ -147,8 +147,9 @@ function frame(jetzt) {
   const befehl = window.spiel.befehlErsatz ? { ...e.befehl, ...window.spiel.befehlErsatz } : e.befehl;
   // Ruder in die Hand nehmen schaltet den Navigator-Autopiloten ab (Vorschlag Netz-Architekt R23) — WARUM: sonst
   // kämpfen Spieler und Autopilot ums Ruder, und das Schiff „hört nicht“
-  if (!cic.aktiv && zentrale.zustand.navigator.kursAktiv && (befehl.gieren || befehl.nicken || befehl.rollen)) {
-    zentrale.befehl({ station: 'navigator', art: 'kursAus' }); zeigeMeldung('Autopilot aus — Ruder von Hand');
+  const nav = zentrale.zustand.navigator;
+  if (!cic.aktiv && ((nav.kursAktiv && (befehl.gieren || befehl.nicken || befehl.rollen)) || (nav.fahrtAktiv && befehl.hebel))) {
+    zentrale.befehl({ station: 'navigator', art: 'kursAus' }); zeigeMeldung('Navigator aus — Ruder und Fahrt von Hand');
   }
   if (e.neustart) { gefecht.zuruecksetzen(); gelesen = 0; wrackGemeldet = false; zeigeMeldung('Neustart — Angreifer im Anflug'); }
   if (e.hilfe) hilfeUmschalten();

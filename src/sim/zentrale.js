@@ -29,6 +29,7 @@
 import { pruefeBefehl, BEREICHE, FAHRTSTUFEN, ANWEISUNGEN, TRUPPS } from '../netz/stationsbefehle.js';
 import { zuSchiff } from './ki/schiffsrahmen.js';
 
+const SEITEN = ['waffenOben', 'waffenUnten']; // fest (keine neuen Objekte im Schritt, Prüfer R23)
 export const ZENTRALE = {
   // ---------- Bereiche ----------
   bereichMax: 300,        // Punkte je Bereich. WARUM 300: Treffer = 15 Schaden (Autokanone); 20 Treffer in einen
@@ -246,12 +247,16 @@ export function erstelleZentrale({ kugeln = null, laenge = null, bereiche = null
     return zuordnung;
   }
 
+  let reihe = [];
   function turmTabelle(tuerme) {
     if (turmQuelle === tuerme && turmLast.length === tuerme.length) return;
     turmQuelle = tuerme;
     turmLast = new Array(tuerme.length).fill(0);
     batterie = { waffenOben: [], waffenUnten: [] };
     tuerme.forEach((t, i) => batterie[t.lafette?.oben === false ? 'waffenUnten' : 'waffenOben'].push(i));
+    // Besetzungs-Reihenfolge (Befund Prüfer R23, Kann 3): Hauptbatterie zuerst besetzt, Gatlings zuletzt — WARUM: sonst
+    // fiele in Gelb bei einer Werft-Form mit schwerem Turm hinten in der Liste die Hauptbatterie aus
+    reihe = [...tuerme.keys()].filter((i) => tuerme[i].typ === 'schwer').concat([...tuerme.keys()].filter((i) => tuerme[i].typ !== 'schwer'));
   }
 
   // ---------- Autopilot ----------
@@ -358,7 +363,7 @@ export function erstelleZentrale({ kugeln = null, laenge = null, bereiche = null
     // Türme: erst Batterieschaden (meistgetroffene zuerst), dann Energie × Besatzung (von hinten in der Turmliste)
     const G = wirkung.turmGrund, aus = wirkung.tuermeAus;
     G.length = tuerme.length; G.fill(0); aus.length = 0;
-    for (const seite of ['waffenOben', 'waffenUnten']) {
+    for (const seite of SEITEN) {
       const zb = bereichNach[seite].zustand, liste = batterie[seite];
       if (zb >= Z.batterieSchwelle || !liste.length) continue;
       const n = Math.ceil(liste.length * (Z.batterieSchwelle - zb) / Z.batterieSchwelle - 1e-9);
@@ -366,7 +371,7 @@ export function erstelleZentrale({ kugeln = null, laenge = null, bereiche = null
       for (let k = 0; k < n && k < liste.length; k++) G[liste[k]] = 1;
     }
     let platz = Math.floor(Math.min(1, vWaffen) * A.besetzung * tuerme.length + 1e-9);
-    for (let i = 0; i < tuerme.length; i++) if (G[i] === 0) { if (platz > 0) platz--; else G[i] = 2; }
+    for (const i of reihe) if (G[i] === 0) { if (platz > 0) platz--; else G[i] = 2; }
     for (let i = 0; i < tuerme.length; i++) if (G[i]) aus.push(i);
 
     // 7) Zielvorgabe verfällt, wenn das Ziel weg ist (abgeschossen / Platz neu belegt)

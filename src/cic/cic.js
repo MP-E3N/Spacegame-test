@@ -204,6 +204,9 @@ export function erstelleCic({ gefecht, zentrale, flakBefehl, sende, name = 'BT-1
   const energie = el('div', 'cic-energie', null, tech.inhalt);
   el_.energie = {};
   let ziehtEnergie = false;
+  // WARUM auf window (Befund Prüfer R23, Soll 2): Loslassen außerhalb des Reglers ließ ziehtEnergie hängen — die Regler
+  // folgten dann nie wieder dem Zustand (auch nicht nach AUSGLEICH/WAFFEN/ANTRIEB)
+  for (const art of ['pointerup', 'pointercancel', 'blur']) addEventListener(art, () => { ziehtEnergie = false; });
   for (const [k, t] of [['antrieb', 'ANTRIEB'], ['waffen', 'WAFFEN'], ['reparatur', 'REPARATUR']]) {
     const z = el('div', 'cic-regler', null, energie);
     el('label', null, t, z);
