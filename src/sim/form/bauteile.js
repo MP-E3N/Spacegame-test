@@ -67,8 +67,11 @@ export function formZuSchiff(roh) {
   // Länge (längs Z) aus den Plus-Körpern — für Kamera-Skala und Schattenradius im Freiflug
   const plus = koerperListe(form).filter((x) => x.k.op === 'plus').map(({ k, lage }) => huelle(k, lage));
   const laenge = plus.length ? Math.max(...plus.map((h) => h.max[2])) - Math.min(...plus.map((h) => h.min[2])) : 10;
+  // R24: beginnt der Name mit einer Kennung („SL-01 Silberlanze“), wird sie die Kennung — WARUM: sonst stand „EF SL-01
+  // SILBERLANZE“ im HUD. Sonst wie bisher „EF“ (eigene Form).
+  const kn = /^([A-ZÄÖÜ]{1,4}-\d{1,4})\s+(.+)$/.exec(form.name.trim());
   return {
-    name: form.name.toUpperCase(), kennung: 'EF', laenge, kugeln, tuerme, duesen, werte: flug.werte, form, versatz,
+    name: (kn ? kn[2] : form.name).toUpperCase(), kennung: kn ? kn[1] : 'EF', laenge, kugeln, tuerme, duesen, werte: flug.werte, form, versatz,
     schwerpunkt: sp, masse: flug.masse, schub: flug.schub, meldungen, flugtauglich,
   };
 }

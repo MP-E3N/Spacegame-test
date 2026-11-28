@@ -24,8 +24,10 @@ Nutzerliste mit 5 Punkten; Protokoll `.claude/team/protokolle/2026-11-28-runde23
    Turmraster), Crew & Mechanik (6 Schadensbereiche, 3 Trupps, Energie), Kapitän (Alarm Grün/Gelb/Rot, Schnellbefehle,
    Bordbuch). Befehle = Daten (`src/netz/stationsbefehle.js`, Koop-Grundlage), Sim `src/sim/zentrale.js`, UI `src/cic/*`.
    Leertaste/1/2 gehen über den Waffen-Posten; Ruder/Fahrt von Hand schaltet den Navigator ab. Unbedient = bitgleich.
-- **Offen:** Nutzer-Urteil zu allem; Zielvorgabe auf dem Bollwerk nur 71 % bedient (schwere Türme alle oben); Kennung
-  „EF“ vor Silberlanze; CIC bei 1280×720 nicht eigens geprüft; Gatling-Bewegung/FPS beurteilt der Nutzer.
+- **Nachtrag (Nutzer „mach weiter“):** Kennung aus dem Formnamen („SL-01 Silberlanze“ → Kennung SL-01, sonst „EF“,
+  `formZuSchiff`); CIC bei 1280×720 geprüft (alles passt, 4 px Überlauf im Mittschiffs-Feld).
+- **Offen:** Nutzer-Urteil zu allem; Zielvorgabe auf dem Bollwerk nur 71 % bedient (schwere Türme alle oben) — der
+  KI-Auftrag dazu wurde von den Sicherheitsvorkehrungen abgebrochen, nicht selbst übernommen; Gatling-Bewegung/FPS beurteilt der Nutzer.
 - Debug Gefecht: `spiel.cic`, `spiel.zentrale` (zustand, wirkung, befehl({station, art, …})), `spiel.bilder(n)`.
 
 ## Kurzfassung für einen frischen Chat (2026-11-28, nach Runde 22)
