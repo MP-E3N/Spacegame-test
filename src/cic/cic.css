@@ -1,0 +1,208 @@
+/* ZWECK: Gefechtszentrale (R23) — gepanzerter Gefechtsstand: dunkler Stahl, Nietenplatten, Kippschalter, Röhrenschirme
+   grün (Lage/Navigation) und bernstein (Kennzahlen). Alarmstufe färbt das Raumlicht (Grün kalt, Gelb Bernstein,
+   Rot Gefechtsbeleuchtung). EIGENE Gestaltung (E-005). Geladen per import './cic.css' aus cic.js.
+   REGEL: Lesbar bei 1280×720 (kompakt, 11–12 px) und 1920×1080 (ab 1600 px Breite größer). Keine Bild-Dateien. */
+.cic {
+  --stahl: #15181a; --stahl-hell: #22272a; --kante: #3a4144; --niet: #555c5e;
+  --bern: #e0a040; --bern-hell: #ffc870; --bern-matt: #8a6a34;
+  --phos: #8affa8; --phos-matt: #4f9a66; --rot: #ff5a3a; --raum: rgba(255, 40, 20, 0.16);
+  position: fixed; inset: 0; z-index: 60; display: none;
+  grid-template-columns: minmax(300px, 25vw) minmax(0, 1fr) minmax(320px, 28vw);
+  grid-template-rows: 26px minmax(0, 1fr);
+  gap: 6px; padding: 6px; box-sizing: border-box;
+  font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: var(--bern);
+  background: radial-gradient(ellipse at 50% 40%, var(--raum), transparent 70%), #07090a;
+  user-select: none; pointer-events: auto;
+}
+.cic.an { display: grid; }
+.cic.alarm-gruen { --raum: rgba(40, 140, 110, 0.12); }
+.cic.alarm-gelb { --raum: rgba(230, 150, 40, 0.14); }
+.cic.alarm-rot { --raum: rgba(255, 30, 15, 0.22); }
+.cic *, .cic *::before, .cic *::after { box-sizing: border-box; }
+
+/* Kopfleiste */
+.cic-kopfleiste { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 0 10px;
+  background: linear-gradient(#1c2023, #111416); border: 1px solid var(--kante); letter-spacing: 0.18em; }
+.cic-marke { color: var(--bern-hell); font-weight: bold; }
+.cic-schiff { color: var(--bern-matt); }
+.cic-status { flex: 1; color: var(--phos-matt); letter-spacing: 0.05em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cic-status.warn { color: var(--rot); }
+.cic-uhr { color: var(--phos); font-size: 13px; }
+.cic-hinweis { color: var(--bern-matt); letter-spacing: 0.05em; }
+
+.cic-spalte, .cic-mitte { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+
+/* Pult = Stahlplatte mit Nieten */
+.cic-pult { position: relative; display: flex; flex-direction: column; min-height: 0;
+  background: linear-gradient(160deg, var(--stahl-hell), var(--stahl) 40%, #101315);
+  border: 1px solid var(--kante); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 2px 6px rgba(0, 0, 0, 0.6); }
+.cic-pult::before, .cic-pult::after { content: ''; position: absolute; bottom: 4px; width: 5px; height: 5px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #8a9294, var(--niet) 60%, #222); }
+.cic-pult::before { left: 4px; } .cic-pult::after { right: 4px; }
+.cic-platte { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--kante);
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0 6px, transparent 6px 12px), #1a1e20; letter-spacing: 0.2em; }
+.cic-titel { color: var(--bern-hell); flex: 1; }
+.cic-kennung { color: var(--bern-matt); border: 1px solid var(--kante); padding: 0 4px; letter-spacing: 0.05em; }
+.cic-lampe { width: 8px; height: 8px; border-radius: 50%; background: #3a2a10; box-shadow: inset 0 0 2px #000; }
+.cic.alarm-rot .cic-lampe { background: #ff4a2a; box-shadow: 0 0 6px #ff3a1a; }
+.cic.alarm-gelb .cic-lampe { background: #ffb040; box-shadow: 0 0 5px #ff9a20; }
+.cic.alarm-gruen .cic-lampe { background: #5aff9a; box-shadow: 0 0 4px #3aff8a; }
+/* Sprechhörer an der Platte (nur Gestalt) */
+.cic-hoerer { width: 22px; height: 8px; border-radius: 4px 4px 2px 2px; background: #0c0e0f; border: 1px solid var(--kante);
+  box-shadow: inset 0 -2px 0 #2a2f31; }
+.cic-inhalt { padding: 6px 8px 10px; display: flex; flex-direction: column; gap: 5px; min-height: 0; overflow: hidden; }
+
+/* Röhre: dunkles Glas, Zeilenraster, Phosphor-Glühen */
+.roehre { position: relative; background: #030604; border: 1px solid #1d2a20; border-radius: 3px; padding: 4px 6px;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.9), inset 0 0 2px rgba(120, 255, 160, 0.15); }
+.roehre::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 3px;
+  background: repeating-linear-gradient(rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px); }
+.roehre.gruen { color: var(--phos); text-shadow: 0 0 4px rgba(120, 255, 160, 0.45); }
+.roehre.bernstein { color: var(--bern-hell); text-shadow: 0 0 4px rgba(255, 180, 80, 0.45); border-color: #2a2214; background: #070502; }
+
+/* Knöpfe = Kippschalter-Tasten */
+.cic-knopf { font: inherit; font-size: 11px; letter-spacing: 0.06em; color: #c9a46a; cursor: pointer; padding: 4px 8px;
+  background: linear-gradient(#2c3235, #1a1e20); border: 1px solid #454d50; border-bottom-color: #0b0d0e; border-radius: 2px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.8); }
+.cic-knopf:hover { color: var(--bern-hell); border-color: #6a6040; }
+.cic-knopf:active { transform: translateY(1px); box-shadow: none; }
+.cic-knopf:focus-visible { outline: 1px solid var(--bern); }
+.cic-knopf.klein { padding: 3px 6px; font-size: 10.5px; }
+.cic-knopf.an { color: #1a1206; background: linear-gradient(#ffcf7a, #d79536); border-color: #ffd890; box-shadow: 0 0 8px rgba(255, 180, 70, 0.55); }
+.cic-knopf.rot { color: #e07a60; }
+.cic-knopf.rot.an { color: #fff; background: linear-gradient(#ff6a4a, #b8301c); border-color: #ff9a80; box-shadow: 0 0 8px rgba(255, 60, 30, 0.6); }
+.cic-reihe { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.cic-reihe label { width: 64px; color: var(--bern-matt); letter-spacing: 0.1em; font-size: 10px; }
+.cic-zwischentitel { color: var(--bern-matt); letter-spacing: 0.2em; font-size: 10px; border-top: 1px solid var(--kante); padding-top: 4px; }
+.warn { color: var(--rot) !important; text-shadow: 0 0 4px rgba(255, 60, 30, 0.6) !important; }
+
+/* ---------- Kapitän ---------- */
+.cic-kapitaen { flex: none; }
+.cic-zeile { display: flex; gap: 8px; align-items: stretch; }
+.cic-alarm { display: flex; gap: 5px; }
+.cic-alarmknopf { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 92px; padding: 5px 4px; }
+.cic-alarmknopf b { font-size: 16px; letter-spacing: 0.15em; }
+.cic-alarmknopf small { font-size: 9px; color: inherit; opacity: 0.8; letter-spacing: 0; text-align: center; }
+.cic-alarmknopf.gruen.an { background: linear-gradient(#7affb0, #2a9a5a); border-color: #aaffcc; box-shadow: 0 0 10px rgba(80, 255, 150, 0.5); }
+.cic-alarmknopf.gelb.an { background: linear-gradient(#ffd77a, #c98a20); }
+.cic-alarmknopf.rot.an { color: #fff; background: linear-gradient(#ff6a4a, #a8240f); border-color: #ff9a80; box-shadow: 0 0 12px rgba(255, 50, 20, 0.7); }
+.cic-lagebild { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 10px; align-content: center; }
+.cic-wert { display: flex; justify-content: space-between; gap: 6px; }
+.cic-wert span { color: var(--bern-matt); text-shadow: none; font-size: 10px; letter-spacing: 0.08em; }
+.cic-wert b { font-weight: normal; font-size: 13px; }
+.cic-nah { color: #3a2a10; text-align: center; letter-spacing: 0.15em; }
+.cic-nah.an { color: var(--rot); animation: cic-blink 0.6s steps(2, start) infinite; }
+@keyframes cic-blink { to { visibility: hidden; } }
+.cic-schnell { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ---------- Lageschirm ---------- */
+.cic-schirmrahmen { position: relative; flex: 1; min-height: 0; border: 8px solid #1a1e20; border-radius: 10px;
+  box-shadow: inset 0 0 0 1px #2c3335, 0 0 0 1px #000, 0 0 30px rgba(60, 200, 110, 0.08); background: #040806; overflow: hidden; }
+.cic-lageschirm { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.cic-raster { position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(rgba(0, 0, 0, 0.25) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.55)); }
+.cic-schirmleiste { position: absolute; right: 8px; top: 6px; display: flex; gap: 4px; }
+
+/* ---------- Bordbuch ---------- */
+.cic-bordbuch { flex: none; }
+.cic-buch { display: flex; flex-direction: column; gap: 1px; min-height: 76px; }
+.cic-buchzeile { display: flex; gap: 8px; white-space: nowrap; overflow: hidden; }
+.cic-buchzeile .z { color: var(--phos-matt); width: 40px; flex: none; }
+.cic-buchzeile .s { color: var(--bern); width: 130px; flex: none; overflow: hidden; text-overflow: ellipsis; }
+.cic-buchzeile .t { overflow: hidden; text-overflow: ellipsis; }
+.cic-durchsage { display: flex; gap: 4px; }
+.cic-feld { flex: 1; font: inherit; color: var(--phos); background: #030604; border: 1px solid #1d2a20; padding: 3px 6px; user-select: text; }
+.cic-feld:focus { outline: 1px solid var(--phos-matt); }
+
+/* ---------- Navigator ---------- */
+.cic-navigator { flex: none; }
+.cic-tafel { display: flex; flex-direction: column; gap: 1px; }
+.cic-tafelzeile { display: flex; justify-content: space-between; gap: 8px; }
+.cic-tafelzeile span { color: var(--phos-matt); text-shadow: none; letter-spacing: 0.08em; }
+.cic-tafelzeile b { font-weight: normal; text-align: right; }
+.cic-tafelzeile b.an { color: var(--bern-hell); }
+
+/* ---------- Crew / Mechanik ---------- */
+.cic-technik { flex: 1; }
+.cic-schema { display: grid; grid-template-columns: 1fr 1.5fr 1fr; grid-template-rows: repeat(4, minmax(34px, 1fr)); gap: 3px; min-height: 0; }
+.cic-bereich { position: relative; border: 1px solid #2c3a30; background: #050806; padding: 2px 5px; cursor: pointer; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: center; color: var(--phos); }
+.cic-bereich:hover { border-color: var(--bern-matt); }
+.cic-bereich .fuell { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: rgba(80, 220, 130, 0.16); transition: width 0.3s; }
+.cic-bereich > span, .cic-bereich > b { position: relative; }
+.cic-bereich .n { font-size: 9.5px; letter-spacing: 0.08em; color: var(--phos-matt); }
+.cic-bereich .w { font-weight: normal; font-size: 12px; }
+.cic-bereich .i { font-size: 9.5px; color: var(--phos-matt); }
+.cic-bereich .tr { position: absolute; right: 4px; top: 2px; color: var(--bern-hell); font-size: 10px; }
+.cic-bereich.beschaedigt { color: var(--bern-hell); border-color: #5a4220; }
+.cic-bereich.beschaedigt .fuell { background: rgba(255, 170, 60, 0.2); }
+.cic-bereich.ausgefallen { color: var(--rot); border-color: #6a2418; animation: cic-glimm 1.2s ease-in-out infinite; }
+.cic-bereich.ausgefallen .fuell { background: rgba(255, 60, 30, 0.25); }
+@keyframes cic-glimm { 50% { box-shadow: inset 0 0 10px rgba(255, 50, 20, 0.5); } }
+/* Schiffsschema (Draufsicht, Bug oben): Rumpfabschnitte Mitte, Batterien links (oben) / rechts (unten) */
+.cic-bereich.bug { grid-column: 2; grid-row: 1; border-radius: 40% 40% 2px 2px / 60% 60% 2px 2px; text-align: center; align-items: center; }
+.cic-bereich.mitte { grid-column: 2; grid-row: 2; }
+.cic-bereich.heck { grid-column: 2; grid-row: 3; }
+.cic-bereich.antrieb { grid-column: 2; grid-row: 4; border-radius: 2px 2px 8px 8px; }
+.cic-bereich.waffenOben { grid-column: 1; grid-row: 2 / 4; }
+.cic-bereich.waffenUnten { grid-column: 3; grid-row: 2 / 4; }
+.cic-trupps { display: flex; gap: 4px; align-items: stretch; }
+.cic-trupp { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 3px 5px; min-width: 0; }
+.cic-trupp b { font-weight: normal; letter-spacing: 0.1em; }
+.cic-trupp span { font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.cic-trupp small { font-size: 9px; opacity: 0.8; }
+.cic-trupp.arbeitet:not(.an) { border-color: #4f9a66; }
+.cic-rumpfzeile { font-size: 10.5px; }
+.cic-energie { display: flex; flex-direction: column; gap: 2px; }
+.cic-regler { display: grid; grid-template-columns: 70px 1fr 38px; align-items: center; gap: 6px; }
+.cic-regler label { color: var(--bern-matt); letter-spacing: 0.1em; font-size: 10px; }
+.cic-regler b { font-weight: normal; text-align: right; color: var(--bern-hell); }
+.cic-regler input { width: 100%; accent-color: var(--bern); height: 14px; }
+
+/* ---------- Waffen & Sensorik ---------- */
+.cic-waffen { flex: 1; }
+.cic-kontakte { display: flex; flex-direction: column; gap: 0; }
+.cic-kontakt { display: grid; grid-template-columns: 28px 38px 1fr 34px 46px 52px; gap: 4px; align-items: center; padding: 1px 2px; cursor: pointer; line-height: 14px; }
+.cic-kontakt span { white-space: nowrap; }
+.cic-kontakt .abst, .cic-kontakt .hoehe { text-align: right; }
+.cic-kontakt.kopf { color: var(--phos-matt); text-shadow: none; cursor: default; font-size: 9.5px; letter-spacing: 0.08em; }
+.cic-kontakt.leer { cursor: default; }
+.cic-kontakt:not(.kopf):not(.leer):hover { background: rgba(120, 255, 160, 0.08); }
+.cic-kontakt.panzer { color: #ffb07a; }
+.cic-kontakt.nah .abst { color: var(--rot); }
+.cic-kontakt.wahl { background: rgba(255, 224, 138, 0.14); outline: 1px solid rgba(255, 224, 138, 0.5); }
+.cic-kontakt.vorgabe .ken::before { content: '⊕'; color: var(--rot); margin-right: 1px; }
+.cic-kontakt .hp { height: 6px; border: 1px solid rgba(120, 255, 160, 0.35); }
+.cic-kontakt .hp i { display: block; height: 100%; width: 0; background: var(--phos); box-shadow: 0 0 4px rgba(120, 255, 160, 0.6); }
+.cic-kontakt.panzer .hp i { background: #ffb07a; }
+.cic-sensorzeile { color: var(--phos-matt); text-shadow: none; font-size: 10px; border-top: 1px solid #1d2a20; margin-top: 2px; padding-top: 2px; }
+.cic-wahl { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cic-freigabe { color: var(--phos); letter-spacing: 0.1em; }
+.cic-tuerme { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 3px; }
+.cic-turm { border: 1px solid #2c3a30; background: #050806; padding: 1px 3px; display: flex; flex-direction: column; align-items: center; line-height: 12px; }
+.cic-turm b { font-weight: normal; font-size: 10.5px; }
+.cic-turm span { font-size: 8.5px; color: var(--phos-matt); min-height: 9px; }
+.cic-turm.schwer { border-width: 2px; }
+.cic-turm.feuert { color: #1a1206; background: #ffb040; border-color: #ffd890; box-shadow: 0 0 6px rgba(255, 170, 60, 0.6); }
+.cic-turm.feuert span { color: #3a2200; }
+.cic-turm.gerichtet { color: var(--phos); border-color: #3c7a50; }
+.cic-turm.schwenkt { color: var(--phos-matt); }
+.cic-turm.aus { color: var(--rot); border-color: #6a2418; background: #140504; }
+.cic-turm.manuell { color: #9ad8ff; border-color: #4a8aba; }
+.cic-turm.gesichert { color: #5a6264; }
+.cic-legende { display: flex; flex-wrap: wrap; gap: 3px; }
+.cic-turm.mini { flex-direction: row; padding: 0 4px; }
+.cic-turm.mini b { font-size: 9px; }
+
+/* Große Bildschirme: alles eine Stufe größer */
+@media (min-width: 1600px) {
+  .cic { font-size: 13px; grid-template-rows: 32px minmax(0, 1fr); gap: 8px; padding: 8px; }
+  .cic-knopf { font-size: 12.5px; padding: 5px 10px; }
+  .cic-knopf.klein { font-size: 12px; padding: 4px 8px; }
+  .cic-alarmknopf { width: 120px; } .cic-alarmknopf b { font-size: 20px; } .cic-alarmknopf small { font-size: 10.5px; }
+  .cic-kontakt { grid-template-columns: 34px 46px 1fr 40px 54px 70px; line-height: 18px; }
+  .cic-schema { grid-template-rows: repeat(4, minmax(46px, 1fr)); }
+  .cic-bereich .n, .cic-bereich .i { font-size: 11px; } .cic-bereich .w { font-size: 14px; }
+  .cic-turm { line-height: 14px; } .cic-turm b { font-size: 12px; } .cic-turm span { font-size: 10px; }
+  .cic-buch { min-height: 96px; }
+}
