@@ -13,7 +13,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { erstelleRenderer } from '../grafik/renderer.js';
+import { erstelleRenderer, STIMMUNGEN } from '../grafik/renderer.js';
+import { stimmungsKnopf } from '../menue/stimmung.js';
 import { materialien } from '../grafik/schiff/bauteile.js';
 import { koerperGeometrie } from '../grafik/form/koerper.js';
 import { formGeometrie } from '../grafik/form/schweissen.js';
@@ -51,8 +52,16 @@ const auswahlMat = new THREE.MeshBasicMaterial({ color: 0xf2c070, wireframe: tru
 bild.setzeSchattenRadius(60); bild.folgeSchatten(new THREE.Vector3());
 
 // Raster (1 m fein, 5 m grob) auf y = 0 und Mittelebene x = 0 (Spiegel) als Bezug
-const raster = new THREE.GridHelper(120, 120, 0x3a3020, 0x1c1810); raster.material.transparent = true; raster.material.opacity = 0.5; scene.add(raster);
-const grob = new THREE.GridHelper(120, 24, 0x6a5530, 0x3a2e1a); grob.material.transparent = true; grob.material.opacity = 0.6; scene.add(grob);
+// R21: Farben je Stimmung (Weltall/Studio, Lichtsetzer STIMMUNGEN[name].raster) — WARUM neu bauen statt umfärben:
+// GridHelper trägt die Farben als Vertex-Farben; neu bauen nur beim Umschalten (Klick), gleicher Materialtyp = kein neues Programm
+let raster = null, grob = null;
+function baueRaster(name) {
+  for (const g of [raster, grob]) if (g) { scene.remove(g); g.geometry.dispose(); g.material.dispose(); }
+  const r = STIMMUNGEN[name]?.raster ?? STIMMUNGEN.weltall.raster;
+  raster = new THREE.GridHelper(120, 120, r.feinMitte, r.fein); raster.material.transparent = true; raster.material.opacity = r.feinDeckkraft; scene.add(raster);
+  grob = new THREE.GridHelper(120, 24, r.grobMitte, r.grob); grob.material.transparent = true; grob.material.opacity = r.grobDeckkraft; scene.add(grob);
+}
+baueRaster('weltall');
 // Spiegelebenen x = 0 / y = 0 / z = 0 — sichtbar, sobald ein Körper an ihnen gespiegelt wird
 const ebenenMat = new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false });
 const mittelebenen = ACHSEN.map((a) => {
@@ -493,6 +502,16 @@ async function probeflug() {
   }
   if (await speichern()) location.href = '/freiflug.html?form=' + encodeURIComponent(form.name);
 }
+/** R21 (Nutzer: „gespeicherte Formen im Gefecht testen“): speichern und im Gefechtstest gegen die Kanonenboote fliegen. */
+async function gefechtstest() {
+  const pr = pruefeSchiff(form, true);
+  if (!pr.flugtauglich) {
+    const f1 = pr.meldungen.find((m) => m.stufe === 'fehler');
+    zeigeMeldungKurz('Nicht flugtauglich: ' + (f1?.text ?? '') + ' — rechts unter WERTE steht, was fehlt'); return;
+  }
+  if (!form.bauteile.some((b) => BAUTEILE[b.typ]?.art === 'geschuetz')) zeigeMeldungKurz('Hinweis: ohne Geschütze wehrt sich das Schiff im Gefecht nicht');
+  if (await speichern()) location.href = '/gefecht.html?form=' + encodeURIComponent(form.name);
+}
 
 /** Griffe (W/E/S) nur im passenden Werkzeug, nie bei fixierten Körpern, Punkten oder Skizze. */
 function haengeGriff() {
@@ -508,7 +527,7 @@ function setzeModus(m) {
   if (m !== 'ziehen' && k?.fest) { zeigeMeldungKurz('Körper ist fixiert — erst lösen (L)'); m = 'ziehen'; }
   if (punkteModus) schaltePunkte(false);
   modus = m; haengeGriff(); zeigeLeiste();
-  if (k) zeigeMeldungKurz({ ziehen: 'Ziehen: Fläche anfassen und ziehen · Zahl + Enter = genau', schieben: 'Verschieben: an den Pfeilen ziehen · Esc = zurück zu Ziehen',
+  if (k) zeigeMeldungKurz({ ziehen: 'Körper ziehen = verschieben · blauer Pfeil auf der Fläche = Fläche ziehen · Zahl + Enter = genau', schieben: 'Verschieben: an den Pfeilen ziehen · Esc = zurück zu Ziehen',
     drehen: 'Drehen: an den Ringen ziehen (15°-Raster) · Esc = zurück zu Ziehen', groesse: 'Größe: an den Würfeln ziehen · Esc = zurück zu Ziehen' }[m]);
 }
 function waehle(id) {
@@ -521,7 +540,7 @@ function waehle(id) {
   const k = koerper();
   haengeGriff();
   zeigeHilfen(); zeigeTafeln();
-  if (k) zeigeMeldungKurz(`${NAMEN[k.typ] ?? 'Körper'} ${k.id} gewählt — Fläche anfassen und ziehen · Leiste am Teil: Schieben, Drehen, Kopie …`);
+  if (k) zeigeMeldungKurz(`${NAMEN[k.typ] ?? 'Körper'} ${k.id} gewählt — ziehen = verschieben · blauer Pfeil = Fläche länger/kürzer · gerade Ansicht (Würfel): Pfeile an den Seiten`);
   zeigeLeiste();
 }
 
@@ -542,7 +561,7 @@ function platziere(k) {
   waehle(id);
   // WARUM den Grund nennen (Spieltest R18): „Symmetrie an“ ohne Kopie wirkte wie ein Fehler
   const sym = !symmetrie ? '' : neu.spiegel.includes('x') ? ' (mit Spiegelkopie — Symmetrie an)' : ' (ohne Spiegelkopie: liegt über der Mitte)';
-  zeigeMeldungKurz(`${NAMEN[neu.typ] ?? 'Körper'} ${id} gesetzt${sym} — jetzt Flächen ziehen`);
+  zeigeMeldungKurz(`${NAMEN[neu.typ] ?? 'Körper'} ${id} gesetzt${sym} — blauer Pfeil = Fläche ziehen, Körper ziehen = verschieben`);
 }
 function setzeVorlage(name) {
   const alt = koerper(), id = naechsteId();
@@ -798,6 +817,7 @@ $('k-punkte-weg').addEventListener('click', () => {
 });
 $('k-skizze').addEventListener('click', starteSkizze);
 $('k-probeflug').addEventListener('click', probeflug);
+$('k-gefecht').addEventListener('click', gefechtstest);
 $('k-symmetrie').addEventListener('click', () => {
   symmetrie = !symmetrie; try { localStorage.setItem(SYM, symmetrie ? 'an' : 'aus'); } catch { /* egal */ }
   zeigeTafeln(); zeigeMeldungKurz(symmetrie ? 'Symmetrie an — neue Körper bekommen ihre Spiegelkopie (links ↔ rechts)' : 'Symmetrie aus — neue Körper ohne Spiegelkopie');
@@ -863,7 +883,13 @@ $('k-ansicht').addEventListener('click', schalteSchweissen);
 $('hilfe-knopf').addEventListener('click', () => $('hilfe').classList.toggle('versteckt'));
 $('k-loeschen').addEventListener('click', loescheKoerper);
 $('a-neu').addEventListener('click', neuerAndockpunkt);
-$('k-neu').addEventListener('click', () => { aendere({ name: 'Neue Form', art: 'anbau', koerper: [], andock: [] }); gewaehlt = null; zeigeMeldungKurz('Leere Werkstatt — links eine Vorlage wählen'); });
+function neuAnfangen() {
+  bedienung.abbrechen(); if (punkteModus) schaltePunkte(false); setzeModus('ziehen');
+  aendere({ name: 'Neue Form', art: 'rumpf', koerper: [], andock: [], bauteile: [] }); waehle(null);
+  zeigeMeldungKurz('Leere Werkstatt — links eine Vorlage setzen, Skizze zeichnen oder den Generator nutzen (Strg+Z holt die alte Form zurück)');
+}
+$('k-neu').addEventListener('click', neuAnfangen);
+$('k-neu-gross').addEventListener('click', neuAnfangen);
 $('k-beispiel').addEventListener('change', (e) => { const i = e.target.value; e.target.value = ''; if (i === '') return; aendere(kopie(BEISPIEL_FORMEN[+i])); waehle(form.koerper[0]?.id ?? null); fokus(); });
 $('k-speichern').addEventListener('click', () => speichern());
 $('k-werft').addEventListener('click', async () => { if (await speichern()) location.href = '/werft.html'; });
@@ -972,6 +998,8 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   holeForm: () => form, koerper, waehle, meldung: zeigeMeldungKurz, platziere,
   darf: () => !skizze.aktiv() && !punkteModus && modus === 'ziehen',
   klickVerbraucht() { gedrueckt = null; },
+  // R21: gerade Ansicht (Kantengriffe), Bauteile anfassen (umsetzen) und wählen
+  gerade: geradeAnsicht, bauteilGruppe, waehleBauteil,
   // R19: Bauteile setzen
   passtAuf, flaechenText, bauteilName: (typ) => BAUTEILE[typ]?.name ?? typ, platziereBauteil, rasteBauteil,
   // Triebwerke gehören ans Heck: Kamera schräg von hinten, sonst sieht man die Fläche nicht (Spieltest R19, Soll)
@@ -981,6 +1009,9 @@ bedienung = erstelleBedienung({ scene, camera, leinwand: $('leinwand'), steuer, 
   uebernehme(merk) { ziehen = false; zurueck.push(merk); if (zurueck.length > 150) zurueck.shift(); vor.length = 0; aendere(form, { merken: false }); },
   setzeForm(f, merk) { ziehen = false; if (merk) { zurueck.push(merk); vor.length = 0; } aendere(f, { merken: false }); },
 });
+
+// ---------------- Hintergrund Weltall ↔ Studio (Runde 21) ----------------
+const stimmung = stimmungsKnopf($('k-stimmung'), bild, baueRaster);
 
 // ---------------- Schiffsgenerator (Runde 20) ----------------
 // WARUM aendere statt eigener Weg: das Ergebnis ist eine ganz normale Form (Nutzer) — Rückgängig, Zwischenstand,
@@ -1001,8 +1032,23 @@ const generator = erstelleGeneratorTafel({ meldung: zeigeMeldungKurz,
 neuZeichnen(); fokus(); waehle(gewaehlt);
 $('laden').remove();
 let letzteKamera = '', punkteUhr = 0;
+const NORMAL_FOV = camera.fov;
+/**
+ * Bildschirmfeste Sprites (Schwerpunkt, Schubpunkt, Punkte, Plus-Marken, Skizzenpunkte) an den Bildwinkel anpassen.
+ * WARUM (Nutzer R21: „bei jeder Ansicht kommt ein Punkt ganz groß, der alles verdeckt“): Sprites ohne Größenabnahme sind
+ * fest relativ zur PROJEKTION — die Würfel-Ansichten schalten auf Tele (3° statt 55°), dann wurden sie ~20× größer.
+ * userData.groesse merkt die gewollte Größe; je Bild gilt groesse · tan(fov/2) / tan(55°/2).
+ */
+function spriteGroessen() {
+  const f = Math.tan(camera.fov * RAD / 2) / Math.tan(NORMAL_FOV * RAD / 2);
+  scene.traverse((o) => {
+    if (!o.isSprite || o.material.sizeAttenuation !== false) return;
+    if (o.userData.groesse === undefined) o.userData.groesse = o.scale.x;
+    o.scale.setScalar(o.userData.groesse * f);
+  });
+}
 function schleife() {
-  wuerfel.schritt(); steuer.update();
+  wuerfel.schritt(); steuer.update(); spriteGroessen(); bedienung.jedesBild();
   // WARUM: Freigabe (gerade Ansicht) und Plus-Marken hängen an der Blickrichtung → nach Kamerabewegung neu legen (≤ 10×/s)
   if (punkteModus && !punktZug) {
     const kam = camera.matrixWorld.elements.map((v) => v.toFixed(3)).join();
@@ -1027,4 +1073,5 @@ window.spiel = {
   ansicht(r = [0.7, 0.45, 0.8]) { wuerfel.normal(); const m = steuer.target.clone(), d = camera.position.distanceTo(m); camera.position.copy(m).add(new THREE.Vector3(...r).normalize().multiplyScalar(d)); steuer.update(); bild.zeichnen(); },
   messwerte: () => { bild.zeichnen(); return bild.messwerte(); },
   generator, // R20: generator.wuerfeln(), generator.einstellung()
+  bild, stimmung, // R21: stimmung.setze('studio' | 'weltall'), bild.renderer.info.programs
 };

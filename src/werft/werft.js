@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { erstelleRenderer } from '../grafik/renderer.js';
+import { stimmungsKnopf } from '../menue/stimmung.js';
 import { materialien } from '../grafik/schiff/bauteile.js';
 import { schiffNetz, modulGeometrie, lageMatrix } from '../grafik/schiff/module.js';
 import { MODULE, KATALOG as GRUND_KATALOG } from '../sim/werft/module.js';
@@ -28,6 +29,7 @@ const MARKE_R = { S: 1.4, M: 2.6, L: 3.6 };
 // ---------------- Szene ----------------
 const bild = erstelleRenderer($('leinwand'));
 const { scene, camera } = bild;
+const stimmung = stimmungsKnopf($('k-stimmung'), bild); // R21: Hintergrund Weltall ↔ Studio
 camera.position.set(140, 70, 160);
 const steuer = new OrbitControls(camera, $('leinwand'));
 steuer.enableDamping = true; steuer.dampingFactor = 0.12; steuer.minDistance = 15; steuer.maxDistance = 1500;
@@ -413,6 +415,7 @@ requestAnimationFrame(schleife);
 
 // CLAUDE.md Regel 6: Debug-Zugang
 window.spiel = {
+  stimmung, bild, // R21
   get entwurf() { return kopie(entwurf); },
   get bau() { return bau; },
   get auswahl() { return auswahl; },

@@ -16,6 +16,9 @@ import { lokaleGeschwindigkeit } from '../sim/schiff.js';
 import { erstelleGefecht } from '../sim/gefecht.js';
 import { leseEingabe } from '../eingabe.js';
 import { zeigeHud, zeigeMeldung, hilfeUmschalten, ladenFertig } from '../hud.js';
+import { formZuSchiff } from '../sim/form/bauteile.js';
+import { formId } from '../sim/form/form.js';
+import { erstelleFormSchiff } from '../grafik/form/schiff.js';
 
 const SCHRITT = 1 / 60;
 const KAMERA_NAMEN = { verfolger: 'Verfolger', weit: 'Übersicht', frei: 'Frei — Maus ziehen, Rad zoomt' };
@@ -24,12 +27,25 @@ const bild = erstelleRenderer(document.getElementById('leinwand'));
 bild.camera.far = Math.max(bild.camera.far, 12000); bild.camera.updateProjectionMatrix(); // Angreifer sammeln sich auf 1,8–2,6 km
 const staub = erstelleStaub(bild.scene);
 const asteroiden = erstelleAsteroiden(bild.scene);
-const modell = erstelleBollwerk(bild.scene);
+// R21 (Nutzer: „ich kann gespeicherte Formen nicht im Gefecht testen“): gefecht.html?form=<Name> lädt eine Werkstatt-Form
+// als eigenes Schiff. WARUM vor dem ersten Bild (await): das Schiff bringt sein Heck-Licht mit (Lichtanzahl fest, Regel 5).
+// WARUM dasselbe daten-Objekt an Sim und Grafik: die Turm-Modelle werden über die Turm-id den Flak-Lafetten zugeordnet.
+const formName = new URLSearchParams(location.search).get('form');
+let formDaten = null, formFehler = '';
+if (formName) {
+  try {
+    const r = await fetch('/api/formen/' + encodeURIComponent(formName)); const d = await r.json();
+    if (!r.ok) throw new Error(d.fehler ?? r.status);
+    formDaten = formZuSchiff(d);
+  } catch (f) { console.error(f); formFehler = 'Form „' + formName + '“ ließ sich nicht laden — ' + (f.message ?? f) + ' · Bollwerk statt dessen'; }
+}
+const modell = formDaten ? erstelleFormSchiff(bild.scene, formDaten) : erstelleBollwerk(bild.scene);
+const SCHIFFSNAME = formDaten ? (modell.kennung + ' ' + modell.name).trim() : 'BOLLWERK';
 const kamera = erstelleKamera(bild.camera);
 kamera.setzeSkala(modell.laenge / 150);
 bild.setzeSchattenRadius(Math.max(110, modell.laenge * 0.62));
 
-const gefecht = erstelleGefecht();
+const gefecht = formDaten ? erstelleGefecht({ typ: formId(formDaten.name), daten: formDaten, werte: formDaten.werte }) : erstelleGefecht();
 const { welt, schiff, flak, angreifer } = gefecht;
 const sim = schiff;
 // Turm-Modelle des Schiffs in der Reihenfolge der Flak-Lafetten (Zuordnung über die Schiffs-Turm-id)
@@ -125,7 +141,7 @@ function frame(jetzt) {
   while (rest >= SCHRITT) { simSchritt(befehl); rest -= SCHRITT; }
   if (schadenImBild > 0) { zeigeMeldung('KOLLISION — Rumpf −' + Math.max(1, Math.round(schadenImBild / welt.werte.hpMax * 100)) + ' %'); schadenImBild = 0; }
   if (trefferImBild > 0) { document.body.classList.add('treffer'); setTimeout(() => document.body.classList.remove('treffer'), 120); trefferImBild = 0; }
-  if (sim.z.zerstoert && !wrackGemeldet) { zeigeMeldung('BOLLWERK ZERSTÖRT — N = Neustart'); wrackGemeldet = true; }
+  if (sim.z.zerstoert && !wrackGemeldet) { zeigeMeldung(SCHIFFSNAME + ' ZERSTÖRT — N = Neustart'); wrackGemeldet = true; }
   darstellen(dt, rest / SCHRITT);
   kamera.update(dt, lagePos, lageRot, e);
   staub.aktualisiere(bild.camera.position, sim.z.vel);
@@ -154,6 +170,27 @@ window.spiel = {
     return { median: +t[n >> 1].toFixed(2), max: +t[n - 1].toFixed(2), ...bild.messwerte() };
   },
 };
+
+// ---------------- Schiffswahl (R21): Bollwerk oder gespeicherte Form → Seite neu laden ----------------
+const wahl = $('g-schiff');
+if (wahl) {
+  wahl.innerHTML = '<option value="">BT-12 Bollwerk</option>';
+  fetch('/api/formen').then((r) => r.json()).then((namen) => {
+    for (const n of namen) { const o = document.createElement('option'); o.value = n; o.textContent = n; wahl.append(o); }
+    wahl.value = formDaten ? formName : '';
+  }).catch(() => { /* ohne Dev-Server nur Bollwerk */ });
+  wahl.addEventListener('change', () => { location.href = wahl.value ? '/gefecht.html?form=' + encodeURIComponent(wahl.value) : '/gefecht.html'; });
+  // WARUM blur: sonst steuern Pfeil-/Buchstabentasten danach die Auswahl statt des Schiffs
+  wahl.addEventListener('keydown', (e) => { if (e.key === 'Escape') wahl.blur(); });
+}
+setTimeout(() => {
+  if (formFehler) zeigeMeldung(formFehler);
+  else if (formDaten) {
+    const stumm = gefecht.stumm?.length ?? gefecht.stumm ?? 0;
+    zeigeMeldung(`Gefecht mit ${SCHIFFSNAME}: ${gefecht.lafetten.length} Flak-Türme${stumm ? ` (${stumm} stumm — Montage prüfen)` : ''}` +
+      (formDaten.flugtauglich ? '' : ' · NICHT flugtauglich: ' + (formDaten.meldungen.find((m) => m.stufe === 'fehler')?.text ?? '')));
+  }
+}, 300);
 
 ladenFertig();
 requestAnimationFrame(frame);

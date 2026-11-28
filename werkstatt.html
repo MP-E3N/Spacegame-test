@@ -16,6 +16,8 @@
   <div id="hud">
     <div id="links" class="tafel">
       <div class="kopf">FORMEN</div>
+      <!-- Runde 21 (Nutzer: „Schiffe ganz von vorne beginnen können“) — vorher nur klein rechts als „Neu“ -->
+      <button id="k-neu-gross" class="gross" title="Leere Werkstatt — Strg+Z holt die bisherige Form zurück">🗋 Neu anfangen (leer)</button>
       <!-- Runde 20: Schiffsgenerator — Seed + wenige Regler → ganz normale Form (voll editierbar, flugtauglich) -->
       <button id="g-auf" class="gross" title="Ein ganzes Schiff aus Zufall + wenigen Reglern erzeugen — danach frei weiterformen">🎲 Schiffsgenerator</button>
       <div id="generator" class="versteckt">
@@ -48,9 +50,11 @@
         <select id="k-beispiel"><option value="">Beispiele …</option></select>
         <button id="k-werft" title="Speichern und in der Werft ansetzen">In die Werft</button>
         <button id="k-probeflug" title="Speichern und im Freiflug fliegen (nur wenn flugtauglich)">✈ Probeflug</button>
+        <button id="k-gefecht" title="Speichern und im Gefechtstest gegen Kanonenboote fliegen (nur wenn flugtauglich)">⚔ Gefecht</button>
       </div>
       <div id="f-datei" class="klein"></div>
       <button id="k-ansicht" class="breit" title="Taste V">Ansicht: verschweißt (V)</button>
+      <button id="k-stimmung" class="breit">◐ Hintergrund: Weltall</button>
       <button id="k-mehr" class="breit">▸ Details des Körpers</button>
 
       <div id="k-tafel">
@@ -107,7 +111,7 @@
     </div>
     <button id="hilfe-knopf" title="Taste H">? Hilfe</button>
     <div id="hilfe" class="werkstatt-hilfe versteckt">
-      <b>Klick</b> auf Körper = wählen &nbsp; <b>Fläche des gewählten Körpers ziehen</b> = länger/breiter/höher &nbsp; <b>Zahl + Enter</b> = genau &nbsp;
+      <b>Klick</b> auf Körper = wählen &nbsp; <b>Körper/Bauteil ziehen</b> = verschieben &nbsp; <b>blauer Pfeil</b> = Fläche länger/breiter/höher &nbsp; <b>Zahl + Enter</b> = genau &nbsp;
       <b>Vorlage</b> links, dann auf eine Fläche klicken = setzen &nbsp; <b>Strg</b> = ohne Raster<br>
       <b>Q</b> Ziehen &nbsp; <b>W</b> schieben &nbsp; <b>E</b> drehen &nbsp; <b>S</b> Größe &nbsp; <b>Esc</b> zurück zu Ziehen<br>
       <b>K</b> Skizze zeichnen &nbsp; <b>P</b> Punkte (ziehen nur in gerader Ansicht) &nbsp; <b>L</b> fixieren &nbsp; <b>Würfel</b> oben = Ansicht wählen<br>
