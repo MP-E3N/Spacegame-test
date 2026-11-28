@@ -51,6 +51,9 @@ export const ANGREIFER = {
 
 const L = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
 const MAXS = Math.max(...ANGREIFER.wellen);
+/** Grundzustand der Arbeitsfelder je Platz (Erzeugen UND zuruecksetzen — eine Stelle für beides, Lehre R10). */
+const ST_GRUND = Object.freeze({ tot: 0, peil: 0, nick: 0, t: 0, cd: 0, weave: 0, zielZ: 0, bereit: false, weich: 0, weichPause: 0,
+  wx: 0, wy: 0, wz: 0, ax: 0, ay: 0, az: 0 });
 
 /** R21 (Form im Gefecht): diese Abstände (m, Schiffsmitte) darf der Aufrufer je Schiffsgröße setzen. */
 export const ANGREIFER_ABSTAENDE = ['mindest', 'rumpfZiel', 'feuerAb', 'abdrehen', 'ausholen', 'sammeln', 'start'];
@@ -65,8 +68,7 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
   for (let i = 0; i < MAXS; i++) {
     ziele.push({ id: 0, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, vorPos: { x: 0, y: 0, z: 0 }, r: A.r, hp: 0,
       hpMax: A.hpMax, aktiv: false, angriff: false, vorstoss: false, phase: 'warten' });
-    st.push({ tot: 0, peil: 0, nick: 0, t: 0, cd: 0, weave: 0, zielZ: 0, bereit: false, weich: 0, weichPause: 0,
-      wx: 0, wy: 0, wz: 0, ax: 0, ay: 0, az: 0 });
+    st.push({ ...ST_GRUND });
     abschussVorrat.push({ id: 0, pos: { x: 0, y: 0, z: 0 } });
   }
   const N = WF.pool;
@@ -84,8 +86,20 @@ export function erstelleAngreifer({ startwert = 404, abstand = null } = {}) {
   function zuruecksetzen() {
     rnd = zufall(startwert);
     naechsteId = 1; zeiger = 0;
-    for (let i = 0; i < MAXS; i++) { const z = ziele[i]; z.aktiv = false; z.angriff = false; z.hp = 0; z.phase = 'warten'; z.id = 0; st[i].tot = 0; }
+    // WARUM alle Felder (Prüfer R21, Pflege R22): Neustart = frische Instanz. Lage/Tempo leerer Plätze gehen in die
+    // Prüfsumme ein (5255,9 statt 5010,4); die Arbeitsfelder je Platz (st) setzen wir mit, damit kein Rest überlebt.
+    for (let i = 0; i < MAXS; i++) {
+      const z = ziele[i]; z.aktiv = false; z.angriff = false; z.vorstoss = false; z.hp = 0; z.hpMax = A.hpMax; z.r = A.r;
+      z.phase = 'warten'; z.id = 0;
+      z.pos.x = z.pos.y = z.pos.z = 0; z.vel.x = z.vel.y = z.vel.z = 0; z.vorPos.x = z.vorPos.y = z.vorPos.z = 0;
+      Object.assign(st[i], ST_GRUND);
+      const a = abschussVorrat[i]; a.id = 0; a.pos.x = a.pos.y = a.pos.z = 0;
+    }
+    for (const t of trefferVorrat) { t.pos.x = t.pos.y = t.pos.z = 0; t.schaden = 0; }
+    for (const v of [v1, v2, mP, tP, tV]) v.x = v.y = v.z = 0;
+    ab.t = ab.x = ab.y = ab.z = 0;
     geschosse.aktiv.fill(0); geschosse.anzahlAktiv = 0; geschosse.verworfen = 0;
+    geschosse.alter.fill(0); geschosse.pos.fill(0); geschosse.vorPos.fill(0); geschosse.vel.fill(0);
     welle.nr = 0; welle.gleichzeitig = 0; welle.rest = 0; welle.pause = A.erstePause;
     for (const k in statistik) statistik[k] = 0;
     abschuesse.length = 0; treffer.length = 0;

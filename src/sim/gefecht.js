@@ -173,6 +173,12 @@ export function erstelleGefecht({ typ, daten: formDaten, werte: formWerte } = {}
   function zuruecksetzen() {
     welt.zuruecksetzen(); flak.zuruecksetzen(); ki.zuruecksetzen?.(); angreifer.zuruecksetzen();
     for (const k of Object.keys(zaehler)) zaehler[k] = 0;
+    // R22 (Pflege): Neustart = frische Instanz — auch die eigenen Arbeitsfelder (Ziele im Schiffsrahmen, Abschuss-Ring,
+    // Wrack-Haltebefehl, letztes Ergebnis). WARUM zieleLokal neu: eine frische Instanz beginnt mit leerer Liste.
+    zieleLokal = [];
+    for (const a of abschuesse) a.x = a.y = a.z = 0;
+    for (const k of Object.keys(halt)) delete halt[k];
+    ergebnis.kollision = null; ergebnis.treffer = 0;
   }
 
   /** Gleichlauf: Schiffslage, Angreifer, Türme, Zähler. */
